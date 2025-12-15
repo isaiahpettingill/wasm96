@@ -4,12 +4,10 @@
 //!
 //! This crate is used by **guest** WASM apps that run inside the `wasm96` libretro core.
 //!
-//! ABI model (upload-based):
-//! - Guest owns allocations in WASM linear memory.
-//! - Host owns its video/audio buffers in system memory.
-//! - Guest performs **write-only** uploads:
-//!   - Video: configure -> upload full frame -> present
-//!   - Audio: configure -> push i16 frames -> drain (optional)
+//! ABI model (Immediate Mode):
+//! - Host owns the framebuffer and handles rendering.
+//! - Guest issues drawing commands.
+//! - Guest exports `setup`, `update`, and `draw`.
 //!
 //! This file intentionally contains **no WIT** and **no codegen**.
 
@@ -18,42 +16,10 @@ extern crate alloc;
 
 use core::ffi::c_void;
 
-/// ABI version expected by the host/core.
-///
-/// Keep this in sync with `wasm96-core/src/abi/mod.rs`.
-pub const ABI_VERSION: u32 = 1;
-
-/// Guest entrypoint export names (for reference).
-pub mod export_names {
-    pub const INIT: &str = "wasm96_init";
-    pub const FRAME: &str = "wasm96_frame";
-    pub const DEINIT: &str = "wasm96_deinit";
-    pub const RESET: &str = "wasm96_reset";
-}
-
-/// Pixel formats supported by the ABI.
-///
-/// Keep numeric values stable; they are part of the ABI.
+/// Joypad button ids.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum PixelFormat {
-    Xrgb8888 = 0,
-    Rgb565 = 1,
-}
-
-impl PixelFormat {
-    pub const fn bytes_per_pixel(self) -> u32 {
-        match self {
-            PixelFormat::Xrgb8888 => 4,
-            PixelFormat::Rgb565 => 2,
-        }
-    }
-}
-
-/// Joypad button ids (aligned to libretro joypad ids).
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum JoypadButton {
+pub enum Button {
     B = 0,
     Y = 1,
     Select = 2,
@@ -72,211 +38,183 @@ pub enum JoypadButton {
     R3 = 15,
 }
 
-/// Mouse buttons bitmask.
-pub mod mouse_buttons {
-    pub const LEFT: u32 = 1 << 0;
-    pub const RIGHT: u32 = 1 << 1;
-    pub const MIDDLE: u32 = 1 << 2;
-    pub const BUTTON4: u32 = 1 << 3;
-    pub const BUTTON5: u32 = 1 << 4;
-}
-
-/// Lightgun buttons bitmask.
-pub mod lightgun_buttons {
-    pub const TRIGGER: u32 = 1 << 0;
-    pub const RELOAD: u32 = 1 << 1;
-    pub const START: u32 = 1 << 2;
-    pub const SELECT: u32 = 1 << 3;
-    pub const AUX_A: u32 = 1 << 4;
-    pub const AUX_B: u32 = 1 << 5;
-    pub const AUX_C: u32 = 1 << 6;
-    pub const OFFSCREEN: u32 = 1 << 7;
-}
-
 /// Low-level raw ABI imports.
-///
-/// These functions are provided by the host under module `"env"`.
-/// Prefer using the safe wrappers in this crate instead.
 #[allow(non_camel_case_types)]
 pub mod sys {
     unsafe extern "C" {
-        // ABI
-        #[link_name = "wasm96_abi_version"]
-        pub fn wasm96_abi_version() -> u32;
-
-        // Video (upload-based)
-        #[link_name = "wasm96_video_config"]
-        pub fn wasm96_video_config(width: u32, height: u32, pixel_format: u32) -> u32;
-        #[link_name = "wasm96_video_upload"]
-        pub fn wasm96_video_upload(ptr: u32, byte_len: u32, pitch_bytes: u32) -> u32;
-        #[link_name = "wasm96_video_present"]
-        pub fn wasm96_video_present();
-
-        // Audio (push-based, interleaved i16)
-        #[link_name = "wasm96_audio_config"]
-        pub fn wasm96_audio_config(sample_rate: u32, channels: u32) -> u32;
-        #[link_name = "wasm96_audio_push_i16"]
-        pub fn wasm96_audio_push_i16(ptr: u32, frames: u32) -> u32;
-        #[link_name = "wasm96_audio_drain"]
-        pub fn wasm96_audio_drain(max_frames: u32) -> u32;
+        // Graphics
+        #[link_name = "wasm96_graphics_set_size"]
+        pub fn graphics_set_size(width: u32, height: u32);
+        #[link_name = "wasm96_graphics_set_color"]
+        pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32);
+        #[link_name = "wasm96_graphics_background"]
+        pub fn graphics_background(r: u32, g: u32, b: u32);
+        #[link_name = "wasm96_graphics_point"]
+        pub fn graphics_point(x: i32, y: i32);
+        #[link_name = "wasm96_graphics_line"]
+        pub fn graphics_line(x1: i32, y1: i32, x2: i32, y2: i32);
+        #[link_name = "wasm96_graphics_rect"]
+        pub fn graphics_rect(x: i32, y: i32, w: u32, h: u32);
+        #[link_name = "wasm96_graphics_rect_outline"]
+        pub fn graphics_rect_outline(x: i32, y: i32, w: u32, h: u32);
+        #[link_name = "wasm96_graphics_circle"]
+        pub fn graphics_circle(x: i32, y: i32, r: u32);
+        #[link_name = "wasm96_graphics_circle_outline"]
+        pub fn graphics_circle_outline(x: i32, y: i32, r: u32);
+        #[link_name = "wasm96_graphics_image"]
+        pub fn graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32);
 
         // Input
-        #[link_name = "wasm96_joypad_button_pressed"]
-        pub fn wasm96_joypad_button_pressed(port: u32, button: u32) -> u32;
-        #[link_name = "wasm96_key_pressed"]
-        pub fn wasm96_key_pressed(key: u32) -> u32;
+        #[link_name = "wasm96_input_is_button_down"]
+        pub fn input_is_button_down(port: u32, btn: u32) -> u32;
+        #[link_name = "wasm96_input_is_key_down"]
+        pub fn input_is_key_down(key: u32) -> u32;
+        #[link_name = "wasm96_input_get_mouse_x"]
+        pub fn input_get_mouse_x() -> i32;
+        #[link_name = "wasm96_input_get_mouse_y"]
+        pub fn input_get_mouse_y() -> i32;
+        #[link_name = "wasm96_input_is_mouse_down"]
+        pub fn input_is_mouse_down(btn: u32) -> u32;
 
-        #[link_name = "wasm96_mouse_x"]
-        pub fn wasm96_mouse_x() -> i32;
-        #[link_name = "wasm96_mouse_y"]
-        pub fn wasm96_mouse_y() -> i32;
-        #[link_name = "wasm96_mouse_buttons"]
-        pub fn wasm96_mouse_buttons() -> u32;
+        // Audio
+        #[link_name = "wasm96_audio_init"]
+        pub fn audio_init(sample_rate: u32) -> u32;
+        #[link_name = "wasm96_audio_push_samples"]
+        pub fn audio_push_samples(ptr: u32, len: u32);
 
-        #[link_name = "wasm96_lightgun_x"]
-        pub fn wasm96_lightgun_x(port: u32) -> i32;
-        #[link_name = "wasm96_lightgun_y"]
-        pub fn wasm96_lightgun_y(port: u32) -> i32;
-        #[link_name = "wasm96_lightgun_buttons"]
-        pub fn wasm96_lightgun_buttons(port: u32) -> u32;
+        // System
+        #[link_name = "wasm96_system_log"]
+        pub fn system_log(ptr: u32, len: u32);
+        #[link_name = "wasm96_system_millis"]
+        pub fn system_millis() -> u64;
     }
 }
 
-/// Video API.
-pub mod video {
-    use super::{PixelFormat, sys};
-
-    /// Configure the host-side framebuffer spec.
-    ///
-    /// Returns `true` on success.
-    pub fn config(width: u32, height: u32, format: PixelFormat) -> bool {
-        unsafe { sys::wasm96_video_config(width, height, format as u32) != 0 }
-    }
-
-    /// Upload a full frame to the host.
-    ///
-    /// `ptr` is a u32 offset into guest linear memory.
-    /// `byte_len` must be exactly `height * pitch_bytes` for the configured framebuffer.
-    ///
-    /// Returns `true` on success.
-    pub fn upload(ptr: u32, byte_len: u32, pitch_bytes: u32) -> bool {
-        unsafe { sys::wasm96_video_upload(ptr, byte_len, pitch_bytes) != 0 }
-    }
-
-    /// Present the last uploaded framebuffer to the host.
-    pub fn present() {
-        unsafe { sys::wasm96_video_present() }
-    }
-
-    /// Convenience helper to compute pitch bytes for a given width+format.
-    pub const fn pitch_bytes(width: u32, format: PixelFormat) -> u32 {
-        width * format.bytes_per_pixel()
-    }
-}
-
-/// Audio API (interleaved i16).
-pub mod audio {
+/// Graphics API.
+pub mod graphics {
     use super::sys;
 
-    /// Configure host-side audio output format.
-    ///
-    /// Returns `true` on success.
-    pub fn config(sample_rate: u32, channels: u32) -> bool {
-        unsafe { sys::wasm96_audio_config(sample_rate, channels) != 0 }
+    /// Set the screen dimensions.
+    pub fn set_size(width: u32, height: u32) {
+        unsafe { sys::graphics_set_size(width, height) }
     }
 
-    /// Push interleaved i16 samples to the host.
-    ///
-    /// `ptr` is a u32 offset into guest linear memory that points to `frames * channels`
-    /// i16 samples (little-endian).
-    ///
-    /// Returns number of frames accepted (0 on failure).
-    pub fn push_i16(ptr: u32, frames: u32) -> u32 {
-        unsafe { sys::wasm96_audio_push_i16(ptr, frames) }
+    /// Set the current drawing color (RGBA).
+    pub fn set_color(r: u8, g: u8, b: u8, a: u8) {
+        unsafe { sys::graphics_set_color(r as u32, g as u32, b as u32, a as u32) }
     }
 
-    /// Drain up to `max_frames` from the host-side queue into libretro.
-    ///
-    /// If `max_frames == 0`, the host drains everything it currently has queued.
-    /// Returns frames drained.
-    pub fn drain(max_frames: u32) -> u32 {
-        unsafe { sys::wasm96_audio_drain(max_frames) }
+    /// Clear the screen with a specific color (RGB).
+    pub fn background(r: u8, g: u8, b: u8) {
+        unsafe { sys::graphics_background(r as u32, g as u32, b as u32) }
+    }
+
+    /// Draw a single pixel at (x, y).
+    pub fn point(x: i32, y: i32) {
+        unsafe { sys::graphics_point(x, y) }
+    }
+
+    /// Draw a line from (x1, y1) to (x2, y2).
+    pub fn line(x1: i32, y1: i32, x2: i32, y2: i32) {
+        unsafe { sys::graphics_line(x1, y1, x2, y2) }
+    }
+
+    /// Draw a filled rectangle.
+    pub fn rect(x: i32, y: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_rect(x, y, w, h) }
+    }
+
+    /// Draw a rectangle outline.
+    pub fn rect_outline(x: i32, y: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_rect_outline(x, y, w, h) }
+    }
+
+    /// Draw a filled circle.
+    pub fn circle(x: i32, y: i32, r: u32) {
+        unsafe { sys::graphics_circle(x, y, r) }
+    }
+
+    /// Draw a circle outline.
+    pub fn circle_outline(x: i32, y: i32, r: u32) {
+        unsafe { sys::graphics_circle_outline(x, y, r) }
+    }
+
+    /// Draw an image/sprite.
+    /// `data` is a slice of RGBA bytes (4 bytes per pixel).
+    pub fn image(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
+        unsafe { sys::graphics_image(x, y, w, h, data.as_ptr() as u32, data.len() as u32) }
     }
 }
 
 /// Input API.
 pub mod input {
-    use super::{JoypadButton, sys};
+    use super::{Button, sys};
 
-    /// True if `button` is pressed on `port`.
-    pub fn joypad_pressed(port: u32, button: JoypadButton) -> bool {
-        unsafe { sys::wasm96_joypad_button_pressed(port, button as u32) != 0 }
+    /// Returns true if the specified button is currently held down.
+    pub fn is_button_down(port: u32, btn: Button) -> bool {
+        unsafe { sys::input_is_button_down(port, btn as u32) != 0 }
     }
 
-    /// True if `key` is pressed.
-    ///
-    /// `key` is an implementation-defined key code (recommend: libretro key ids or USB HID).
-    pub fn key_pressed(key: u32) -> bool {
-        unsafe { sys::wasm96_key_pressed(key) != 0 }
+    /// Returns true if the specified key is currently held down.
+    pub fn is_key_down(key: u32) -> bool {
+        unsafe { sys::input_is_key_down(key) != 0 }
     }
 
-    /// Mouse X coordinate.
-    pub fn mouse_x() -> i32 {
-        unsafe { sys::wasm96_mouse_x() }
+    /// Get current mouse X position.
+    pub fn get_mouse_x() -> i32 {
+        unsafe { sys::input_get_mouse_x() }
     }
 
-    /// Mouse Y coordinate.
-    pub fn mouse_y() -> i32 {
-        unsafe { sys::wasm96_mouse_y() }
+    /// Get current mouse Y position.
+    pub fn get_mouse_y() -> i32 {
+        unsafe { sys::input_get_mouse_y() }
     }
 
-    /// Mouse buttons bitmask (see `mouse_buttons::*`).
-    pub fn mouse_buttons() -> u32 {
-        unsafe { sys::wasm96_mouse_buttons() }
-    }
-
-    /// Lightgun X coordinate for `port`.
-    pub fn lightgun_x(port: u32) -> i32 {
-        unsafe { sys::wasm96_lightgun_x(port) }
-    }
-
-    /// Lightgun Y coordinate for `port`.
-    pub fn lightgun_y(port: u32) -> i32 {
-        unsafe { sys::wasm96_lightgun_y(port) }
-    }
-
-    /// Lightgun buttons bitmask (see `lightgun_buttons::*`).
-    pub fn lightgun_buttons(port: u32) -> u32 {
-        unsafe { sys::wasm96_lightgun_buttons(port) }
+    /// Returns true if the specified mouse button is held down.
+    /// 0 = Left, 1 = Right, 2 = Middle.
+    pub fn is_mouse_down(btn: u32) -> bool {
+        unsafe { sys::input_is_mouse_down(btn) != 0 }
     }
 }
 
-/// ABI helpers.
-pub mod abi {
-    use super::{ABI_VERSION, sys};
+/// Audio API.
+pub mod audio {
+    use super::sys;
 
-    /// Returns `(host_abi_version, sdk_abi_version)`.
-    pub fn versions() -> (u32, u32) {
-        let host = unsafe { sys::wasm96_abi_version() };
-        (host, ABI_VERSION)
+    /// Initialize audio system.
+    pub fn init(sample_rate: u32) -> u32 {
+        unsafe { sys::audio_init(sample_rate) }
     }
 
-    /// True if the host ABI matches this SDK's ABI version.
-    pub fn compatible() -> bool {
-        let host = unsafe { sys::wasm96_abi_version() };
-        host == ABI_VERSION
+    /// Push a chunk of audio samples.
+    /// Samples are interleaved stereo (L, R, L, R...) signed 16-bit integers.
+    pub fn push_samples(samples: &[i16]) {
+        unsafe { sys::audio_push_samples(samples.as_ptr() as u32, samples.len() as u32) }
+    }
+}
+
+/// System API.
+pub mod system {
+    use super::sys;
+
+    /// Log a message to the host console.
+    pub fn log(message: &str) {
+        unsafe { sys::system_log(message.as_ptr() as u32, message.len() as u32) }
+    }
+
+    /// Get the number of milliseconds since the app started.
+    pub fn millis() -> u64 {
+        unsafe { sys::system_millis() }
     }
 }
 
 /// Convenience prelude for guest apps.
 pub mod prelude {
-    pub use crate::abi::{compatible as abi_compatible, versions as abi_versions};
+    pub use crate::Button;
     pub use crate::audio;
+    pub use crate::graphics;
     pub use crate::input;
-    pub use crate::lightgun_buttons;
-    pub use crate::mouse_buttons;
-    pub use crate::video;
-    pub use crate::{ABI_VERSION, JoypadButton, PixelFormat};
+    pub use crate::system;
 }
 
 // Keep `c_void` referenced so it doesn't look unused in some configurations.

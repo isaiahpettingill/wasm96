@@ -1,22 +1,15 @@
-//! Audio/Video helpers for wasm96-core.
+//! Audio/Video implementation for wasm96-core (Immediate Mode).
 //!
-//! This module implements the **guest uploads -> host stores in system memory** model.
+//! This module implements the host-side drawing commands and audio handling.
 //!
-//! - Video: guest configures a framebuffer spec, then uploads an entire frame from guest
-//!   linear memory via `(ptr, byte_len, pitch_bytes)`. The host copies into a host-owned
-//!   system-memory buffer and presents from that buffer.
+//! - Graphics: The host maintains a `Vec<u32>` framebuffer (XRGB8888).
+//!   Guest commands modify this buffer.
+//!   `video_present_host` sends it to libretro.
 //!
-//! - Audio: guest configures an audio spec, then pushes interleaved stereo i16 frames from
-//!   guest linear memory via `(ptr, frames)`. The host copies into a host-owned queue and
-//!   drains from that queue into libretro.
-//!
-//! Notes / limitations (current):
-//! - Full-frame-only video uploads.
-//! - Audio sample format is fixed to interleaved stereo i16.
-//! - We still copy from guest memory into host/system memory (intentionally).
+//! - Audio: The host maintains a `Vec<i16>` sample queue.
+//!   Guest pushes samples; host drains them to libretro.
 
-use crate::abi::PixelFormat;
-use crate::state::{self, AudioSpec, VideoSpec};
+use crate::state::{self, global};
 use wasmer::FunctionEnvMut;
 
 /// Errors from AV operations.
@@ -24,284 +17,393 @@ use wasmer::FunctionEnvMut;
 pub enum AvError {
     MissingHandle,
     MissingMemory,
-    VideoNotConfigured,
-    AudioNotConfigured,
-    InvalidSpec,
     MemoryReadFailed,
 }
 
-impl core::fmt::Display for AvError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            AvError::MissingHandle => write!(f, "missing libretro runtime handle"),
-            AvError::MissingMemory => write!(f, "missing WASM guest memory"),
-            AvError::VideoNotConfigured => write!(f, "video not configured"),
-            AvError::AudioNotConfigured => write!(f, "audio not configured"),
-            AvError::InvalidSpec => write!(f, "invalid A/V spec"),
-            AvError::MemoryReadFailed => write!(f, "failed to read from guest memory"),
-        }
-    }
-}
+// --- Graphics ---
 
-impl std::error::Error for AvError {}
-
-/// Compute pitch for a requested framebuffer.
-///
-/// Current policy:
-/// - pitch = width * bytes_per_pixel
-/// - no extra alignment is enforced (yet)
-pub fn compute_pitch(width: u32, pixel_format: u32) -> Option<u32> {
-    let bpp = match pixel_format {
-        x if x == PixelFormat::Xrgb8888 as u32 => PixelFormat::Xrgb8888.bytes_per_pixel(),
-        x if x == PixelFormat::Rgb565 as u32 => PixelFormat::Rgb565.bytes_per_pixel(),
-        _ => return None,
-    };
-    width.checked_mul(bpp)
-}
-
-/// Validate a requested framebuffer spec and compute the pitch.
-/// Returns a full `VideoSpec` if valid.
-pub fn validate_video_request(
-    width: u32,
-    height: u32,
-    pixel_format: u32,
-) -> Result<VideoSpec, AvError> {
+/// Set the screen dimensions. Resizes the host framebuffer.
+pub fn graphics_set_size(width: u32, height: u32) {
     if width == 0 || height == 0 {
-        return Err(AvError::InvalidSpec);
+        return;
     }
-    let pitch_bytes = compute_pitch(width, pixel_format).ok_or(AvError::InvalidSpec)?;
-    let _ = (height as usize)
-        .checked_mul(pitch_bytes as usize)
-        .ok_or(AvError::InvalidSpec)?;
-
-    Ok(VideoSpec {
-        width,
-        height,
-        pitch_bytes,
-        pixel_format,
-    })
+    let mut s = global().lock().unwrap();
+    s.video.width = width;
+    s.video.height = height;
+    s.video.framebuffer.resize((width * height) as usize, 0);
+    // Clear to black on resize
+    s.video.framebuffer.fill(0);
 }
 
-/// Validate an audio request and create an `AudioSpec`.
-pub fn validate_audio_request(sample_rate: u32, channels: u32) -> Result<AudioSpec, AvError> {
-    if sample_rate == 0 {
-        return Err(AvError::InvalidSpec);
-    }
-    // For now we only support stereo on the host side.
-    if channels != 2 {
-        return Err(AvError::InvalidSpec);
-    }
-
-    Ok(AudioSpec {
-        sample_rate,
-        channels,
-    })
+/// Set the current drawing color.
+pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
+    let mut s = global().lock().unwrap();
+    // Pack as 0x00RRGGBB (XRGB8888). We ignore Alpha for the framebuffer format usually,
+    // but we might use it for blending later. For now, simple overwrite.
+    // Libretro XRGB8888 expects 0x00RRGGBB.
+    let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    s.video.draw_color = color;
 }
 
-/// Configure host-side video spec and resize host framebuffer storage.
-pub fn video_config(width: u32, height: u32, pixel_format: u32) -> bool {
-    let spec = match validate_video_request(width, height, pixel_format) {
-        Ok(s) => s,
-        Err(_) => return false,
+/// Clear the screen to a specific color.
+pub fn graphics_background(r: u32, g: u32, b: u32) {
+    let mut s = global().lock().unwrap();
+    let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    s.video.framebuffer.fill(color);
+}
+
+/// Draw a single pixel.
+pub fn graphics_point(x: i32, y: i32) {
+    let mut s = global().lock().unwrap();
+    let w = s.video.width as i32;
+    let h = s.video.height as i32;
+
+    if x >= 0 && x < w && y >= 0 && y < h {
+        let idx = (y * w + x) as usize;
+        s.video.framebuffer[idx] = s.video.draw_color;
+    }
+}
+
+/// Draw a line using Bresenham's algorithm.
+pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
+    let mut s = global().lock().unwrap();
+    let w = s.video.width as i32;
+    let h = s.video.height as i32;
+    let color = s.video.draw_color;
+    let fb = &mut s.video.framebuffer;
+
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+
+    loop {
+        if x0 >= 0 && x0 < w && y0 >= 0 && y0 < h {
+            fb[(y0 * w + x0) as usize] = color;
+        }
+
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x0 += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+/// Draw a filled rectangle.
+pub fn graphics_rect(x: i32, y: i32, w: u32, h: u32) {
+    let mut s = global().lock().unwrap();
+    let screen_w = s.video.width as i32;
+    let screen_h = s.video.height as i32;
+    let color = s.video.draw_color;
+
+    let x_start = x.max(0);
+    let y_start = y.max(0);
+    let x_end = (x + w as i32).min(screen_w);
+    let y_end = (y + h as i32).min(screen_h);
+
+    if x_start >= x_end || y_start >= y_end {
+        return;
+    }
+
+    let fb_w = s.video.width as usize;
+    let fb = &mut s.video.framebuffer;
+
+    for curr_y in y_start..y_end {
+        let start_idx = (curr_y as usize) * fb_w + (x_start as usize);
+        let end_idx = (curr_y as usize) * fb_w + (x_end as usize);
+        fb[start_idx..end_idx].fill(color);
+    }
+}
+
+/// Draw a rectangle outline.
+pub fn graphics_rect_outline(x: i32, y: i32, w: u32, h: u32) {
+    // Top
+    graphics_line_internal(x, y, x + w as i32, y);
+    // Bottom
+    graphics_line_internal(x, y + h as i32, x + w as i32, y + h as i32);
+    // Left
+    graphics_line_internal(x, y, x, y + h as i32);
+    // Right
+    graphics_line_internal(x + w as i32, y, x + w as i32, y + h as i32);
+}
+
+/// Helper for internal line drawing without locking every pixel (if we had a way to pass the lock).
+/// Since we don't want to complicate locking, we'll just call the public one which locks.
+/// It's slightly inefficient but fine for this scale.
+/// Actually, `graphics_rect_outline` calls `graphics_line` 4 times, so 4 locks. Acceptable.
+fn graphics_line_internal(x1: i32, y1: i32, x2: i32, y2: i32) {
+    graphics_line(x1, y1, x2, y2);
+}
+
+/// Draw a filled circle.
+pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
+    let mut s = global().lock().unwrap();
+    let w = s.video.width as i32;
+    let h = s.video.height as i32;
+    let color = s.video.draw_color;
+    let fb = &mut s.video.framebuffer;
+
+    let r_sq = (r * r) as i32;
+    let r_i32 = r as i32;
+
+    let x_min = (cx - r_i32).max(0);
+    let x_max = (cx + r_i32).min(w);
+    let y_min = (cy - r_i32).max(0);
+    let y_max = (cy + r_i32).min(h);
+
+    for y in y_min..y_max {
+        for x in x_min..x_max {
+            let dx = x - cx;
+            let dy = y - cy;
+            if dx * dx + dy * dy <= r_sq {
+                fb[(y * w + x) as usize] = color;
+            }
+        }
+    }
+}
+
+/// Draw a circle outline (Bresenham's circle algorithm).
+pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
+    let mut s = global().lock().unwrap();
+    let w = s.video.width as i32;
+    let h = s.video.height as i32;
+    let color = s.video.draw_color;
+    let fb = &mut s.video.framebuffer;
+
+    let mut x = 0;
+    let mut y = r as i32;
+    let mut d = 3 - 2 * r as i32;
+
+    let mut plot = |x: i32, y: i32| {
+        if x >= 0 && x < w && y >= 0 && y < h {
+            fb[(y * w + x) as usize] = color;
+        }
     };
 
-    let mut s = state::global().lock().unwrap();
-    let need = spec.byte_len();
+    while y >= x {
+        plot(cx + x, cy + y);
+        plot(cx - x, cy + y);
+        plot(cx + x, cy - y);
+        plot(cx - x, cy - y);
+        plot(cx + y, cy + x);
+        plot(cx - y, cy + x);
+        plot(cx + y, cy - x);
+        plot(cx - y, cy - x);
 
-    s.video.spec = Some(spec);
-    if s.video.host_fb.len() != need {
-        s.video.host_fb = vec![0u8; need];
+        x += 1;
+        if d > 0 {
+            y -= 1;
+            d = d + 4 * (x - y) + 10;
+        } else {
+            d = d + 4 * x + 6;
+        }
     }
-
-    true
 }
 
-/// Configure host-side audio format.
-pub fn audio_config(sample_rate: u32, channels: u32) -> Result<bool, AvError> {
-    let spec = validate_audio_request(sample_rate, channels)?;
-    let mut s = state::global().lock().unwrap();
-    s.audio.spec = Some(spec);
-    Ok(true)
-}
-
-/// Upload a full video frame from guest memory into host/system-memory buffer.
-///
-/// `ptr` and `byte_len` refer to a region in guest linear memory.
-/// `pitch_bytes` must match the configured pitch (full-frame-only).
-pub fn video_upload(
+/// Draw an image from guest memory.
+/// `ptr` points to RGBA bytes (4 bytes per pixel).
+pub fn graphics_image(
     env: &FunctionEnvMut<()>,
+    x: i32,
+    y: i32,
+    img_w: u32,
+    img_h: u32,
     ptr: u32,
-    byte_len: u32,
-    pitch_bytes: u32,
-) -> Result<bool, AvError> {
-    let (memory_ptr, spec, dst_ptr, dst_len) = {
-        let mut s = state::global().lock().unwrap();
-        let memory_ptr = s.memory;
-        let spec = s.video.spec.ok_or(AvError::VideoNotConfigured)?;
-
-        let need_len = spec.byte_len();
-        if pitch_bytes != spec.pitch_bytes {
-            return Err(AvError::InvalidSpec);
+    len: u32,
+) -> Result<(), AvError> {
+    // Basic validation
+    let expected_len = img_w.checked_mul(img_h).and_then(|s| s.checked_mul(4));
+    if let Some(req) = expected_len {
+        if len < req {
+            // Not enough data provided
+            return Ok(());
         }
-        if byte_len as usize != need_len {
-            return Err(AvError::InvalidSpec);
-        }
+    } else {
+        return Ok(());
+    }
 
-        if s.video.host_fb.len() != need_len {
-            s.video.host_fb = vec![0u8; need_len];
-        }
-
-        let dst_ptr = s.video.host_fb.as_mut_ptr();
-        let dst_len = s.video.host_fb.len();
-        (memory_ptr, spec, dst_ptr, dst_len)
+    // Read guest memory
+    let memory_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
     };
-
-    let _ = spec; // spec is validated above; keep it for clarity/future use.
-
     if memory_ptr.is_null() {
         return Err(AvError::MissingMemory);
     }
-    if ptr == 0 {
-        return Err(AvError::InvalidSpec);
-    }
 
-    // SAFETY: memory pointer checked; destination pointer/len come from a valid Vec.
+    // SAFETY: memory pointer checked.
     let mem = unsafe { &*memory_ptr };
     let view = mem.view(env);
 
-    let mut tmp = vec![0u8; dst_len];
-    view.read(ptr as u64, &mut tmp)
+    // We read the whole image into a temp buffer.
+    // Optimization: could read row-by-row to avoid large allocation,
+    // but for retro resolutions this is fine.
+    let mut img_data = vec![0u8; len as usize];
+    view.read(ptr as u64, &mut img_data)
         .map_err(|_| AvError::MemoryReadFailed)?;
 
-    // SAFETY: dst_ptr is valid for dst_len bytes, and tmp is exactly dst_len bytes.
-    unsafe {
-        core::ptr::copy_nonoverlapping(tmp.as_ptr(), dst_ptr, dst_len);
+    // Lock and draw
+    let mut s = global().lock().unwrap();
+    let screen_w = s.video.width as i32;
+    let screen_h = s.video.height as i32;
+    let fb = &mut s.video.framebuffer;
+
+    // Clipping
+    let x_start = x.max(0);
+    let y_start = y.max(0);
+    let x_end = (x + img_w as i32).min(screen_w);
+    let y_end = (y + img_h as i32).min(screen_h);
+
+    if x_start >= x_end || y_start >= y_end {
+        return Ok(());
     }
 
-    Ok(true)
+    for curr_y in y_start..y_end {
+        let src_y = curr_y - y; // relative to image
+        let src_row_start = (src_y as usize) * (img_w as usize) * 4;
+
+        let dst_row_start = (curr_y as usize) * (screen_w as usize);
+
+        for curr_x in x_start..x_end {
+            let src_x = curr_x - x; // relative to image
+            let src_idx = src_row_start + (src_x as usize) * 4;
+
+            let r = img_data[src_idx];
+            let g = img_data[src_idx + 1];
+            let b = img_data[src_idx + 2];
+            let a = img_data[src_idx + 3];
+
+            if a > 0 {
+                // Simple alpha check (0 = transparent, >0 = opaque).
+                // Real blending would be: result = alpha * src + (1-alpha) * dst
+                // For now, just overwrite if not fully transparent.
+                let color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                fb[dst_row_start + (curr_x as usize)] = color;
+            }
+        }
+    }
+
+    Ok(())
 }
 
-/// Present the last uploaded host/system-memory framebuffer to libretro (best-effort).
+/// Present the framebuffer to libretro.
 pub fn video_present_host() {
-    let (handle_ptr, data) = {
-        let s = state::global().lock().unwrap();
-        (s.handle, s.video.host_fb.clone())
+    let (handle_ptr, width, height, fb) = {
+        let s = global().lock().unwrap();
+        (
+            s.handle,
+            s.video.width,
+            s.video.height,
+            s.video.framebuffer.clone(),
+        )
     };
 
     if handle_ptr.is_null() {
         return;
     }
 
+    // Convert Vec<u32> to &[u8] for libretro.
+    // XRGB8888 is 4 bytes per pixel.
+    // We can cast the slice safely because the layout is compatible (little endian).
+    let data_ptr = fb.as_ptr() as *const u8;
+    let data_len = fb.len() * 4;
+    let data_slice = unsafe { std::slice::from_raw_parts(data_ptr, data_len) };
+
     // SAFETY: handle pointer checked.
     let h = unsafe { &mut *handle_ptr };
-    h.upload_video_frame(&data);
+    h.upload_video_frame(data_slice, width, height, width * 4);
 }
 
-/// Push interleaved stereo i16 audio frames from guest memory into the host queue.
-///
-/// `ptr` points to `frames * channels` i16 samples (little-endian in guest memory).
-pub fn audio_push_i16(env: &FunctionEnvMut<()>, ptr: u32, frames: u32) -> Result<u32, AvError> {
-    let (handle_ptr, memory_ptr, spec) = {
-        let s = state::global().lock().unwrap();
-        (s.handle, s.memory, s.audio.spec)
+// --- Audio ---
+
+pub fn audio_init(sample_rate: u32) -> u32 {
+    let mut s = global().lock().unwrap();
+    s.audio.sample_rate = sample_rate;
+    // Return buffer size hint (e.g. 1 frame worth? or just 0).
+    // The guest doesn't strictly need this if it pushes what it wants.
+    1024
+}
+
+pub fn audio_push_samples(env: &FunctionEnvMut<()>, ptr: u32, count: u32) -> Result<(), AvError> {
+    let memory_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
     };
 
-    if handle_ptr.is_null() {
-        return Err(AvError::MissingHandle);
-    }
     if memory_ptr.is_null() {
         return Err(AvError::MissingMemory);
     }
-    let spec = spec.ok_or(AvError::AudioNotConfigured)?;
-    if spec.channels != 2 {
-        return Err(AvError::InvalidSpec);
-    }
-    if ptr == 0 {
-        return Err(AvError::InvalidSpec);
-    }
 
-    let samples_per_frame = spec.samples_per_frame();
-    if samples_per_frame != 2 {
-        return Err(AvError::InvalidSpec);
-    }
-
-    let samples_total = (frames as usize)
-        .checked_mul(samples_per_frame)
-        .ok_or(AvError::InvalidSpec)?;
-    let byte_len = samples_total.checked_mul(2).ok_or(AvError::InvalidSpec)?;
-
-    // SAFETY: pointers checked.
+    // SAFETY: memory pointer checked.
     let mem = unsafe { &*memory_ptr };
     let view = mem.view(env);
 
-    let mut tmp = vec![0u8; byte_len];
-    view.read(ptr as u64, &mut tmp)
+    // Read i16 samples. count is number of i16 elements.
+    let byte_len = count.checked_mul(2).ok_or(AvError::MemoryReadFailed)?;
+    let mut tmp_bytes = vec![0u8; byte_len as usize];
+
+    view.read(ptr as u64, &mut tmp_bytes)
         .map_err(|_| AvError::MemoryReadFailed)?;
 
-    // Convert LE bytes -> i16 samples.
-    let samples = tmp.len() / 2;
-    let mut out = vec![0i16; samples];
-    for i in 0..samples {
-        let lo = tmp[i * 2] as u16;
-        let hi = tmp[i * 2 + 1] as u16;
-        out[i] = ((hi << 8) | lo) as i16;
+    // Convert bytes to i16
+    let mut samples = Vec::with_capacity(count as usize);
+    for chunk in tmp_bytes.chunks_exact(2) {
+        let val = i16::from_le_bytes([chunk[0], chunk[1]]);
+        samples.push(val);
     }
 
-    // Append to host queue (system memory).
-    {
-        let mut s = state::global().lock().unwrap();
-        // Guest could push without calling config; treat as not configured.
-        if s.audio.spec.is_none() {
-            return Err(AvError::AudioNotConfigured);
-        }
-        s.audio.host_queue.extend_from_slice(&out);
-    }
+    // Append to host queue
+    let mut s = global().lock().unwrap();
+    s.audio.host_queue.extend(samples);
 
-    Ok(frames)
+    Ok(())
 }
 
-/// Drain up to `max_frames` from the host queue into libretro audio output.
-/// Returns frames drained.
-/// If `max_frames == 0`, drains everything currently queued.
 pub fn audio_drain_host(max_frames: u32) -> u32 {
-    let (handle_ptr, samples_per_frame) = {
-        let s = state::global().lock().unwrap();
-        let Some(spec) = s.audio.spec else {
-            return 0;
-        };
-        (s.handle, spec.samples_per_frame())
+    let (handle_ptr, sample_rate) = {
+        let s = global().lock().unwrap();
+        (s.handle, s.audio.sample_rate)
     };
 
     if handle_ptr.is_null() {
         return 0;
     }
-    if samples_per_frame == 0 {
-        return 0;
-    }
 
-    // Drain from the host queue while holding the lock, but DO NOT call libretro while locked.
-    let (frames_to_drain, drained) = {
-        let mut s = state::global().lock().unwrap();
+    // Stereo = 2 samples per frame
+    let samples_per_frame = 2;
 
-        let available_frames = (s.audio.host_queue.len() / samples_per_frame) as u32;
+    let (frames_drained, samples) = {
+        let mut s = global().lock().unwrap();
+        let available_samples = s.audio.host_queue.len();
+        let available_frames = available_samples / samples_per_frame;
+
         if available_frames == 0 {
             return 0;
         }
 
-        let n = if max_frames == 0 {
+        let frames_to_take = if max_frames == 0 {
             available_frames
         } else {
-            available_frames.min(max_frames)
+            available_frames.min(max_frames as usize)
         };
 
-        let drain_samples = (n as usize).saturating_mul(samples_per_frame);
-        let drained: Vec<i16> = s.audio.host_queue.drain(0..drain_samples).collect();
-        (n, drained)
+        let samples_to_take = frames_to_take * samples_per_frame;
+        let drained: Vec<i16> = s.audio.host_queue.drain(0..samples_to_take).collect();
+        (frames_to_take as u32, drained)
     };
 
     // SAFETY: handle pointer checked.
     let h = unsafe { &mut *handle_ptr };
-    h.upload_audio_frame(drained.as_slice());
+    h.upload_audio_frame(&samples);
 
-    frames_to_drain
+    frames_drained
 }

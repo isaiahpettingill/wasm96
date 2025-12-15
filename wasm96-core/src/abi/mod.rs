@@ -4,146 +4,95 @@
 //! - **Host**: `wasm96-core` (libretro core)
 //! - **Guest**: the loaded WASM module (“game/app”)
 //!
-//! ## High-level model (write-only uploads)
-//! The host owns **all** video/audio buffers in **system memory**.
-//!
-//! The guest owns its own allocations in **WASM linear memory**, and submits data to the host
-//! via *write-only* upload calls:
-//! - Video: guest configures a framebuffer spec, uploads a full frame, then presents.
-//! - Audio: guest configures audio format, pushes interleaved i16 samples, and may request a drain.
-//!
-//! This keeps memory ownership clear:
-//! - Host does not allocate into guest memory.
-//! - Guest does not receive host pointers or handles.
+//! ## High-level model (Immediate Mode)
+//! The host owns the framebuffer and handles all rendering.
+//! The guest issues drawing commands (draw rect, draw line, etc.) during its `draw` loop.
 //!
 //! ## Imports (guest -> host)
 //! Imported from module `"env"`.
 //!
-//! ### ABI / lifecycle
-//! - `wasm96_abi_version() -> u32`
+//! ### Graphics
+//! - `wasm96_graphics_set_size(width: u32, height: u32)`
+//! - `wasm96_graphics_set_color(r: u32, g: u32, b: u32, a: u32)`
+//! - `wasm96_graphics_background(r: u32, g: u32, b: u32)`
+//! - `wasm96_graphics_point(x: i32, y: i32)`
+//! - `wasm96_graphics_line(x1: i32, y1: i32, x2: i32, y2: i32)`
+//! - `wasm96_graphics_rect(x: i32, y: i32, w: u32, h: u32)`
+//! - `wasm96_graphics_rect_outline(x: i32, y: i32, w: u32, h: u32)`
+//! - `wasm96_graphics_circle(x: i32, y: i32, r: u32)`
+//! - `wasm96_graphics_circle_outline(x: i32, y: i32, r: u32)`
+//! - `wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32)`
 //!
-//! ### Video (full-frame upload)
-//! - `wasm96_video_config(width: u32, height: u32, pixel_format: u32) -> u32`
-//!     - Returns 1 on success, 0 on failure.
-//! - `wasm96_video_upload(ptr: u32, byte_len: u32, pitch_bytes: u32) -> u32`
-//!     - Guest pointer (`ptr`) is an offset into guest linear memory.
-//!     - Host copies `byte_len` bytes into its system-memory framebuffer (full-frame only).
-//!     - Returns 1 on success, 0 on failure.
-//! - `wasm96_video_present()`
+//! ### Input
+//! - `wasm96_input_is_button_down(port: u32, btn: u32) -> u32` (bool)
+//! - `wasm96_input_is_key_down(key: u32) -> u32` (bool)
+//! - `wasm96_input_get_mouse_x() -> i32`
+//! - `wasm96_input_get_mouse_y() -> i32`
+//! - `wasm96_input_is_mouse_down(btn: u32) -> u32` (bool)
 //!
-//! ### Audio (push samples)
-//! - `wasm96_audio_config(sample_rate: u32, channels: u32) -> u32`
-//!     - Returns 1 on success, 0 on failure.
-//! - `wasm96_audio_push_i16(ptr: u32, frames: u32) -> u32`
-//!     - Guest pointer (`ptr`) is an offset into guest linear memory.
-//!     - Samples are interleaved i16, `frames` counts *frames* (one frame = `channels` samples).
-//!     - Returns number of frames accepted (0 on failure).
-//! - `wasm96_audio_drain(max_frames: u32) -> u32`
-//!     - Drains up to `max_frames` frames from the host-side queue/ringbuffer into libretro.
+//! ### Audio
+//! - `wasm96_audio_init(sample_rate: u32) -> u32`
+//! - `wasm96_audio_push_samples(ptr: u32, len: u32)`
 //!
-//! ### Input queries
-//! - `wasm96_joypad_button_pressed(port: u32, button: u32) -> u32`
-//! - `wasm96_key_pressed(key: u32) -> u32`
-//! - `wasm96_mouse_x() -> i32`
-//! - `wasm96_mouse_y() -> i32`
-//! - `wasm96_mouse_buttons() -> u32`
-//! - `wasm96_lightgun_x(port: u32) -> i32`
-//! - `wasm96_lightgun_y(port: u32) -> i32`
-//! - `wasm96_lightgun_buttons(port: u32) -> u32`
+//! ### System
+//! - `wasm96_system_log(ptr: u32, len: u32)`
+//! - `wasm96_system_millis() -> u64`
 //!
 //! ## Exports (host -> guest) required
-//! The guest module **must** export at least:
-//! - `wasm96_frame()`
-//!
-//! Optional exports:
-//! - `wasm96_init()`
-//! - `wasm96_deinit()`
-//! - `wasm96_reset()`
-//!
-//! ## ABI Stability
-//! We version this ABI with a single integer. Incompatible changes bump the number.
+//! The guest module **must** export:
+//! - `setup()`
+//! - `update()`
+//! - `draw()`
 
 use wasmer::Function;
-
-/// Current ABI version expected by the host.
-///
-/// Bump this only for breaking ABI changes.
-pub const ABI_VERSION: u32 = 1;
 
 /// Wasmer import module name used by the guest.
 pub const IMPORT_MODULE: &str = "env";
 
 /// Guest export names (entrypoints).
-///
-/// The guest must export at least `FRAME`.
 pub mod guest_exports {
-    /// Called once after instantiation (optional).
-    pub const INIT: &str = "wasm96_init";
-    /// Called once per libretro frame (required).
-    pub const FRAME: &str = "wasm96_frame";
-    /// Called when unloading (optional).
-    pub const DEINIT: &str = "wasm96_deinit";
-    /// Called on reset (optional).
-    pub const RESET: &str = "wasm96_reset";
+    /// Called once on startup.
+    pub const SETUP: &str = "setup";
+    /// Called once per frame to update logic.
+    pub const UPDATE: &str = "update";
+    /// Called once per frame to draw.
+    pub const DRAW: &str = "draw";
 }
 
 /// Host import names provided to the guest.
-///
-/// These are the string names under module [`IMPORT_MODULE`].
 pub mod host_imports {
-    // ABI
-    pub const ABI_VERSION: &str = "wasm96_abi_version";
+    // Graphics
+    pub const GRAPHICS_SET_SIZE: &str = "wasm96_graphics_set_size";
+    pub const GRAPHICS_SET_COLOR: &str = "wasm96_graphics_set_color";
+    pub const GRAPHICS_BACKGROUND: &str = "wasm96_graphics_background";
+    pub const GRAPHICS_POINT: &str = "wasm96_graphics_point";
+    pub const GRAPHICS_LINE: &str = "wasm96_graphics_line";
+    pub const GRAPHICS_RECT: &str = "wasm96_graphics_rect";
+    pub const GRAPHICS_RECT_OUTLINE: &str = "wasm96_graphics_rect_outline";
+    pub const GRAPHICS_CIRCLE: &str = "wasm96_graphics_circle";
+    pub const GRAPHICS_CIRCLE_OUTLINE: &str = "wasm96_graphics_circle_outline";
+    pub const GRAPHICS_IMAGE: &str = "wasm96_graphics_image";
 
-    // Video (write-only full-frame upload)
-    pub const VIDEO_CONFIG: &str = "wasm96_video_config";
-    pub const VIDEO_UPLOAD: &str = "wasm96_video_upload";
-    pub const VIDEO_PRESENT: &str = "wasm96_video_present";
+    // Input
+    pub const INPUT_IS_BUTTON_DOWN: &str = "wasm96_input_is_button_down";
+    pub const INPUT_IS_KEY_DOWN: &str = "wasm96_input_is_key_down";
+    pub const INPUT_GET_MOUSE_X: &str = "wasm96_input_get_mouse_x";
+    pub const INPUT_GET_MOUSE_Y: &str = "wasm96_input_get_mouse_y";
+    pub const INPUT_IS_MOUSE_DOWN: &str = "wasm96_input_is_mouse_down";
 
-    // Audio (write-only push)
-    pub const AUDIO_CONFIG: &str = "wasm96_audio_config";
-    pub const AUDIO_PUSH_I16: &str = "wasm96_audio_push_i16";
-    pub const AUDIO_DRAIN: &str = "wasm96_audio_drain";
+    // Audio
+    pub const AUDIO_INIT: &str = "wasm96_audio_init";
+    pub const AUDIO_PUSH_SAMPLES: &str = "wasm96_audio_push_samples";
 
-    // Input (joypad/keyboard/mouse/lightgun)
-    pub const JOYPAD_BUTTON_PRESSED: &str = "wasm96_joypad_button_pressed";
-    pub const KEY_PRESSED: &str = "wasm96_key_pressed";
-    pub const MOUSE_X: &str = "wasm96_mouse_x";
-    pub const MOUSE_Y: &str = "wasm96_mouse_y";
-    pub const MOUSE_BUTTONS: &str = "wasm96_mouse_buttons";
-    pub const LIGHTGUN_X: &str = "wasm96_lightgun_x";
-    pub const LIGHTGUN_Y: &str = "wasm96_lightgun_y";
-    pub const LIGHTGUN_BUTTONS: &str = "wasm96_lightgun_buttons";
+    // System
+    pub const SYSTEM_LOG: &str = "wasm96_system_log";
+    pub const SYSTEM_MILLIS: &str = "wasm96_system_millis";
 }
 
-/// Pixel format values used by `wasm96_video_config` (and `wasm96_video_upload`).
-///
-/// Keep these stable; they are part of the ABI. The core can extend this over time.
+/// Joypad button ids.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum PixelFormat {
-    /// Packed 32-bit pixels (4 bytes per pixel). Channel order is currently treated as opaque bytes
-    /// by the core; guests should default to XRGB8888 style packing (common for libretro 32bpp).
-    Xrgb8888 = 0,
-
-    /// 16-bit RGB565 packed pixels (2 bytes per pixel); optional for the core to support.
-    Rgb565 = 1,
-}
-
-impl PixelFormat {
-    pub const fn bytes_per_pixel(self) -> u32 {
-        match self {
-            PixelFormat::Xrgb8888 => 4,
-            PixelFormat::Rgb565 => 2,
-        }
-    }
-}
-
-/// Joypad button ids used by `wasm96_joypad_button_pressed`.
-///
-/// These are aligned with common libretro joypad ids.
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum JoypadButton {
+pub enum Button {
     B = 0,
     Y = 1,
     Select = 2,
@@ -162,92 +111,58 @@ pub enum JoypadButton {
     R3 = 15,
 }
 
-/// Mouse button bitmask returned by `wasm96_mouse_buttons`.
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum MouseButtons {
-    Left = 1 << 0,
-    Right = 1 << 1,
-    Middle = 1 << 2,
-    Button4 = 1 << 3,
-    Button5 = 1 << 4,
-}
-
-/// Lightgun button bitmask returned by `wasm96_lightgun_buttons(port)`.
-///
-/// This is a superset-style bitmask; the core maps whatever libretro provides.
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum LightgunButtons {
-    Trigger = 1 << 0,
-    Reload = 1 << 1,
-    Start = 1 << 2,
-    Select = 1 << 3,
-    AuxA = 1 << 4,
-    AuxB = 1 << 5,
-    AuxC = 1 << 6,
-    Offscreen = 1 << 7,
-}
-
 /// Helpers for validating guest exports.
 pub mod validate {
     use super::guest_exports;
     use wasmer::Instance;
 
-    /// Validate that a guest instance exports the required entrypoints for this ABI.
-    ///
-    /// Currently required:
-    /// - `wasm96_frame`
     pub fn required_exports_present(instance: &Instance) -> Result<(), MissingExport> {
-        if instance.exports.get_function(guest_exports::FRAME).is_err() {
-            return Err(MissingExport::Frame);
+        if instance.exports.get_function(guest_exports::SETUP).is_err() {
+            return Err(MissingExport::Setup);
+        }
+        if instance
+            .exports
+            .get_function(guest_exports::UPDATE)
+            .is_err()
+        {
+            return Err(MissingExport::Update);
+        }
+        if instance.exports.get_function(guest_exports::DRAW).is_err() {
+            return Err(MissingExport::Draw);
         }
         Ok(())
     }
 
     #[derive(Debug)]
     pub enum MissingExport {
-        Frame,
+        Setup,
+        Update,
+        Draw,
     }
 }
 
 /// A small view of a guest's entrypoints as `wasmer::Function`s.
-///
-/// The core can resolve these once after instantiation and call them each frame.
 #[derive(Clone)]
 pub struct GuestEntrypoints {
-    pub init: Option<Function>,
-    pub frame: Function,
-    pub deinit: Option<Function>,
-    pub reset: Option<Function>,
+    pub setup: Function,
+    pub update: Function,
+    pub draw: Function,
 }
 
 impl GuestEntrypoints {
     /// Resolve entrypoint exports from an instance.
     pub fn resolve(instance: &wasmer::Instance) -> Result<Self, wasmer::ExportError> {
-        let frame = instance.exports.get_function(guest_exports::FRAME)?.clone();
-
-        let init = instance
+        let setup = instance.exports.get_function(guest_exports::SETUP)?.clone();
+        let update = instance
             .exports
-            .get_function(guest_exports::INIT)
-            .ok()
-            .cloned();
-        let deinit = instance
-            .exports
-            .get_function(guest_exports::DEINIT)
-            .ok()
-            .cloned();
-        let reset = instance
-            .exports
-            .get_function(guest_exports::RESET)
-            .ok()
-            .cloned();
+            .get_function(guest_exports::UPDATE)?
+            .clone();
+        let draw = instance.exports.get_function(guest_exports::DRAW)?.clone();
 
         Ok(Self {
-            init,
-            frame,
-            deinit,
-            reset,
+            setup,
+            update,
+            draw,
         })
     }
 }
