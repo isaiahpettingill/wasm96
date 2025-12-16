@@ -2,7 +2,7 @@
 package main
 
 import (
-	"wasm96-go-sdk"
+	wasm96 "wasm96-go-sdk"
 )
 
 //go:export setup

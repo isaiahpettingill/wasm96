@@ -33,13 +33,13 @@ Load the wasm96 core in your libretro frontend and select a .wasm file as the "g
 - Handwritten bindings matching the WIT interface
 - Safe wrappers around raw extern functions
 - Entry point: `@import("wasm96")`
-- Compiles directly to WASM32
+- Compiles directly to WASM32 (freestanding); produces a module exporting `setup`, `update`, and `draw` (no WASI `_start`)
 
 ### Go SDK (`wasm96-go-sdk/`)
 - Handwritten bindings matching the WIT interface
 - Safe wrappers around raw WebAssembly imports
 - Entry point: `import "wasm96-go-sdk"`
-- Compiles directly to WASM using GOOS=js GOARCH=wasm
+- Compiles directly to WASM using WASI Preview 1 (wasip1)
 
 ## Examples
 
@@ -63,7 +63,7 @@ cd example/zig-guest && zig build
 
 To build the Go example:
 ```bash
-cd example/go-guest && GOOS=js GOARCH=wasm go build -o go-guest.wasm
+cd example/go-guest && GOOS=wasip1 GOARCH=wasm go build -o go-guest.wasm
 ```
 
 ## Project Structure

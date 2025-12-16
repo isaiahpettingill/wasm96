@@ -1,6 +1,9 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
+    // For wasm96 guests we want a simple freestanding wasm module that exports
+    // `setup`, `update`, and `draw` (provided by `src/main.zig` via `export fn`),
+    // and does NOT require a WASI `_start` entrypoint.
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
@@ -26,7 +29,11 @@ pub fn build(b: *std.Build) void {
         .name = "zig-guest",
         .root_module = exe_mod,
     });
+
+    // Ensure we don't accidentally produce a stub module with only memory exported.
+    // Guests should be pure libraries-from-host perspective with explicit exports.
     exe.entry = .disabled;
+    exe.rdynamic = true;
 
     b.installArtifact(exe);
 }

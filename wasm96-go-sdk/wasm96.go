@@ -3,7 +3,6 @@ package wasm96
 
 import (
 	"unsafe"
-	_ "unsafe"
 )
 
 // Button represents joypad button ids.
