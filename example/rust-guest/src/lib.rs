@@ -39,6 +39,12 @@ pub extern "C" fn update() {
             VEL_Y = -VEL_Y;
         }
     }
+
+    // Push silence to satisfy libretro audio requirements.
+    // 44100 Hz / 60 FPS = 735 samples per frame.
+    // Stereo = 2 channels * 735 = 1470 samples.
+    let silence = [0i16; 1470];
+    audio::push_samples(&silence);
 }
 
 #[unsafe(no_mangle)]

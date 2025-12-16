@@ -184,13 +184,8 @@ impl Wasm96Core {
                     &mut self.store,
                     &env,
                     |_env: FunctionEnvMut<()>, btn: u32| -> u32 {
-                        // Map single button check to bitmask check if needed,
-                        // or just expose raw bitmask check.
-                        // For now, let's assume the input module handles this mapping or we do it here.
-                        // The ABI says `is_mouse_down(btn) -> bool`.
-                        // `input::mouse_buttons()` returns a bitmask.
                         let mask = input::mouse_buttons();
-                        let requested = 1 << btn;
+                        let requested = 1u32 << btn;
                         if (mask & requested) != 0 { 1 } else { 0 }
                     }
                 ),
@@ -270,15 +265,12 @@ impl Core for Wasm96Core {
     fn save_memory(&mut self) -> Option<&mut [u8]> {
         None
     }
-
     fn rtc_memory(&mut self) -> Option<&mut [u8]> {
         None
     }
-
     fn system_memory(&mut self) -> Option<&mut [u8]> {
         None
     }
-
     fn video_memory(&mut self) -> Option<&mut [u8]> {
         None
     }
@@ -325,8 +317,14 @@ impl Core for Wasm96Core {
         // Call setup
         self.call_guest_setup();
 
-        // For now we return default AV info. The guest controls the actual buffer size via ABI calls.
-        libretro_backend::LoadGameResult::Success(libretro_backend::AudioVideoInfo::new())
+        // Return default AV info.
+        // We set 60 FPS and 44100 Hz audio as a baseline.
+        let av_info = libretro_backend::AudioVideoInfo::new()
+            .video(320, 240, 60.0, libretro_backend::PixelFormat::ARGB8888)
+            .audio(44100.0)
+            .region(libretro_backend::Region::NTSC);
+
+        libretro_backend::LoadGameResult::Success(av_info)
     }
 
     fn on_unload_game(&mut self) -> libretro_backend::GameData {

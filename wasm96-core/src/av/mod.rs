@@ -9,13 +9,12 @@
 //! - Audio: The host maintains a `Vec<i16>` sample queue.
 //!   Guest pushes samples; host drains them to libretro.
 
-use crate::state::{self, global};
+use crate::state::global;
 use wasmer::FunctionEnvMut;
 
 /// Errors from AV operations.
 #[derive(Debug)]
 pub enum AvError {
-    MissingHandle,
     MissingMemory,
     MemoryReadFailed,
 }
@@ -36,7 +35,7 @@ pub fn graphics_set_size(width: u32, height: u32) {
 }
 
 /// Set the current drawing color.
-pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
+pub fn graphics_set_color(r: u32, g: u32, b: u32, _a: u32) {
     let mut s = global().lock().unwrap();
     // Pack as 0x00RRGGBB (XRGB8888). We ignore Alpha for the framebuffer format usually,
     // but we might use it for blending later. For now, simple overwrite.
@@ -297,7 +296,7 @@ pub fn graphics_image(
 
 /// Present the framebuffer to libretro.
 pub fn video_present_host() {
-    let (handle_ptr, width, height, fb) = {
+    let (handle_ptr, _width, _height, fb) = {
         let s = global().lock().unwrap();
         (
             s.handle,
@@ -320,7 +319,7 @@ pub fn video_present_host() {
 
     // SAFETY: handle pointer checked.
     let h = unsafe { &mut *handle_ptr };
-    h.upload_video_frame(data_slice, width, height, width * 4);
+    h.upload_video_frame(data_slice);
 }
 
 // --- Audio ---
@@ -378,17 +377,22 @@ pub fn audio_drain_host(max_frames: u32) -> u32 {
         return 0;
     }
 
-    // Stereo = 2 samples per frame
-    let samples_per_frame = 2;
+    // We must upload a minimum amount of audio each frame to satisfy libretro-backend.
+    // The backend requires at least ~1 frame worth of stereo samples; for 44.1kHz @ 60fps:
+    // 44100 / 60 = 735 frames (per channel) => 1470 i16 samples interleaved stereo.
+    //
+    // Even if the guest provides no audio (or too little), we pad with silence so the core
+    // never panics due to insufficient audio uploads.
+    let min_samples_per_run: usize = ((sample_rate as usize) / 60) * 2;
 
-    let (frames_drained, samples) = {
+    // Stereo = 2 i16 samples per audio frame (L, R)
+    let samples_per_frame: usize = 2;
+
+    let mut drained: Vec<i16> = {
         let mut s = global().lock().unwrap();
+
         let available_samples = s.audio.host_queue.len();
         let available_frames = available_samples / samples_per_frame;
-
-        if available_frames == 0 {
-            return 0;
-        }
 
         let frames_to_take = if max_frames == 0 {
             available_frames
@@ -397,13 +401,23 @@ pub fn audio_drain_host(max_frames: u32) -> u32 {
         };
 
         let samples_to_take = frames_to_take * samples_per_frame;
-        let drained: Vec<i16> = s.audio.host_queue.drain(0..samples_to_take).collect();
-        (frames_to_take as u32, drained)
+
+        if samples_to_take == 0 {
+            Vec::new()
+        } else {
+            s.audio.host_queue.drain(0..samples_to_take).collect()
+        }
     };
+
+    // Pad with silence if guest produced too few samples this run.
+    if drained.len() < min_samples_per_run {
+        drained.resize(min_samples_per_run, 0i16);
+    }
 
     // SAFETY: handle pointer checked.
     let h = unsafe { &mut *handle_ptr };
-    h.upload_audio_frame(&samples);
+    h.upload_audio_frame(&drained);
 
-    frames_drained
+    // Report how many *audio frames* we uploaded after padding (stereo frames).
+    (drained.len() / samples_per_frame) as u32
 }
