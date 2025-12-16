@@ -1184,6 +1184,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_guest_mp_platformer"
+version = "0.1.0"
+dependencies = [
+ "wasm96-sdk",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"

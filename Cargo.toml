@@ -4,6 +4,7 @@ members = [
   "wasm96-core",
   "wasm96-sdk",
   "example/rust-guest",
+  "example/rust-guest-mp-platformer",
 ]
 
 # Optional: allows `cargo build` at the workspace root to default to building the core.
