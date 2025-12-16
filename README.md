@@ -9,7 +9,7 @@ cargo build --release --package wasm96-core
 The core library will be at `target/release/libwasm96_core.so` (or equivalent for your platform).
 
 ### Writing a Guest
-1. Use the Rust SDK (`wasm96-sdk`) for ergonomic bindings.
+1. Use the Rust SDK (`wasm96-sdk`), Zig SDK (`wasm96-zig-sdk`), or Go SDK (`wasm96-go-sdk`) for ergonomic bindings.
 2. Implement the required exports:
    - `setup()`: Initialize your application (e.g., set screen size)
    - `update()`: Update game logic (called once per frame)
@@ -29,17 +29,41 @@ Load the wasm96 core in your libretro frontend and select a .wasm file as the "g
 - Supports `no_std` for minimal WASM builds
 - Optional wee_alloc for custom allocator
 
+### Zig SDK (`wasm96-zig-sdk/`)
+- Handwritten bindings matching the WIT interface
+- Safe wrappers around raw extern functions
+- Entry point: `@import("wasm96")`
+- Compiles directly to WASM32
+
+### Go SDK (`wasm96-go-sdk/`)
+- Handwritten bindings matching the WIT interface
+- Safe wrappers around raw WebAssembly imports
+- Entry point: `import "wasm96-go-sdk"`
+- Compiles directly to WASM using GOOS=js GOARCH=wasm
+
 ## Examples
 
-The `example/` directory contains Rust guest applications:
+The `example/` directory contains guest applications:
 
-- `rust-guest/`: Basic hello-world example
-- `rust-guest-mp-platformer/`: Multiplayer platformer game
-- `rust-guest-showcase/`: Comprehensive demo of all features
+- `rust-guest/`: Basic hello-world example (Rust)
+- `rust-guest-mp-platformer/`: Multiplayer platformer game (Rust)
+- `rust-guest-showcase/`: Comprehensive demo of all features (Rust)
+- `zig-guest/`: Basic hello-world example (Zig)
+- `go-guest/`: Basic hello-world example (Go)
 
-To build an example:
+To build a Rust example:
 ```bash
 cargo build --package <example-name> --target wasm32-unknown-unknown
+```
+
+To build the Zig example:
+```bash
+cd example/zig-guest && zig build
+```
+
+To build the Go example:
+```bash
+cd example/go-guest && GOOS=js GOARCH=wasm go build -o go-guest.wasm
 ```
 
 ## Project Structure
@@ -48,6 +72,8 @@ cargo build --package <example-name> --target wasm32-unknown-unknown
 wasm96/
 ├── wasm96-core/          # Libretro core implementation
 ├── wasm96-sdk/           # Handwritten Rust SDK
+├── wasm96-zig-sdk/       # Handwritten Zig SDK
+├── wasm96-go-sdk/        # Handwritten Go SDK
 ├── wit/                  # WIT interface definitions
 ├── example/              # Guest examples
 ├── Cargo.toml            # Workspace configuration
@@ -64,7 +90,7 @@ wasm96/
 - See `AGENTS.md` for agent-specific rules
 
 ### Contributing
-- The ABI is handwritten; update bindings in `wasm96-core/src/abi/mod.rs` and `wasm96-sdk/src/lib.rs` in lockstep
+- The ABI is handwritten; update bindings in `wasm96-core/src/abi/mod.rs`, `wasm96-sdk/src/lib.rs`, `wasm96-zig-sdk/src/main.zig`, and `wasm96-go-sdk/wasm96.go` in lockstep
 - Update `wit/wasm96.wit` to reflect interface changes
 - SDKs.md is outdated and describes a different (upload-based) ABI; it may be removed or updated in the future
 
