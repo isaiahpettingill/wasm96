@@ -103,6 +103,29 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+## Recent Fixes
+
+### GIF decoding + scaling (host/core)
+The libretro core correctly decodes animated GIFs as indexed-color images and expands them to RGBA using the per-frame palette (or the global palette when the frame does not provide one). Scaled GIF rendering uses nearest-neighbor resampling so `gif_draw_scaled` produces correctly-sized output.
+
+### PNG decoding + drawing (host/core)
+The core now supports decoding **encoded PNG bytes** on the host and blitting the image at its natural size. This is intended for guests that embed PNG assets via `include_bytes!` and don’t want to ship a guest-side PNG decoder.
+
+In the Rust SDK, use:
+- `graphics::image_png(x, y, png_bytes)`
+
+(Under the hood this maps to the import `wasm96_graphics_image_png(x, y, ptr, len)`.)
+
+### Triangle rasterization (host/core)
+Filled triangles are rasterized using a barycentric (edge-function) fill in the core. The implementation is winding-invariant (vertex order does not change filled results), deterministic, and clips to the framebuffer bounds.
+
+### Audio channel mixing (host/core)
+High-level audio playback (`play_wav`/`play_qoa`/`play_xm`) decodes assets and mixes them into the output stream via the host-managed channel mixer in `audio_drain_host`. The mixer supports:
+- multiple channels
+- per-channel volume (Q8.8)
+- pan
+- looping
+
 ## License
 
 MIT License - see `LICENSE` for details.
@@ -117,5 +140,5 @@ MIT License - see `LICENSE` for details.
 - The project is in active development; some WIT-defined features (e.g., storage) are not yet implemented in the SDK.
 - WAV playback is implemented using the hound library for decoding and mixing.
 - QOA playback is implemented using the qoaudio library for decoding and mixing.
-- XM playback is implemented using the xmrsplayer library for decoding and playing XM tracker music.
+- XM playback is implemented using the xmrsplayer library for decoding and mixing.
 - SDKs.md contains information about planned multi-language SDKs for an older ABI version and may not reflect the current state.

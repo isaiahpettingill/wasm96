@@ -142,8 +142,8 @@ fn draw_assets() {
         }
     }
 
-    // Draw PNG as image (assuming small size, adjust as needed)
-    graphics::image(10, 200, 100, 100, PNG_DATA);
+    // Draw PNG via host-side PNG decoding (draws at natural size)
+    graphics::image_png(10, 200, PNG_DATA);
 }
 
 fn draw_text() {

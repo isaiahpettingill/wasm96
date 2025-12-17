@@ -22,6 +22,7 @@
 //! - `wasm96_graphics_circle(x: i32, y: i32, r: u32)`
 //! - `wasm96_graphics_circle_outline(x: i32, y: i32, r: u32)`
 //! - `wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32)`
+//! - `wasm96_graphics_image_png(x: i32, y: i32, ptr: u32, len: u32)`
 //!
 //! ### Input
 //! - `wasm96_input_is_button_down(port: u32, btn: u32) -> u32` (bool)
@@ -85,6 +86,7 @@ pub mod host_imports {
     pub const GRAPHICS_CIRCLE: &str = "wasm96_graphics_circle";
     pub const GRAPHICS_CIRCLE_OUTLINE: &str = "wasm96_graphics_circle_outline";
     pub const GRAPHICS_IMAGE: &str = "wasm96_graphics_image";
+    pub const GRAPHICS_IMAGE_PNG: &str = "wasm96_graphics_image_png";
 
     pub const GRAPHICS_TRIANGLE: &str = "wasm96_graphics_triangle";
 

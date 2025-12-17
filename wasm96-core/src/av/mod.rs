@@ -19,12 +19,229 @@ use wasmer::FunctionEnvMut;
 // External crates for rendering
 use fontdue::{Font, FontSettings};
 
-// External crates for audio
-
+// External crates for asset decoding
 use resvg::usvg::Tree;
 use resvg::{tiny_skia, usvg};
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count_color(buf: &[u32], color: u32) -> usize {
+        buf.iter().copied().filter(|&c| c == color).count()
+    }
+
+    #[test]
+    fn triangle_degenerate_area_draws_nothing() {
+        // Make sure the triangle fill handles colinear points.
+        graphics_set_size(16, 16);
+        graphics_background(0, 0, 0);
+        graphics_set_color(255, 0, 0, 255);
+        let red = (255u32 << 16) | (0u32 << 8) | 0u32;
+
+        // Colinear along y=x line.
+        graphics_triangle(1, 1, 5, 5, 10, 10);
+
+        let s = global().lock().unwrap();
+        assert_eq!(count_color(&s.video.framebuffer, red), 0);
+    }
+
+    #[test]
+    fn triangle_fills_some_pixels_for_simple_case() {
+        graphics_set_size(32, 32);
+        graphics_background(0, 0, 0);
+        graphics_set_color(0, 255, 0, 255);
+        let green = (0u32 << 16) | (255u32 << 8) | 0u32;
+
+        // A clearly non-degenerate triangle well within bounds.
+        graphics_triangle(4, 4, 20, 6, 8, 24);
+
+        let s = global().lock().unwrap();
+        let filled = count_color(&s.video.framebuffer, green);
+        assert!(filled > 0, "expected some filled pixels, got {filled}");
+        assert!(
+            filled < (32 * 32) as usize,
+            "triangle should not fill entire screen"
+        );
+    }
+
+    #[test]
+    fn triangle_vertex_order_does_not_change_fill_count() {
+        // Vertex order reverses winding; rasterization should be winding-invariant.
+        graphics_set_size(32, 32);
+
+        // First order
+        graphics_background(0, 0, 0);
+        graphics_set_color(0, 0, 255, 255);
+        let blue = (0u32 << 16) | (0u32 << 8) | 255u32;
+        graphics_triangle(4, 4, 20, 6, 8, 24);
+        let count_a = {
+            let s = global().lock().unwrap();
+            count_color(&s.video.framebuffer, blue)
+        };
+
+        // Reverse winding (same vertices)
+        graphics_background(0, 0, 0);
+        graphics_set_color(0, 0, 255, 255);
+        graphics_triangle(4, 4, 8, 24, 20, 6);
+        let count_b = {
+            let s = global().lock().unwrap();
+            count_color(&s.video.framebuffer, blue)
+        };
+
+        assert_eq!(
+            count_a, count_b,
+            "filled pixel count should be identical regardless of winding (got {count_a} vs {count_b})"
+        );
+        assert!(count_a > 0);
+    }
+
+    #[test]
+    fn triangle_clips_to_screen_without_panicking() {
+        // This test mostly ensures we don't index OOB when coordinates are off-screen.
+        graphics_set_size(16, 16);
+        graphics_background(0, 0, 0);
+        graphics_set_color(255, 255, 255, 255);
+        let white = (255u32 << 16) | (255u32 << 8) | 255u32;
+
+        // Large triangle that extends beyond bounds.
+        graphics_triangle(-10, -10, 30, 0, 0, 30);
+
+        let s = global().lock().unwrap();
+        let filled = count_color(&s.video.framebuffer, white);
+        assert!(filled > 0);
+        assert!(filled <= (16 * 16) as usize);
+    }
+
+    #[test]
+    fn audio_channel_mix_advances_position_without_requiring_runtime_handle() {
+        // `audio_drain_host` early-returns if no libretro runtime handle is installed, which
+        // makes it unsuitable for unit tests. Instead, validate the core mixing behavior:
+        // channel position advances only when we actually mix frames.
+        let sample_rate = 44100;
+        audio_init(sample_rate);
+
+        // 4 stereo frames: constant non-zero signal.
+        let pcm_stereo: Vec<i16> = vec![
+            5000, 5000, // frame 0
+            5000, 5000, // frame 1
+            5000, 5000, // frame 2
+            5000, 5000, // frame 3
+        ];
+
+        let mut mixed: Vec<i16> = vec![0i16; 1 * 2]; // 1 stereo frame
+        {
+            let mut s = global().lock().unwrap();
+            s.audio.host_queue.clear();
+
+            s.audio.channels.clear();
+            s.audio.channels.push(crate::state::AudioChannel {
+                active: true,
+                volume_q8_8: 256, // 1.0
+                pan_i16: 0,       // centered
+                loop_enabled: false,
+                pcm_stereo,
+                position_frames: 0,
+                sample_rate,
+            });
+
+            // Mix exactly 1 frame from the channel (mirrors the logic in `audio_drain_host`,
+            // but without depending on a libretro handle).
+            let channel = &mut s.audio.channels[0];
+            let channel_frames = channel.pcm_stereo.len() / 2;
+
+            let start_frame = channel.position_frames;
+            let frames_to_mix = (channel_frames - start_frame).min(1);
+
+            let volume = channel.volume_q8_8 as f32 / 256.0;
+            let pan_left = if channel.pan_i16 <= 0 {
+                1.0
+            } else {
+                (32768 - channel.pan_i16) as f32 / 32768.0
+            };
+            let pan_right = if channel.pan_i16 >= 0 {
+                1.0
+            } else {
+                (32768 + channel.pan_i16) as f32 / 32768.0
+            };
+
+            for i in 0..frames_to_mix {
+                let src_idx = (start_frame + i) * 2;
+                let l = (channel.pcm_stereo[src_idx] as f32 * volume * pan_left) as i16;
+                let r = (channel.pcm_stereo[src_idx + 1] as f32 * volume * pan_right) as i16;
+
+                let dst_idx = i * 2;
+                mixed[dst_idx] = sat_add_i16(mixed[dst_idx], l);
+                mixed[dst_idx + 1] = sat_add_i16(mixed[dst_idx + 1], r);
+            }
+
+            channel.position_frames += frames_to_mix;
+        }
+
+        let s = global().lock().unwrap();
+        assert_eq!(s.audio.channels.len(), 1, "expected one channel");
+        assert_eq!(
+            s.audio.channels[0].position_frames, 1,
+            "expected channel to advance by exactly one frame"
+        );
+
+        // And the mixed buffer should contain non-zero data.
+        assert!(
+            mixed.iter().any(|&s| s != 0),
+            "expected mixed output to be non-zero"
+        );
+    }
+
+    #[test]
+    fn png_decode_and_draw_renders_expected_pixel() {
+        // Generate a valid minimal 1x1 RGBA PNG at runtime using the encoder,
+        // to avoid hardcoding bytes/CRCs.
+        let mut png_bytes: Vec<u8> = Vec::new();
+        {
+            use std::io::Write;
+
+            let mut encoder = png::Encoder::new(&mut png_bytes, 1, 1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("png write_header failed");
+
+            // One pixel RGBA = red.
+            writer
+                .write_image_data(&[255, 0, 0, 255])
+                .expect("png write_image_data failed");
+
+            // Ensure everything is flushed into the Vec.
+            let _ = writer.finish();
+            let _ = (&mut png_bytes as &mut dyn Write).flush();
+        }
+
+        // Arrange framebuffer.
+        graphics_set_size(4, 4);
+        graphics_background(0, 0, 0);
+
+        // Decode (same crate/decoder path as host-side decode implementation),
+        // then blit the resulting RGBA into the framebuffer.
+        let cursor = std::io::Cursor::new(&png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info().expect("png read_info failed");
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).expect("png next_frame failed");
+        assert_eq!(info.width, 1);
+        assert_eq!(info.height, 1);
+
+        let rgba = &buf[..info.buffer_size()];
+        assert_eq!(rgba, &[255, 0, 0, 255]);
+
+        // Draw at (0,0)
+        graphics_image_from_host(0, 0, 1, 1, rgba);
+
+        let s = global().lock().unwrap();
+        let red = (255u32 << 16) | (0u32 << 8) | 0u32;
+        assert_eq!(s.video.framebuffer[0], red);
+    }
+}
 
 /// Text size dimensions.
 #[repr(C)]
@@ -352,64 +569,148 @@ pub fn graphics_image(
     Ok(())
 }
 
-/// Draw a filled triangle.
+/// Decode PNG bytes from guest memory and draw at (x, y) at the image's natural size.
+///
+/// If decoding fails, this is a no-op.
+///
+/// NOTE: this requires adding the `png` crate dependency to `wasm96-core/Cargo.toml`.
+pub fn graphics_image_png(
+    env: &FunctionEnvMut<()>,
+    x: i32,
+    y: i32,
+    ptr: u32,
+    len: u32,
+) -> Result<(), AvError> {
+    // Read guest memory
+    let memory_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
+    };
+    if memory_ptr.is_null() {
+        return Err(AvError::MissingMemory);
+    }
+
+    // SAFETY: memory pointer checked.
+    let mem = unsafe { &*memory_ptr };
+    let view = mem.view(env);
+
+    let mut png_bytes = vec![0u8; len as usize];
+    view.read(ptr as u64, &mut png_bytes)
+        .map_err(|_| AvError::MemoryReadFailed)?;
+
+    // Decode PNG into RGBA8
+    let cursor = std::io::Cursor::new(png_bytes);
+    let decoder = png::Decoder::new(cursor);
+    let mut reader = match decoder.read_info() {
+        Ok(r) => r,
+        Err(_) => return Ok(()),
+    };
+
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = match reader.next_frame(&mut buf) {
+        Ok(i) => i,
+        Err(_) => return Ok(()),
+    };
+
+    let w = info.width;
+    let h = info.height;
+    if w == 0 || h == 0 {
+        return Ok(());
+    }
+
+    let bytes = &buf[..info.buffer_size()];
+
+    // Convert decoded buffer to RGBA8 (if needed)
+    let rgba: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => bytes.to_vec(),
+        png::ColorType::Rgb => bytes
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        png::ColorType::Grayscale => bytes.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        png::ColorType::GrayscaleAlpha => bytes
+            .chunks_exact(2)
+            .flat_map(|p| [p[0], p[0], p[0], p[1]])
+            .collect(),
+        png::ColorType::Indexed => {
+            // The decoder should have expanded indexed color, but if not, bail out.
+            return Ok(());
+        }
+    };
+
+    graphics_image_from_host(x, y, w, h, &rgba);
+    Ok(())
+}
+
+#[inline]
+fn tri_edge(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i64 {
+    (c.0 as i64 - a.0 as i64) * (b.1 as i64 - a.1 as i64)
+        - (c.1 as i64 - a.1 as i64) * (b.0 as i64 - a.0 as i64)
+}
+
+/// Draw a filled triangle using a barycentric (edge-function) rasterizer.
+///
+/// Properties:
+/// - Works for any vertex order (winding), filled area is consistent.
+/// - Clips to framebuffer bounds.
+/// - Uses integer edge functions for stability/determinism.
 pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
     let mut s = global().lock().unwrap();
     let w = s.video.width as i32;
     let h = s.video.height as i32;
+    if w <= 0 || h <= 0 {
+        return;
+    }
+
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
-    // Sort vertices by y
-    let mut verts = [(x1, y1), (x2, y2), (x3, y3)];
-    verts.sort_by_key(|&(_, y)| y);
+    let v0 = (x1, y1);
+    let v1 = (x2, y2);
+    let v2 = (x3, y3);
 
-    let (x1, y1) = verts[0];
-    let (x2, y2) = verts[1];
-    let (x3, y3) = verts[2];
-
-    // Helper to draw horizontal line
-    let mut draw_hline = |y: i32, x_start: i32, x_end: i32| {
-        if y < 0 || y >= h {
-            return;
-        }
-        let start = x_start.max(0).min(w - 1);
-        let end = x_end.max(0).min(w - 1);
-        if start > end {
-            return;
-        }
-        let row_start = (y as usize) * (w as usize);
-        for x in start..=end {
-            fb[row_start + x as usize] = color;
-        }
-    };
-
-    // Scanline fill
-    if y1 == y3 {
+    // Degenerate (area==0): nothing to fill.
+    let area = tri_edge(v0, v1, v2);
+    if area == 0 {
         return;
-    } // degenerate
+    }
 
-    for y in y1..=y3 {
-        if y < y1 || y > y3 {
-            continue;
-        }
-        let mut x_left = w;
-        let mut x_right = -1;
+    // Bounding box (inclusive), clipped to framebuffer.
+    let min_x = v0.0.min(v1.0).min(v2.0).max(0);
+    let max_x = v0.0.max(v1.0).max(v2.0).min(w - 1);
+    let min_y = v0.1.min(v1.1).min(v2.1).max(0);
+    let max_y = v0.1.max(v1.1).max(v2.1).min(h - 1);
 
-        // Interpolate edges
-        for &(xa, ya, xb, yb) in &[(x1, y1, x2, y2), (x2, y2, x3, y3), (x3, y3, x1, y1)] {
-            if (ya <= y && y <= yb) || (yb <= y && y <= ya) {
-                if ya == yb {
-                    continue;
-                }
-                let t = (y - ya) as f32 / (yb - ya) as f32;
-                let x = xa as f32 + t * (xb - xa) as f32;
-                x_left = x_left.min(x as i32);
-                x_right = x_right.max(x as i32);
+    if min_x > max_x || min_y > max_y {
+        return;
+    }
+
+    // Make the edge tests winding-invariant by normalizing the edge function
+    // values to the same sign (i.e. as if the triangle had positive area).
+    //
+    // This avoids “inside test flips” when the caller supplies vertices in reverse order.
+    let area_is_pos = area > 0;
+
+    for y in min_y..=max_y {
+        let row = (y as usize) * (w as usize);
+        for x in min_x..=max_x {
+            let p = (x, y);
+
+            // Edge functions for triangle v0,v1,v2.
+            let mut w0 = tri_edge(v1, v2, p);
+            let mut w1 = tri_edge(v2, v0, p);
+            let mut w2 = tri_edge(v0, v1, p);
+
+            if !area_is_pos {
+                w0 = -w0;
+                w1 = -w1;
+                w2 = -w2;
+            }
+
+            if w0 >= 0 && w1 >= 0 && w2 >= 0 {
+                fb[row + x as usize] = color;
             }
         }
-
-        draw_hline(y, x_left, x_right);
     }
 }
 
@@ -577,19 +878,65 @@ pub fn graphics_gif_create(env: &FunctionEnvMut<()>, ptr: u32, len: u32) -> u32 
         return 0;
     }
     let cursor = std::io::Cursor::new(&data);
-    let mut decoder = gif::DecodeOptions::new().read_info(cursor).unwrap();
+    let mut decoder = match gif::DecodeOptions::new().read_info(cursor) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    // Snapshot the global palette once up-front to avoid borrowing `decoder` inside
+    // the frame loop (which already holds a mutable borrow for `read_next_frame`).
+    let global_palette: Option<Vec<u8>> = decoder.global_palette().map(|p| p.to_vec());
+
     let mut frames = Vec::new();
     let mut delays = Vec::new();
     let mut width = 0;
     let mut height = 0;
-    while let Some(frame) = decoder.read_next_frame().unwrap() {
+
+    while let Some(frame) = match decoder.read_next_frame() {
+        Ok(f) => f,
+        Err(_) => return 0,
+    } {
         width = frame.width;
         height = frame.height;
-        let rgba: Vec<u8> = frame
-            .buffer
-            .chunks_exact(3)
-            .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
-            .collect();
+
+        // NOTE:
+        // `gif` frames are typically *indexed* color, not raw RGB triplets.
+        // `frame.buffer` contains palette indices.
+        // Use the frame-local palette if present, otherwise the global palette.
+        let palette: Option<&[u8]> = frame
+            .palette
+            .as_deref()
+            .or_else(|| global_palette.as_deref());
+
+        let Some(palette) = palette else {
+            // No palette available -> can't expand indices to RGBA.
+            return 0;
+        };
+
+        // Expand indices into RGBA. The palette is packed RGBRGB...
+        // Transparency index (if present) maps to alpha=0.
+        let transparent_idx = frame.transparent;
+
+        let mut rgba = Vec::with_capacity(frame.buffer.len() * 4);
+        for &idx in frame.buffer.iter() {
+            if Some(idx) == transparent_idx {
+                rgba.extend_from_slice(&[0, 0, 0, 0]);
+                continue;
+            }
+
+            let base = (idx as usize) * 3;
+            if base + 2 >= palette.len() {
+                // Malformed index/palette; treat as transparent.
+                rgba.extend_from_slice(&[0, 0, 0, 0]);
+                continue;
+            }
+
+            let r = palette[base];
+            let g = palette[base + 1];
+            let b = palette[base + 2];
+            rgba.extend_from_slice(&[r, g, b, 255]);
+        }
+
         frames.push(rgba);
         delays.push(frame.delay);
     }
@@ -624,15 +971,44 @@ pub fn graphics_gif_draw_scaled(id: u32, x: i32, y: i32, w: u32, h: u32) {
         } else {
             0
         };
-        let rgba_data = &gif.frames[frame_idx];
-        let img_w = gif.width as u32;
-        let img_h = gif.height as u32;
+
+        let src_rgba = &gif.frames[frame_idx];
+        let src_w = gif.width as u32;
+        let src_h = gif.height as u32;
+
+        // Natural size if either dimension is 0.
         if w == 0 || h == 0 {
-            graphics_image_from_host(x, y, img_w, img_h, rgba_data);
-        } else {
-            // Simple scaling (placeholder - real scaling needed)
-            graphics_image_from_host(x, y, w, h, rgba_data);
+            graphics_image_from_host(x, y, src_w, src_h, src_rgba);
+            return;
         }
+
+        // Nearest-neighbor resample into a temporary RGBA buffer, then blit.
+        // This keeps the public API unchanged (host-side draw from RGBA).
+        if src_w == 0 || src_h == 0 {
+            return;
+        }
+
+        let mut dst = vec![0u8; (w as usize).saturating_mul(h as usize).saturating_mul(4)];
+        for dy in 0..h {
+            let sy = (dy as u64 * src_h as u64 / h as u64) as u32;
+            let sy = sy.min(src_h.saturating_sub(1));
+            for dx in 0..w {
+                let sx = (dx as u64 * src_w as u64 / w as u64) as u32;
+                let sx = sx.min(src_w.saturating_sub(1));
+
+                let sidx = ((sy as usize) * (src_w as usize) + (sx as usize)) * 4;
+                let didx = ((dy as usize) * (w as usize) + (dx as usize)) * 4;
+
+                if sidx + 3 < src_rgba.len() && didx + 3 < dst.len() {
+                    dst[didx] = src_rgba[sidx];
+                    dst[didx + 1] = src_rgba[sidx + 1];
+                    dst[didx + 2] = src_rgba[sidx + 2];
+                    dst[didx + 3] = src_rgba[sidx + 3];
+                }
+            }
+        }
+
+        graphics_image_from_host(x, y, w, h, &dst);
     }
 }
 

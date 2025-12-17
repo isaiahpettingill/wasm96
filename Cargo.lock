@@ -2544,6 +2544,7 @@ dependencies = [
  "lazy_static",
  "libretro-backend",
  "libretro-sys",
+ "png",
  "qoaudio",
  "resvg",
  "wasmer",

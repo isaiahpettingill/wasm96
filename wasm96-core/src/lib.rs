@@ -133,6 +133,14 @@ impl Wasm96Core {
                     }
                 ),
 
+                abi::host_imports::GRAPHICS_IMAGE_PNG => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, x: i32, y: i32, ptr: u32, len: u32| {
+                        let _ = av::graphics_image_png(&env, x, y, ptr, len);
+                    }
+                ),
+
                 abi::host_imports::GRAPHICS_TRIANGLE => wasmer::Function::new_typed_with_env(
                     &mut self.store,
                     &env,

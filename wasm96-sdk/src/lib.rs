@@ -72,6 +72,9 @@ pub mod sys {
         #[link_name = "wasm96_graphics_image"]
         pub fn graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32);
 
+        #[link_name = "wasm96_graphics_image_png"]
+        pub fn graphics_image_png(x: i32, y: i32, ptr: u32, len: u32);
+
         #[link_name = "wasm96_graphics_triangle"]
         pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32);
 
@@ -230,6 +233,14 @@ pub mod graphics {
     /// `data` is a slice of RGBA bytes (4 bytes per pixel).
     pub fn image(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
         unsafe { sys::graphics_image(x, y, w, h, data.as_ptr() as u32, data.len() as u32) }
+    }
+
+    /// Decode a PNG (encoded bytes) on the host and draw it at (x, y) at its natural size.
+    ///
+    /// This is intended for embedded assets (e.g. via `include_bytes!`) without requiring a
+    /// guest-side PNG decoder.
+    pub fn image_png(x: i32, y: i32, png_bytes: &[u8]) {
+        unsafe { sys::graphics_image_png(x, y, png_bytes.as_ptr() as u32, png_bytes.len() as u32) }
     }
 
     /// Draw a filled triangle.

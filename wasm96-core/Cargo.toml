@@ -17,6 +17,7 @@ wasmer = { workspace = true }
 # Rendering / assets
 fontdue = "0.9.3"
 gif = "0.13.1"
+png = "0.17.16"
 resvg = { version = "0.44.0", default-features = false, features = ["text"] }
 lazy_static = "1.4"
 

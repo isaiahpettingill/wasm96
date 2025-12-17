@@ -60,6 +60,14 @@ world wasm96 {
     /// The host handles clipping and bounds checking.
     image: func(x: s32, y: s32, w: u32, h: u32, data: list<u8>);
 
+    /// Decode a PNG (encoded bytes) and draw it at (x, y).
+    ///
+    /// This is a convenience API for guests that embed PNG assets directly (e.g. via `include_bytes!`).
+    /// The host decodes the PNG and blits it to the framebuffer. The image is drawn at its natural size.
+    ///
+    /// If decoding fails, the host should no-op.
+    image-png: func(x: s32, y: s32, data: list<u8>);
+
     /// Draw a filled triangle with vertices (x1,y1), (x2,y2), (x3,y3) using the current color.
     triangle: func(x1: s32, y1: s32, x2: s32, y2: s32, x3: s32, y3: s32);
 
