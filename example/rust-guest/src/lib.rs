@@ -16,10 +16,13 @@ static mut RECT_Y: i32 = 10;
 static mut VEL_X: i32 = 2;
 static mut VEL_Y: i32 = 2;
 
+const FONT_SPLEEN: u32 = 0;
+
 #[unsafe(no_mangle)]
 pub extern "C" fn setup() {
     // Initialize screen size
     graphics::set_size(320, 240);
+    graphics::font_use_spleen(16);
 
     // Initialize audio (optional)
     audio::init(44100);
@@ -49,7 +52,7 @@ pub extern "C" fn update() {
 pub extern "C" fn draw() {
     // 1. Clear background
     graphics::background(20, 20, 40);
-
+    graphics::text(100, 100, FONT_SPLEEN, "Hello");
     // 2. Draw moving rectangle
     graphics::set_color(255, 100, 100, 255);
     unsafe {

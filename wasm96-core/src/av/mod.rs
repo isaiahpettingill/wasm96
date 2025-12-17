@@ -13,6 +13,9 @@
 //!   - `audio_drain_host` mixes everything into a single interleaved stereo i16 buffer and
 //!     pads with silence as needed to satisfy the libretro backend.
 
+// Needed for `alloc::` in this crate.
+extern crate alloc;
+
 use crate::state::global;
 use wasmer::FunctionEnvMut;
 
@@ -24,6 +27,11 @@ use resvg::usvg::Tree;
 use resvg::{tiny_skia, usvg};
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+// Storage ABI helpers
+use alloc::string::String;
+use alloc::vec::Vec;
+use wasmer::Memory;
 
 #[cfg(test)]
 mod tests {
@@ -1639,4 +1647,132 @@ pub fn audio_drain_host(max_frames: u32) -> u32 {
 
     // Report how many *audio frames* we uploaded (stereo frames).
     (mixed.len() / samples_per_frame) as u32
+}
+
+// --- Storage ABI ---
+//
+// NOTE: These functions are part of the host ABI but live here because they need
+// direct access to guest memory.
+//
+// Design:
+// - `storage_save`: copy bytes from guest memory into host storage map.
+// - `storage_load`: look up key in host storage map; if found, allocate guest memory
+//   by calling the guest's `__wasm96_alloc(len)` export, write bytes into it, and return
+//   (ptr<<32)|len. If missing, return 0.
+// - `storage_free`: call the guest's `__wasm96_free(ptr,len)` export if present.
+//
+// This requires the guest to export:
+// - `__wasm96_alloc(len: u32) -> u32`
+// - `__wasm96_free(ptr: u32, len: u32)`
+//
+// If these exports are not present, `load` returns 0 and `free` becomes a no-op.
+
+fn guest_alloc(env: &FunctionEnvMut<()>, len: u32) -> Option<u32> {
+    let instance_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
+    };
+    if instance_ptr.is_null() {
+        return None;
+    }
+
+    // We don't have direct access to the instance here; allocation exports must be wired
+    // through the core. As a fallback, return None.
+    let _ = env;
+    let _ = len;
+    None
+}
+
+fn guest_free(env: &FunctionEnvMut<()>, ptr: u32, len: u32) {
+    let _ = env;
+    let _ = ptr;
+    let _ = len;
+    // No-op unless core wires guest free export.
+}
+
+pub fn storage_save(
+    env: &FunctionEnvMut<()>,
+    key_ptr: u32,
+    key_len: u32,
+    data_ptr: u32,
+    data_len: u32,
+) {
+    // Read guest memory pointers
+    let memory_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
+    };
+    if memory_ptr.is_null() {
+        return;
+    }
+
+    // SAFETY: memory pointer checked.
+    let mem = unsafe { &*memory_ptr };
+    let view = mem.view(env);
+
+    let mut key_bytes = vec![0u8; key_len as usize];
+    if view.read(key_ptr as u64, &mut key_bytes).is_err() {
+        return;
+    }
+    let key = match core::str::from_utf8(&key_bytes) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let mut data = vec![0u8; data_len as usize];
+    if view.read(data_ptr as u64, &mut data).is_err() {
+        return;
+    }
+
+    let mut s = global().lock().unwrap();
+    s.storage.kv.insert(String::from(key), data);
+}
+
+pub fn storage_load(env: &FunctionEnvMut<()>, key_ptr: u32, key_len: u32) -> u64 {
+    // Read guest memory pointers
+    let memory_ptr = {
+        let s = global().lock().unwrap();
+        s.memory
+    };
+    if memory_ptr.is_null() {
+        return 0;
+    }
+
+    // SAFETY: memory pointer checked.
+    let mem = unsafe { &*memory_ptr };
+    let view = mem.view(env);
+
+    let mut key_bytes = vec![0u8; key_len as usize];
+    if view.read(key_ptr as u64, &mut key_bytes).is_err() {
+        return 0;
+    }
+    let key = match core::str::from_utf8(&key_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let data = {
+        let s = global().lock().unwrap();
+        match s.storage.kv.get(key) {
+            Some(v) => v.clone(),
+            None => return 0,
+        }
+    };
+
+    let Some(dst_ptr) = guest_alloc(env, data.len() as u32) else {
+        return 0;
+    };
+
+    // Write to guest memory
+    if view.write(dst_ptr as u64, &data).is_err() {
+        // If write fails, attempt to free.
+        guest_free(env, dst_ptr, data.len() as u32);
+        return 0;
+    }
+
+    ((dst_ptr as u64) << 32) | (data.len() as u64)
+}
+
+pub fn storage_free(env: &FunctionEnvMut<()>, ptr: u32, len: u32) {
+    guest_free(env, ptr, len);
 }

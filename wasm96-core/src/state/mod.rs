@@ -9,6 +9,7 @@
 //! - Host presents the framebuffer to libretro at the end of the frame.
 
 use libretro_backend::RuntimeHandle;
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use wasmer::Memory;
 
@@ -81,6 +82,9 @@ pub struct GlobalState {
 
     /// Cached input state.
     pub input: InputState,
+
+    /// Host-owned storage state (persistent-ish key/value store).
+    pub storage: StorageState,
 }
 
 // Raw pointers are used for `handle` and `memory`. We guard access with a mutex.
@@ -160,6 +164,17 @@ impl Default for AudioState {
     }
 }
 
+/// Host-owned storage state.
+///
+/// This is a simple in-memory key/value store used by the `storage` ABI.
+/// Persistence (e.g. to disk via libretro save APIs) can be added later.
+///
+/// Keys and values are owned by the host.
+#[derive(Debug, Default)]
+pub struct StorageState {
+    pub kv: HashMap<String, Vec<u8>>,
+}
+
 /// Minimal cached input state.
 #[derive(Default, Debug)]
 pub struct InputState {
@@ -186,4 +201,5 @@ pub fn clear_on_unload() {
     s.video = VideoState::default();
     s.audio = AudioState::default();
     s.input = InputState::default();
+    s.storage = StorageState::default();
 }

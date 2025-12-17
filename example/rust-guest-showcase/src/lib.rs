@@ -130,16 +130,12 @@ fn draw_shapes() {
 fn draw_assets() {
     // Draw SVG
     unsafe {
-        if SVG_ID != 0 {
-            graphics::svg_draw(SVG_ID, 400, 200, 100, 100);
-        }
+        graphics::svg_draw(SVG_ID, 400, 200, 100, 100);
     }
 
     // Draw GIF
     unsafe {
-        if GIF_ID != 0 {
-            graphics::gif_draw_scaled(GIF_ID, 520, 200, 100, 100);
-        }
+        graphics::gif_draw_scaled(GIF_ID, 520, 200, 100, 100);
     }
 
     // Draw PNG via host-side PNG decoding (draws at natural size)
@@ -157,20 +153,10 @@ fn draw_text() {
     }
 
     // Use built-in Spleen font
-    let spleen_font = graphics::font_use_spleen(16);
+    graphics::font_use_spleen(16);
     graphics::set_color(255, 255, 0, 255);
-    graphics::text(
-        10,
-        380,
-        spleen_font,
-        "Spleen font: ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    );
-    graphics::text(
-        10,
-        400,
-        spleen_font,
-        "abcdefghijklmnopqrstuvwxyz 0123456789",
-    );
+    graphics::text(10, 380, 0, "Spleen font: ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    graphics::text(10, 400, 0, "abcdefghijklmnopqrstuvwxyz 0123456789");
 }
 
 fn draw_input_status() {

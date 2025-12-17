@@ -133,11 +133,138 @@ impl Wasm96Core {
                     }
                 ),
 
-                abi::host_imports::GRAPHICS_IMAGE_PNG => wasmer::Function::new_typed_with_env(
+                // --- Keyed resources (SVG/GIF/PNG) ---
+                //
+                // NOTE: These imports accept string keys (ptr,len) so guests don't need numeric ids.
+
+                abi::host_imports::GRAPHICS_SVG_REGISTER => wasmer::Function::new_typed_with_env(
                     &mut self.store,
                     &env,
-                    |env: FunctionEnvMut<()>, x: i32, y: i32, ptr: u32, len: u32| {
-                        let _ = av::graphics_image_png(&env, x, y, ptr, len);
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, data_ptr: u32, data_len: u32| -> u32 {
+                        av::graphics_svg_register(&env, key_ptr, key_len, data_ptr, data_len)
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_SVG_DRAW_KEY => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, x: i32, y: i32, w: u32, h: u32| {
+                        av::graphics_svg_draw_key(&env, key_ptr, key_len, x, y, w, h);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_SVG_UNREGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32| {
+                        av::graphics_svg_unregister(&env, key_ptr, key_len);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_GIF_REGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, data_ptr: u32, data_len: u32| -> u32 {
+                        av::graphics_gif_register(&env, key_ptr, key_len, data_ptr, data_len)
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_GIF_DRAW_KEY => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, x: i32, y: i32| {
+                        av::graphics_gif_draw_key(&env, key_ptr, key_len, x, y);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_GIF_DRAW_KEY_SCALED => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, x: i32, y: i32, w: u32, h: u32| {
+                        av::graphics_gif_draw_key_scaled(&env, key_ptr, key_len, x, y, w, h);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_GIF_UNREGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32| {
+                        av::graphics_gif_unregister(&env, key_ptr, key_len);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_PNG_REGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, data_ptr: u32, data_len: u32| -> u32 {
+                        av::graphics_png_register(&env, key_ptr, key_len, data_ptr, data_len)
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_PNG_DRAW_KEY => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, x: i32, y: i32| {
+                        av::graphics_png_draw_key(&env, key_ptr, key_len, x, y);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_PNG_DRAW_KEY_SCALED => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, x: i32, y: i32, w: u32, h: u32| {
+                        av::graphics_png_draw_key_scaled(&env, key_ptr, key_len, x, y, w, h);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_PNG_UNREGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32| {
+                        av::graphics_png_unregister(&env, key_ptr, key_len);
+                    }
+                ),
+
+                // --- Keyed fonts + text ---
+                //
+                // The canonical key for the built-in Spleen font family is "spleen".
+                abi::host_imports::GRAPHICS_FONT_REGISTER_TTF => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, data_ptr: u32, data_len: u32| -> u32 {
+                        av::graphics_font_register_ttf(&env, key_ptr, key_len, data_ptr, data_len)
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_FONT_REGISTER_SPLEEN => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, size: u32| -> u32 {
+                        av::graphics_font_register_spleen(&env, key_ptr, key_len, size)
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_FONT_UNREGISTER => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32| {
+                        av::graphics_font_unregister(&env, key_ptr, key_len);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_TEXT_KEY => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, x: i32, y: i32, font_key_ptr: u32, font_key_len: u32, text_ptr: u32, text_len: u32| {
+                        av::graphics_text_key(x, y, &env, font_key_ptr, font_key_len, text_ptr, text_len);
+                    }
+                ),
+
+                abi::host_imports::GRAPHICS_TEXT_MEASURE_KEY => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, font_key_ptr: u32, font_key_len: u32, text_ptr: u32, text_len: u32| -> u64 {
+                        av::graphics_text_measure_key(&env, font_key_ptr, font_key_len, text_ptr, text_len)
                     }
                 ),
 
@@ -189,93 +316,13 @@ impl Wasm96Core {
                     }
                 ),
 
-                abi::host_imports::GRAPHICS_SVG_CREATE => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |env: FunctionEnvMut<()>, ptr: u32, len: u32| -> u32 {
-                        av::graphics_svg_create(&env, ptr, len)
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_SVG_DRAW => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, id: u32, x: i32, y: i32, w: u32, h: u32| {
-                        av::graphics_svg_draw(id, x, y, w, h);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_SVG_DESTROY => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, id: u32| {
-                        av::graphics_svg_destroy(id);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_GIF_CREATE => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |env: FunctionEnvMut<()>, ptr: u32, len: u32| -> u32 {
-                        av::graphics_gif_create(&env, ptr, len)
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_GIF_DRAW => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, id: u32, x: i32, y: i32| {
-                        av::graphics_gif_draw(id, x, y);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_GIF_DRAW_SCALED => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, id: u32, x: i32, y: i32, w: u32, h: u32| {
-                        av::graphics_gif_draw_scaled(id, x, y, w, h);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_GIF_DESTROY => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, id: u32| {
-                        av::graphics_gif_destroy(id);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_FONT_UPLOAD_TTF => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |env: FunctionEnvMut<()>, ptr: u32, len: u32| -> u32 {
-                        av::graphics_font_upload_ttf(&env, ptr, len)
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_FONT_USE_SPLEEN => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |_env: FunctionEnvMut<()>, size: u32| -> u32 {
-                        av::graphics_font_use_spleen(size)
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_TEXT => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |env: FunctionEnvMut<()>, x: i32, y: i32, font: u32, ptr: u32, len: u32| {
-                        av::graphics_text(x, y, font, &env, ptr, len);
-                    }
-                ),
-
-                abi::host_imports::GRAPHICS_TEXT_MEASURE => wasmer::Function::new_typed_with_env(
-                    &mut self.store,
-                    &env,
-                    |env: FunctionEnvMut<()>, font: u32, ptr: u32, len: u32| -> u64 {
-                        av::graphics_text_measure(font, &env, ptr, len)
-                    }
-                ),
+                // NOTE: legacy ID-based SVG/GIF/font imports removed in favor of keyed resources.
+                //
+                // Keyed resources (to be wired):
+                // - SVG: register/draw_key/unregister
+                // - GIF: register/draw_key/draw_key_scaled/unregister
+                // - PNG: register/draw_key/draw_key_scaled/unregister
+                // - Fonts: register_ttf/register_spleen/unregister + text_key/text_measure_key
 
                 // --- Audio ---
 
@@ -399,6 +446,32 @@ impl Wasm96Core {
                         use std::time::{SystemTime, UNIX_EPOCH};
                         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
                         now.as_millis() as u64
+                    }
+                ),
+
+                // --- Storage ---
+
+                abi::host_imports::STORAGE_SAVE => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32, data_ptr: u32, data_len: u32| {
+                        av::storage_save(&env, key_ptr, key_len, data_ptr, data_len);
+                    }
+                ),
+
+                abi::host_imports::STORAGE_LOAD => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, key_ptr: u32, key_len: u32| -> u64 {
+                        av::storage_load(&env, key_ptr, key_len)
+                    }
+                ),
+
+                abi::host_imports::STORAGE_FREE => wasmer::Function::new_typed_with_env(
+                    &mut self.store,
+                    &env,
+                    |env: FunctionEnvMut<()>, ptr: u32, len: u32| {
+                        av::storage_free(&env, ptr, len);
                     }
                 ),
 
