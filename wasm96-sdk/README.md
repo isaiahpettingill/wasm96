@@ -1,11 +1,3 @@
-<file_path>
-wasm96/wasm96-sdk/README.md
-</file_path>
-
-<edit_description>
-Create README.md for wasm96-sdk
-</edit_description>
-
 # wasm96-sdk
 
 A Rust SDK for building WebAssembly applications that run under the [wasm96](https://github.com/isaiahpettingill/wasm96) libretro core.
