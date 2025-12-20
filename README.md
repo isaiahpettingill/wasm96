@@ -156,6 +156,9 @@ cargo test --workspace --all-features
 
 ## Recent Fixes
 
+### Wasmtime Migration (host/core)
+The core has been migrated from Wasmer to Wasmtime (version 39.0.1) for broader WebAssembly feature support, including advanced WASI integration and better compatibility with various module types. Wasmtime's configuration enables a wide set of feature flags for maximum guest compatibility.
+
 ### AV Module Refactor (host/core)
 The large `av/mod.rs` file has been split into multiple modules (`audio.rs`, `graphics.rs`, `resources.rs`, `storage.rs`, `utils.rs`, `tests.rs`) for better organization and maintainability. All public functions are re-exported from `av` to maintain API compatibility.
 

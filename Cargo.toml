@@ -26,7 +26,6 @@ documentation = "https://github.com/isaiahpettingill/wasm96"
 libretro-backend = { version = "0.2.1", default-features = false }
 
 # Runtime
-# Keep Wasmer temporarily for non-core crates until wasm96-core is fully migrated.
 wasmtime = "39.0.1"
 wasmtime-wasi = "39.0.1"
 wasi-common = "28.0.1"
