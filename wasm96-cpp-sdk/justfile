@@ -1,4 +1,0 @@
-build:
-	mkdir -p build
-	cd build && cmake .. -DCMAKE_TOOLCHAIN_FILE=../zig-toolchain.cmake
-	cd build && make
