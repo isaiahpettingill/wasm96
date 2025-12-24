@@ -61,6 +61,7 @@ pub const sys = struct {
     extern fn wasm96_graphics_png_unregister(key: u64) void;
 
     extern fn wasm96_graphics_font_register_ttf(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
+    extern fn wasm96_graphics_font_register_bdf(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_font_register_spleen(key: u64, size: u32) u32;
     extern fn wasm96_graphics_font_unregister(key: u64) void;
     extern fn wasm96_graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: [*]const u8, text_len: usize) void;
@@ -240,6 +241,11 @@ pub const graphics = struct {
     /// Register a TTF font under a string key.
     pub fn fontRegisterTtf(key: []const u8, data: []const u8) bool {
         return sys.wasm96_graphics_font_register_ttf(hashKey(key), data.ptr, data.len) != 0;
+    }
+
+    /// Register a BDF font under a string key.
+    pub fn fontRegisterBdf(key: []const u8, data: []const u8) bool {
+        return sys.wasm96_graphics_font_register_bdf(hashKey(key), data.ptr, data.len) != 0;
     }
 
     /// Register a built-in Spleen font under a string key.

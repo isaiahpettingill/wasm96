@@ -1021,7 +1021,32 @@ pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
     id
 }
 
-/// Register TTF font under a string key.
+pub fn graphics_font_upload_bdf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match read_guest_bytes(env, ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    let (glyphs, width, height) = match parse_bdf(&data) {
+        Some(res) => res,
+        None => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.fonts.insert(
+        id,
+        FontResource::Bdf {
+            width,
+            height,
+            glyphs,
+        },
+    );
+    id
+}
+
+/// Register TTF/OTF font under a string key.
 pub fn graphics_font_register_ttf(
     env: &mut Caller<'_, ()>,
     key: u64,
@@ -1029,6 +1054,23 @@ pub fn graphics_font_register_ttf(
     data_len: u32,
 ) -> u32 {
     let id = graphics_font_upload_ttf(env, data_ptr, data_len);
+    if id == 0 {
+        return 0;
+    }
+
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_fonts.insert(key, id);
+    1
+}
+
+/// Register BDF font under a string key.
+pub fn graphics_font_register_bdf(
+    env: &mut Caller<'_, ()>,
+    key: u64,
+    data_ptr: u32,
+    data_len: u32,
+) -> u32 {
+    let id = graphics_font_upload_bdf(env, data_ptr, data_len);
     if id == 0 {
         return 0;
     }
@@ -1104,12 +1146,21 @@ pub fn graphics_text_measure_key(
 }
 
 /// Parse BDF font data into glyph map.
-fn parse_bdf(bdf_data: &[u8]) -> Option<HashMap<char, Vec<u8>>> {
+fn parse_bdf(bdf_data: &[u8]) -> Option<(HashMap<char, Vec<u8>>, u32, u32)> {
     let text = core::str::from_utf8(bdf_data).ok()?;
     let mut glyphs = HashMap::new();
     let mut lines = text.lines();
+    let mut width = 0;
+    let mut height = 0;
+
     while let Some(line) = lines.next() {
-        if line.starts_with("STARTCHAR") {
+        if line.starts_with("FONTBOUNDINGBOX") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                width = parts[1].parse().unwrap_or(0);
+                height = parts[2].parse().unwrap_or(0);
+            }
+        } else if line.starts_with("STARTCHAR") {
             let mut encoding = None;
             let mut bitmap = Vec::new();
             let mut in_bitmap = false;
@@ -1122,8 +1173,16 @@ fn parse_bdf(bdf_data: &[u8]) -> Option<HashMap<char, Vec<u8>>> {
                     in_bitmap = true;
                 } else if inner_line == "ENDCHAR" {
                     break;
-                } else if in_bitmap && let Ok(byte) = u8::from_str_radix(inner_line.trim(), 16) {
-                    bitmap.push(byte);
+                } else if in_bitmap {
+                    let hex = inner_line.trim();
+                    // Parse hex string into bytes. Each 2 hex chars is a byte.
+                    for i in (0..hex.len()).step_by(2) {
+                        if i + 2 <= hex.len() {
+                            if let Ok(byte) = u8::from_str_radix(&hex[i..i + 2], 16) {
+                                bitmap.push(byte);
+                            }
+                        }
+                    }
                 }
             }
             if let Some(ch) = encoding {
@@ -1131,20 +1190,40 @@ fn parse_bdf(bdf_data: &[u8]) -> Option<HashMap<char, Vec<u8>>> {
             }
         }
     }
-    Some(glyphs)
+
+    if width > 0 && height > 0 {
+        Some((glyphs, width, height))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_bdf_spleen_32x64() {
+        let bdf_data = include_bytes!("../assets/spleen-32x64.bdf");
+        let (glyphs, width, height) = parse_bdf(bdf_data).expect("Failed to parse BDF");
+        assert_eq!(width, 32);
+        assert_eq!(height, 64);
+        assert!(!glyphs.is_empty());
+        assert!(glyphs.contains_key(&'A'));
+    }
 }
 
 /// Use Spleen font.
 pub fn graphics_font_use_spleen(size: u32) -> u32 {
-    let (data, w, h) = match size {
-        8 => (super::resources::SPLEEN_5X8, 5, 8),
-        16 => (super::resources::SPLEEN_8X16, 8, 16),
-        24 => (super::resources::SPLEEN_12X24, 12, 24),
-        32 => (super::resources::SPLEEN_16X32, 16, 32),
-        64 => (super::resources::SPLEEN_32X64, 32, 64),
+    let data = match size {
+        8 => super::resources::SPLEEN_5X8,
+        16 => super::resources::SPLEEN_8X16,
+        24 => super::resources::SPLEEN_12X24,
+        32 => super::resources::SPLEEN_16X32,
+        64 => super::resources::SPLEEN_32X64,
         _ => return 0,
     };
-    let Some(glyphs) = parse_bdf(data) else {
+    let Some((glyphs, width, height)) = parse_bdf(data) else {
         return 0;
     };
 
@@ -1153,9 +1232,9 @@ pub fn graphics_font_use_spleen(size: u32) -> u32 {
     res.next_id += 1;
     res.fonts.insert(
         id,
-        FontResource::Spleen {
-            width: w,
-            height: h,
+        FontResource::Bdf {
+            width,
+            height,
             glyphs,
         },
     );
@@ -1193,33 +1272,37 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
                 let width = s.video.width as i32;
                 let height = s.video.height as i32;
                 let draw_color = s.video.draw_color;
-                let r_fg = ((draw_color >> 16) & 0xFF) as u32;
-                let g_fg = ((draw_color >> 8) & 0xFF) as u32;
-                let b_fg = (draw_color & 0xFF) as u32;
+                let r_fg = ((draw_color >> 16) & 0xFF) as f32;
+                let g_fg = ((draw_color >> 8) & 0xFF) as f32;
+                let b_fg = (draw_color & 0xFF) as f32;
+                let r_fg_sq = r_fg * r_fg;
+                let g_fg_sq = g_fg * g_fg;
+                let b_fg_sq = b_fg * b_fg;
 
                 let mut px = x as f32;
                 for ch in text.chars() {
                     let (metrics, bitmap) = f.rasterize(ch, 16.0); // fixed size
+                    let start_x = px.round() as i32;
                     for (i, &alpha) in bitmap.iter().enumerate() {
                         if alpha > 0 {
-                            let gx = px as i32 + (i % metrics.width) as i32;
+                            let gx = start_x + (i % metrics.width) as i32;
                             let gy = y + (i / metrics.width) as i32;
 
                             if gx >= 0 && gx < width && gy >= 0 && gy < height {
                                 let idx = (gy * width + gx) as usize;
                                 let bg = s.video.framebuffer[idx];
 
-                                // Alpha blend
-                                let a = alpha as u32;
-                                let inv_a = 255 - a;
+                                // Alpha blend (gamma-correct approximation)
+                                let a = alpha as f32 / 255.0;
+                                let inv_a = 1.0 - a;
 
-                                let r_bg = (bg >> 16) & 0xFF;
-                                let g_bg = (bg >> 8) & 0xFF;
-                                let b_bg = bg & 0xFF;
+                                let r_bg = ((bg >> 16) & 0xFF) as f32;
+                                let g_bg = ((bg >> 8) & 0xFF) as f32;
+                                let b_bg = (bg & 0xFF) as f32;
 
-                                let r = (r_fg * a + r_bg * inv_a) / 255;
-                                let g = (g_fg * a + g_bg * inv_a) / 255;
-                                let b = (b_fg * a + b_bg * inv_a) / 255;
+                                let r = (r_fg_sq * a + r_bg * r_bg * inv_a).sqrt() as u32;
+                                let g = (g_fg_sq * a + g_bg * g_bg * inv_a).sqrt() as u32;
+                                let b = (b_fg_sq * a + b_bg * b_bg * inv_a).sqrt() as u32;
 
                                 s.video.framebuffer[idx] = (r << 16) | (g << 8) | b;
                             }
@@ -1228,18 +1311,28 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
                     px += metrics.advance_width;
                 }
             }
-            FontResource::Spleen {
+            FontResource::Bdf {
                 width,
-                height: _,
+                height,
                 glyphs,
             } => {
+                let stride = (width + 7) / 8;
                 let mut px = x;
                 for ch in text.chars() {
                     if let Some(bitmap) = glyphs.get(&ch) {
-                        for (row, &byte) in bitmap.iter().enumerate() {
-                            for col in 0..*width as usize {
-                                if (byte & (1 << (7 - col))) != 0 {
-                                    graphics_point(px + col as i32, y + row as i32);
+                        for row in 0..*height as usize {
+                            for byte_idx in 0..stride as usize {
+                                let idx = row * stride as usize + byte_idx;
+                                if idx < bitmap.len() {
+                                    let byte = bitmap[idx];
+                                    for bit in 0..8 {
+                                        let col = byte_idx * 8 + bit;
+                                        if col < *width as usize {
+                                            if (byte & (1 << (7 - bit))) != 0 {
+                                                graphics_point(px + col as i32, y + row as i32);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1284,9 +1377,9 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
                     width += metrics.advance_width;
                     height = height.max(metrics.height as f32);
                 }
-                (width as u32, height as u32)
+                (width.round() as u32, height as u32)
             }
-            FontResource::Spleen {
+            FontResource::Bdf {
                 width,
                 height,
                 glyphs: _,

@@ -43,6 +43,7 @@
 //!
 //! Fonts (keyed; special key `"spleen"` refers to the built-in Spleen font):
 //! - `wasm96_graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
+//! - `wasm96_graphics_font_register_bdf(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
 //! - `wasm96_graphics_font_register_spleen(key: u64, size: u32) -> u32` (bool)
 //! - `wasm96_graphics_font_unregister(key: u64)`
 //! - `wasm96_graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: u32, text_len: u32)`
@@ -161,6 +162,7 @@ pub mod host_imports {
 
     // Fonts (keyed)
     pub const GRAPHICS_FONT_REGISTER_TTF: &str = "wasm96_graphics_font_register_ttf";
+    pub const GRAPHICS_FONT_REGISTER_BDF: &str = "wasm96_graphics_font_register_bdf";
     pub const GRAPHICS_FONT_REGISTER_SPLEEN: &str = "wasm96_graphics_font_register_spleen";
     pub const GRAPHICS_FONT_UNREGISTER: &str = "wasm96_graphics_font_unregister";
     pub const GRAPHICS_TEXT_KEY: &str = "wasm96_graphics_text_key";

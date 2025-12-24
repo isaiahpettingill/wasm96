@@ -33,6 +33,7 @@ hound = "3.5.1"
 qoaudio = "0.1.0"
 xmrs = { version = "0.9.7", features = ["import"] }
 xmrsplayer = { version = "0.9.7" }
+wgpu = "28.0.0"
 
 [profile.dev]
 panic = "abort"

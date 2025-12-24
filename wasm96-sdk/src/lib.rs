@@ -106,6 +106,8 @@ pub mod sys {
         // Fonts + text (keyed by string)
         #[link_name = "wasm96_graphics_font_register_ttf"]
         pub fn graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32;
+        #[link_name = "wasm96_graphics_font_register_bdf"]
+        pub fn graphics_font_register_bdf(key: u64, data_ptr: u32, data_len: u32) -> u32;
         #[link_name = "wasm96_graphics_font_register_spleen"]
         pub fn graphics_font_register_spleen(key: u64, size: u32) -> u32;
         #[link_name = "wasm96_graphics_font_unregister"]
@@ -381,6 +383,16 @@ pub mod graphics {
     pub fn font_register_ttf(key: &str, data: &[u8]) -> bool {
         unsafe {
             sys::graphics_font_register_ttf(hash_key(key), data.as_ptr() as u32, data.len() as u32)
+                != 0
+        }
+    }
+
+    /// Register a BDF font under a string key.
+    ///
+    /// Returns `true` if successful.
+    pub fn font_register_bdf(key: &str, data: &[u8]) -> bool {
+        unsafe {
+            sys::graphics_font_register_bdf(hash_key(key), data.as_ptr() as u32, data.len() as u32)
                 != 0
         }
     }

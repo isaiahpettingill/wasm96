@@ -9,16 +9,88 @@ const VIEWPORT_WIDTH: u32 = 800;
 const VIEWPORT_HEIGHT: u32 = 600;
 
 const PLAYER_START_RADIUS: f32 = 30.0;
-const EJECT_RADIUS: f32 = 2.0;
-const EJECT_SPEED: f32 = 300.0; // Speed of ejected particle relative to player
-const MIN_PLAYER_RADIUS: f32 = 3.0;
+const EJECT_RADIUS: f32 = 3.0;
+const EJECT_SPEED: f32 = 400.0; // Speed of ejected particle relative to player
+const MIN_PLAYER_RADIUS: f32 = 4.0;
 
 const MIN_ENEMY_RADIUS: f32 = 1.0;
-
+const MAX_ENEMY_RADIUS: f32 = 50.0;
+const ENEMY_COUNT: u32 = 80;
+const ENEMY_RADIUS_MEAN: f32 = 25.0;
+const ENEMY_RADIUS_STD: f32 = 15.0;
 const FONT_KEY: &str = "font/spleen/16";
 const DEBUG_FONT_KEY: &str = "font/spleen/16";
 const CENTER_X: f32 = WORLD_WIDTH / 2.0;
 const CENTER_Y: f32 = WORLD_HEIGHT / 2.0;
+
+// Gameplay constants
+const DT: f32 = 0.016;
+const ZOOM_FACTOR: f32 = 1.05;
+const MAX_ZOOM: f32 = 4.0;
+const MIN_ZOOM: f32 = 0.25;
+const CURSOR_DELTA_ANGLE: f32 = 0.1;
+const SPAWN_DIST_EXTRA: f32 = 2.0;
+const FRICTION: f32 = 0.995;
+const MAX_SPEED: f32 = 100.0;
+const ARENA_RADIUS: f32 = 900.0;
+const CAMERA_SMOOTH: f32 = 0.1;
+const JITTER_RANGE: f32 = 0.5;
+const INITIAL_VEL_RANGE: f32 = 50.0;
+
+// Drawing constants
+const BG_R: u8 = 20;
+const BG_G: u8 = 20;
+const BG_B: u8 = 30;
+const GRID_R: u8 = 40;
+const GRID_G: u8 = 40;
+const GRID_B: u8 = 50;
+const GRID_A: u8 = 255;
+const GRID_SIZE: f32 = 100.0;
+const ARENA_R: u8 = 255;
+const ARENA_G: u8 = 0;
+const ARENA_B: u8 = 0;
+const ARENA_A: u8 = 255;
+const PLAYER_R: u8 = 0;
+const PLAYER_G: u8 = 255;
+const PLAYER_B: u8 = 255;
+const PLAYER_A: u8 = 255;
+const DANGER_R: u8 = 255;
+const DANGER_G: u8 = 50;
+const DANGER_B: u8 = 50;
+const DANGER_A: u8 = 255;
+const EDIBLE_R: u8 = 50;
+const EDIBLE_G: u8 = 255;
+const EDIBLE_B: u8 = 50;
+const EDIBLE_A: u8 = 255;
+const OUTLINE_R: u8 = 255;
+const OUTLINE_G: u8 = 255;
+const OUTLINE_B: u8 = 255;
+const OUTLINE_A: u8 = 255;
+const OUTLINE_FADE_A: u8 = 100;
+const CURSOR_R: u8 = 255;
+const CURSOR_G: u8 = 255;
+const CURSOR_B: u8 = 0;
+const CURSOR_A: u8 = 255;
+const CURSOR_LINE_A: u8 = 200;
+const CURSOR_LENGTH_MULT: f32 = 1.5;
+const CURSOR_SIZE: u32 = 5;
+const TEXT_R: u8 = 255;
+const TEXT_G: u8 = 255;
+const TEXT_B: u8 = 255;
+const TEXT_A: u8 = 255;
+const GAME_OVER_X: i32 = 300;
+const GAME_OVER_Y: i32 = 250;
+const RESTART_X: i32 = 260;
+const RESTART_Y: i32 = 280;
+const WIN_X: i32 = 300;
+const WIN_Y: i32 = 250;
+const TITLE_X: i32 = 10;
+const TITLE_Y: i32 = 10;
+const CONTROLS_Y1: i32 = 30;
+const CONTROLS_Y2: i32 = 50;
+const CONTROLS_Y3: i32 = 70;
+const CONTROLS_Y4: i32 = 90;
+const CONTROLS_Y5: i32 = 110;
 
 // --- Game State ---
 
@@ -94,8 +166,8 @@ impl Circle {
         self.y += self.vy * dt;
 
         // Friction
-        self.vx *= 0.995;
-        self.vy *= 0.995;
+        self.vx *= FRICTION;
+        self.vy *= FRICTION;
 
         // Wall bouncing
         if self.x < self.radius {
@@ -167,12 +239,13 @@ unsafe fn setup_game(state: &mut GameState) {
     state.next_id += 1;
 
     // Spawn Enemies
-    for _ in 0..50 {
+    for _ in 0..ENEMY_COUNT {
         let x = rand_range(&mut state.rng_seed, 0.0, WORLD_WIDTH);
         let y = rand_range(&mut state.rng_seed, 0.0, WORLD_HEIGHT);
-        let vx = rand_range(&mut state.rng_seed, -50.0, 50.0);
-        let vy = rand_range(&mut state.rng_seed, -50.0, 50.0);
-        let radius = rand_normal(&mut state.rng_seed, 25.0, 10.0).clamp(MIN_ENEMY_RADIUS, 50.0);
+        let vx = rand_range(&mut state.rng_seed, -INITIAL_VEL_RANGE, INITIAL_VEL_RANGE);
+        let vy = rand_range(&mut state.rng_seed, -INITIAL_VEL_RANGE, INITIAL_VEL_RANGE);
+        let radius = rand_normal(&mut state.rng_seed, ENEMY_RADIUS_MEAN, ENEMY_RADIUS_STD)
+            .clamp(MIN_ENEMY_RADIUS, MAX_ENEMY_RADIUS);
         let color = rand_color(&mut state.rng_seed);
 
         state.circles.push(Circle {
@@ -198,24 +271,24 @@ pub extern "C" fn update() {
         None => return,
     };
 
-    let dt = 0.016; // Approx 60 FPS
+    let dt = DT;
 
     // Handle zoom always (except in menu)
     if input::is_button_down(0, Button::X) {
-        state.zoom *= 1.05;
-        if state.zoom > 4.0 {
-            state.zoom = 4.0;
+        state.zoom *= ZOOM_FACTOR;
+        if state.zoom > MAX_ZOOM {
+            state.zoom = MAX_ZOOM;
         }
     }
     if input::is_button_down(0, Button::Y) {
-        state.zoom /= 1.05;
-        if state.zoom < 0.25 {
-            state.zoom = 0.25;
+        state.zoom /= ZOOM_FACTOR;
+        if state.zoom < MIN_ZOOM {
+            state.zoom = MIN_ZOOM;
         }
     }
 
-    if state.game_over || state.win {
-        if input::is_button_down(0, Button::A) {
+    if state.game_over {
+        if input::is_button_down(0, Button::Start) {
             // Restart the game
             state.game_over = false;
             state.win = false;
@@ -230,14 +303,29 @@ pub extern "C" fn update() {
         return;
     }
 
+    if state.win {
+        if input::is_button_down(0, Button::Start) {
+            // Restart the game
+            state.game_over = false;
+            state.win = false;
+            state.zoom = 1.0;
+            state.aim_dx = 1.0;
+            state.aim_dy = 0.0;
+            state.cursor_angle = 0.0;
+            unsafe {
+                setup_game(state);
+            }
+        }
+        // Continue playing, just show overlay
+    }
+
     // 1. Handle Controller Input
     // D-pad Left/Right for rotating cursor
-    let delta_angle = 0.1;
     if input::is_button_down(0, Button::Left) {
-        state.cursor_angle -= delta_angle;
+        state.cursor_angle -= CURSOR_DELTA_ANGLE;
     }
     if input::is_button_down(0, Button::Right) {
-        state.cursor_angle += delta_angle;
+        state.cursor_angle += CURSOR_DELTA_ANGLE;
     }
     // Update aim direction
     state.aim_dx = cosf(state.cursor_angle);
@@ -309,7 +397,7 @@ pub extern "C" fn update() {
             p.vy = v_new_y;
 
             // Spawn Particle
-            let spawn_dist = p.radius + EJECT_RADIUS + 2.0;
+            let spawn_dist = p.radius + EJECT_RADIUS + SPAWN_DIST_EXTRA;
             new_particles.push(Circle {
                 id: state.next_id,
                 x: p.x - actual_dir_x * spawn_dist,
@@ -335,18 +423,15 @@ pub extern "C" fn update() {
     let circles = &mut state.circles;
 
     for c in circles.iter_mut() {
-        // Simple AI for enemies: drift towards center if too far, otherwise random drift
-        if !c.is_player {
-            // Very dumb AI: just keep moving, maybe accelerate slightly randomly
-            c.vx += rand_range(rng_seed, -1.0, 1.0);
-            c.vy += rand_range(rng_seed, -1.0, 1.0);
+        // Fluid suspension jitter for all circles
+        c.vx += rand_range(rng_seed, -JITTER_RANGE, JITTER_RANGE);
+        c.vy += rand_range(rng_seed, -JITTER_RANGE, JITTER_RANGE);
 
-            // Cap speed
-            let speed = (c.vx * c.vx + c.vy * c.vy).sqrt();
-            if speed > 100.0 {
-                c.vx = (c.vx / speed) * 100.0;
-                c.vy = (c.vy / speed) * 100.0;
-            }
+        // Cap speed
+        let speed = (c.vx * c.vx + c.vy * c.vy).sqrt();
+        if speed > MAX_SPEED {
+            c.vx = (c.vx / speed) * MAX_SPEED;
+            c.vy = (c.vy / speed) * MAX_SPEED;
         }
         c.update(dt);
 
@@ -354,7 +439,7 @@ pub extern "C" fn update() {
         let dx = c.x - CENTER_X;
         let dy = c.y - CENTER_Y;
         let dist = (dx * dx + dy * dy).sqrt();
-        if dist + c.radius > 900.0 {
+        if dist + c.radius > ARENA_RADIUS {
             if dist > 0.001 {
                 let nx = dx / dist;
                 let ny = dy / dist;
@@ -363,7 +448,7 @@ pub extern "C" fn update() {
                 c.vx -= 2.0 * dot * nx;
                 c.vy -= 2.0 * dot * ny;
                 // Push back inside
-                let overlap = (dist + c.radius) - 900.0;
+                let overlap = (dist + c.radius) - ARENA_RADIUS;
                 c.x -= nx * overlap;
                 c.y -= ny * overlap;
             }
@@ -424,18 +509,14 @@ pub extern "C" fn update() {
             player_exists = true;
             player_radius = c.radius;
             // Smooth follow
-            state.camera_x = state.camera_x + (c.x - state.camera_x) * 0.1;
-            state.camera_y = state.camera_y + (c.y - state.camera_y) * 0.1;
+            state.camera_x = state.camera_x + (c.x - state.camera_x) * CAMERA_SMOOTH;
+            state.camera_y = state.camera_y + (c.y - state.camera_y) * CAMERA_SMOOTH;
         }
     }
 
     if !player_exists {
         state.game_over = true;
-    } else if player_radius >= biggest_radius && state.circles.len() > 1 {
-        // Winning condition check
-    }
-
-    if state.circles.len() == 1 && player_exists {
+    } else if player_radius >= biggest_radius {
         state.win = true;
     }
 }
@@ -464,7 +545,7 @@ pub extern "C" fn draw() {
         None => return,
     };
 
-    graphics::background(20, 20, 30);
+    graphics::background(BG_R, BG_G, BG_B);
 
     let cx = state.camera_x;
     let cy = state.camera_y;
@@ -473,8 +554,8 @@ pub extern "C" fn draw() {
     let half_h = VIEWPORT_HEIGHT as f32 / 2.0;
 
     // Draw Grid
-    graphics::set_color(40, 40, 50, 255);
-    let grid_size = 100.0;
+    graphics::set_color(GRID_R, GRID_G, GRID_B, GRID_A);
+    let grid_size = GRID_SIZE;
     let world_half_w = half_w / zoom;
     let world_half_h = half_h / zoom;
     let start_x = ((cx - world_half_w) / grid_size).floor() * grid_size;
@@ -494,10 +575,10 @@ pub extern "C" fn draw() {
     }
 
     // Draw Arena Bounds
-    graphics::set_color(255, 0, 0, 255);
+    graphics::set_color(ARENA_R, ARENA_G, ARENA_B, ARENA_A);
     let arena_center_x = (CENTER_X - cx) * zoom + half_w;
     let arena_center_y = (CENTER_Y - cy) * zoom + half_h;
-    let arena_r = (900.0 * zoom) as u32;
+    let arena_r = (ARENA_RADIUS * zoom) as u32;
     graphics::circle_outline(arena_center_x as i32, arena_center_y as i32, arena_r);
 
     // Draw Circles
@@ -527,13 +608,13 @@ pub extern "C" fn draw() {
         }
 
         if c.is_player {
-            graphics::set_color(0, 255, 255, 255); // Bright cyan
+            graphics::set_color(PLAYER_R, PLAYER_G, PLAYER_B, PLAYER_A);
         } else {
             // Color code based on danger
             if c.radius > player_r {
-                graphics::set_color(255, 50, 50, 255); // Dangerous
+                graphics::set_color(DANGER_R, DANGER_G, DANGER_B, DANGER_A);
             } else {
-                graphics::set_color(50, 255, 50, 255); // Edible
+                graphics::set_color(EDIBLE_R, EDIBLE_G, EDIBLE_B, EDIBLE_A);
             }
         }
 
@@ -541,42 +622,67 @@ pub extern "C" fn draw() {
 
         // Outline - brighter for player
         if c.is_player {
-            graphics::set_color(255, 255, 255, 255);
+            graphics::set_color(OUTLINE_R, OUTLINE_G, OUTLINE_B, OUTLINE_A);
             graphics::circle_outline(screen_x, screen_y, r_scaled);
             // Draw thicker outline for player
             graphics::circle_outline(screen_x, screen_y, (r_scaled as i32 - 2).max(1) as u32);
         } else {
-            graphics::set_color(255, 255, 255, 100);
+            graphics::set_color(OUTLINE_R, OUTLINE_G, OUTLINE_B, OUTLINE_FADE_A);
             graphics::circle_outline(screen_x, screen_y, r_scaled);
         }
 
         // Draw cursor if this is player
         if c.is_player {
-            let cursor_length = (c.radius * zoom * 1.5) as i32;
+            let cursor_length = (c.radius * zoom * CURSOR_LENGTH_MULT) as i32;
             let cursor_x = screen_x + (state.aim_dx * cursor_length as f32) as i32;
             let cursor_y = screen_y + (state.aim_dy * cursor_length as f32) as i32;
-            graphics::set_color(255, 255, 0, 255); // Yellow cursor
-            graphics::circle(cursor_x, cursor_y, 5);
+            graphics::set_color(CURSOR_R, CURSOR_G, CURSOR_B, CURSOR_A);
+            graphics::circle(cursor_x, cursor_y, CURSOR_SIZE);
             // Draw line from player to cursor
-            graphics::set_color(255, 255, 0, 200);
+            graphics::set_color(CURSOR_R, CURSOR_G, CURSOR_B, CURSOR_LINE_A);
             graphics::line(screen_x, screen_y, cursor_x, cursor_y);
         }
     }
 
     // UI
-    graphics::set_color(255, 255, 255, 255);
+    graphics::set_color(TEXT_R, TEXT_G, TEXT_B, TEXT_A);
     if state.game_over {
-        graphics::text_key(300, 250, DEBUG_FONT_KEY, "GAME OVER");
-        graphics::text_key(260, 280, DEBUG_FONT_KEY, "Press A to Restart");
+        graphics::text_key(GAME_OVER_X, GAME_OVER_Y, DEBUG_FONT_KEY, "YOU LOST");
+        graphics::text_key(
+            RESTART_X,
+            RESTART_Y,
+            DEBUG_FONT_KEY,
+            "Press Start to Restart",
+        );
     } else if state.win {
-        graphics::text_key(300, 250, DEBUG_FONT_KEY, "YOU WIN!");
-        graphics::text_key(260, 280, DEBUG_FONT_KEY, "Press A to Restart");
+        graphics::text_key(WIN_X, WIN_Y, DEBUG_FONT_KEY, "YOU WIN!");
+        graphics::text_key(
+            RESTART_X,
+            RESTART_Y,
+            DEBUG_FONT_KEY,
+            "Press Start to Restart",
+        );
     } else {
-        graphics::text_key(10, 10, DEBUG_FONT_KEY, "Osmosis Clone");
-        graphics::text_key(10, 30, DEBUG_FONT_KEY, "D-pad L/R: Rotate Aim");
-        graphics::text_key(10, 50, DEBUG_FONT_KEY, "A: Eject, B: Brake");
-        graphics::text_key(10, 70, DEBUG_FONT_KEY, "X/Y: Zoom In/Out");
-        graphics::text_key(10, 90, DEBUG_FONT_KEY, "Absorb smaller Green circles");
-        graphics::text_key(10, 110, DEBUG_FONT_KEY, "Avoid larger Red circles");
+        graphics::text_key(TITLE_X, TITLE_Y, DEBUG_FONT_KEY, "Osmosis Clone");
+        graphics::text_key(
+            TITLE_X,
+            CONTROLS_Y1,
+            DEBUG_FONT_KEY,
+            "D-pad L/R: Rotate Aim",
+        );
+        graphics::text_key(TITLE_X, CONTROLS_Y2, DEBUG_FONT_KEY, "A: Eject, B: Brake");
+        graphics::text_key(TITLE_X, CONTROLS_Y3, DEBUG_FONT_KEY, "X/Y: Zoom In/Out");
+        graphics::text_key(
+            TITLE_X,
+            CONTROLS_Y4,
+            DEBUG_FONT_KEY,
+            "Absorb smaller Green circles",
+        );
+        graphics::text_key(
+            TITLE_X,
+            CONTROLS_Y5,
+            DEBUG_FONT_KEY,
+            "Avoid larger Red circles",
+        );
     }
 }

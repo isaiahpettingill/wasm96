@@ -56,7 +56,7 @@ pub struct PngResource {
 
 pub enum FontResource {
     Ttf(Font),
-    Spleen {
+    Bdf {
         width: u32,
         height: u32,
         glyphs: HashMap<char, Vec<u8>>, // char -> bitmap rows

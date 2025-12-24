@@ -3,6 +3,7 @@ build-examples:
     cargo build -p rust-guest-showcase --release --target wasm32-unknown-unknown
     cargo build -p rust_guest_mp_platformer --release --target wasm32-unknown-unknown
     cargo build -p rust_guest_osmosis --release --target wasm32-unknown-unknown
+    cargo build -p rust_guest_text --release --target wasm32-unknown-unknown
     cd example/zig-guest && zig build
 
 build-sdks:
@@ -29,6 +30,9 @@ run-rust-platformer:
 
 run-rust-osmosis:
     just run ./target/wasm32-unknown-unknown/release/rust_guest_osmosis.wasm
+
+run-rust-text:
+    just run ./target/wasm32-unknown-unknown/release/rust_guest_text.wasm
 
 run-zig-guest:
     just run ./example/zig-guest/zig-out/bin/zig-guest.wasm

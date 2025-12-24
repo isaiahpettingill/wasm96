@@ -203,6 +203,14 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::GRAPHICS_FONT_REGISTER_BDF,
+        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
+            av::graphics_font_register_bdf(&mut caller, key, data_ptr, data_len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_REGISTER_SPLEEN,
         |_caller: Caller<'_, ()>, key: u64, size: u32| -> u32 {
             av::graphics_font_register_spleen(key, size)

@@ -74,8 +74,10 @@ This avoids global mutable “resource id” state in guests and makes resource 
 - Register a font under a key:
   - Built-in Spleen:
     - `graphics::font_register_spleen("font/spleen/16", 16)`
-  - TTF bytes:
-    - `graphics::font_register_ttf("font/title", ttf_bytes)`
+  - TTF/OTF bytes:
+    - `graphics::font_register_ttf("font/title", font_bytes)`
+  - BDF bytes:
+    - `graphics::font_register_bdf("font/custom", bdf_bytes)`
 - Draw text using the font key:
   - `graphics::text_key(x, y, "font/spleen/16", "Hello")`
 - Measure text:
@@ -103,6 +105,7 @@ The `example/` directory contains guest applications:
 - `rust-guest/`: Basic hello-world example (Rust)
 - `rust-guest-mp-platformer/`: Multiplayer platformer game (Rust)
 - `rust-guest-showcase/`: Comprehensive demo of all features (Rust)
+- `rust-guest-text/`: Text rendering example (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 
 To build a Rust example:
@@ -192,6 +195,12 @@ SVG rendering now correctly respects the target width and height passed to `svg_
 
 ### Font blending (host/core)
 TTF font rendering now performs proper alpha blending with the background, eliminating artifacts where text would overwrite the background with black pixels in transparent regions of the glyph.
+
+### BDF Font Support (host/core)
+The core now supports registering custom BDF fonts via `graphics::font_register_bdf`. The built-in Spleen fonts (which are BDF) have also been fixed to render correctly at all supported sizes (8, 16, 24, 32, 64).
+
+### TTF/OTF Smoothing (host/core)
+TTF and OTF font rendering has been improved with subpixel positioning correction and gamma-correct blending. This results in smoother text edges and better legibility, especially at smaller sizes.
 
 ### ABI Update: u64 keys (host/core/sdk)
 The resource ABI has been updated to use `u64` keys instead of string pointers. This improves portability and performance at the boundary. The Rust and Zig SDKs have been updated to automatically hash string keys to `u64` so application code remains unchanged.
