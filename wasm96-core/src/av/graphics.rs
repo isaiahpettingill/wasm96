@@ -48,6 +48,7 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
     let mut s = global().lock().unwrap();
     let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
     s.video.framebuffer.fill(color);
+    super::graphics3d::clear_depth();
 }
 
 /// Draw a single pixel.
@@ -1394,6 +1395,9 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
 
 /// Present the framebuffer to libretro.
 pub fn video_present_host() {
+    // Flush any 3D content to the framebuffer before presenting
+    super::graphics3d::flush_to_host();
+
     let (handle_ptr, _width, _height, fb) = {
         let s = global().lock().unwrap();
         (

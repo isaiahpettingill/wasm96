@@ -311,6 +311,88 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
+    // --- 3D Graphics ---
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_SET_3D,
+        |_caller: Caller<'_, ()>, enable: u32| {
+            av::graphics_set_3d(enable != 0);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_CAMERA_LOOK_AT,
+        |_caller: Caller<'_, ()>,
+         eye_x: f32,
+         eye_y: f32,
+         eye_z: f32,
+         target_x: f32,
+         target_y: f32,
+         target_z: f32,
+         up_x: f32,
+         up_y: f32,
+         up_z: f32| {
+            av::graphics_camera_look_at(
+                eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_CAMERA_PERSPECTIVE,
+        |_caller: Caller<'_, ()>, fovy: f32, aspect: f32, near: f32, far: f32| {
+            av::graphics_camera_perspective(fovy, aspect, near, far);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_MESH_CREATE,
+        |mut caller: Caller<'_, ()>,
+         key: u64,
+         v_ptr: u32,
+         v_len: u32,
+         i_ptr: u32,
+         i_len: u32|
+         -> u32 { av::graphics_mesh_create(&mut caller, key, v_ptr, v_len, i_ptr, i_len) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_MESH_CREATE_OBJ,
+        |mut caller: Caller<'_, ()>, key: u64, ptr: u32, len: u32| -> u32 {
+            av::graphics_mesh_create_obj(&mut caller, key, ptr, len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_MESH_CREATE_STL,
+        |mut caller: Caller<'_, ()>, key: u64, ptr: u32, len: u32| -> u32 {
+            av::graphics_mesh_create_stl(&mut caller, key, ptr, len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_MESH_DRAW,
+        |_caller: Caller<'_, ()>,
+         key: u64,
+         x: f32,
+         y: f32,
+         z: f32,
+         rx: f32,
+         ry: f32,
+         rz: f32,
+         sx: f32,
+         sy: f32,
+         sz: f32| {
+            av::graphics_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+        },
+    )?;
+
     // --- Audio ---
     linker.func_wrap(
         IMPORT_MODULE,

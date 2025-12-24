@@ -17,7 +17,6 @@
 // Needed for `alloc::` in this crate.
 extern crate alloc;
 
-
 // External crates for rendering
 
 // External crates for asset decoding
@@ -26,6 +25,7 @@ extern crate alloc;
 
 pub mod audio;
 pub mod graphics;
+pub mod graphics3d;
 pub mod resources;
 pub mod storage;
 pub mod tests;
@@ -34,5 +34,6 @@ pub mod utils;
 // Re-export all public functions
 pub use audio::*;
 pub use graphics::*;
+pub use graphics3d::*;
 pub use resources::AvError;
 pub use storage::*;

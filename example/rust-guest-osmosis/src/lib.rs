@@ -127,7 +127,9 @@ static STATE: Mutex<Option<GameState>> = Mutex::new(None);
 // --- RNG Helpers ---
 
 fn rand(seed: &mut u32) -> u32 {
-    *seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+    *seed = seed
+        .wrapping_mul(1103515245)
+        .wrapping_add((system::millis() >> 48) as u32);
     *seed
 }
 

@@ -160,6 +160,15 @@ pub mod host_imports {
     pub const GRAPHICS_PILL: &str = "wasm96_graphics_pill";
     pub const GRAPHICS_PILL_OUTLINE: &str = "wasm96_graphics_pill_outline";
 
+    // 3D Graphics
+    pub const GRAPHICS_SET_3D: &str = "wasm96_graphics_set_3d";
+    pub const GRAPHICS_CAMERA_LOOK_AT: &str = "wasm96_graphics_camera_look_at";
+    pub const GRAPHICS_CAMERA_PERSPECTIVE: &str = "wasm96_graphics_camera_perspective";
+    pub const GRAPHICS_MESH_CREATE: &str = "wasm96_graphics_mesh_create";
+    pub const GRAPHICS_MESH_CREATE_OBJ: &str = "wasm96_graphics_mesh_create_obj";
+    pub const GRAPHICS_MESH_CREATE_STL: &str = "wasm96_graphics_mesh_create_stl";
+    pub const GRAPHICS_MESH_DRAW: &str = "wasm96_graphics_mesh_draw";
+
     // Fonts (keyed)
     pub const GRAPHICS_FONT_REGISTER_TTF: &str = "wasm96_graphics_font_register_ttf";
     pub const GRAPHICS_FONT_REGISTER_BDF: &str = "wasm96_graphics_font_register_bdf";

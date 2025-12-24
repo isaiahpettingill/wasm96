@@ -4,6 +4,7 @@ build-examples:
     cargo build -p rust_guest_mp_platformer --release --target wasm32-unknown-unknown
     cargo build -p rust_guest_osmosis --release --target wasm32-unknown-unknown
     cargo build -p rust_guest_text --release --target wasm32-unknown-unknown
+    cargo build -p rust-guest-3d --release --target wasm32-unknown-unknown
     cd example/zig-guest && zig build
 
 build-sdks:
@@ -27,6 +28,9 @@ run-rust-showcase:
 
 run-rust-platformer:
     just run ./target/wasm32-unknown-unknown/release/rust_guest_mp_platformer.wasm
+
+run-rust-3d:
+    just run ./target/wasm32-unknown-unknown/release/rust_guest_3d.wasm
 
 run-rust-osmosis:
     just run ./target/wasm32-unknown-unknown/release/rust_guest_osmosis.wasm

@@ -8,6 +8,7 @@ members = [
   "example/rust-guest-showcase",
   "example/rust-guest-osmosis",
   "example/rust-guest-text",
+  "example/rust-guest-3d",
 ]
 
 # Optional: allows `cargo build` at the workspace root to default to building the core.
@@ -26,11 +27,6 @@ documentation = "https://github.com/isaiahpettingill/wasm96"
 [workspace.dependencies]
 # Core dependencies
 libretro-backend = { version = "0.2.1", default-features = false }
-
-# Runtime
-wasmtime = "39.0.1"
-wasmtime-wasi = "39.0.1"
-wasi-common = "28.0.1"
 
 # SDK dependencies (safe defaults for wasm32 targets; keep minimal)
 # `wee_alloc` is optional but commonly useful in wasm apps; app authors can opt-in.

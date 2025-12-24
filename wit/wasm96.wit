@@ -143,6 +143,36 @@ world wasm96 {
 
     /// Draw a pill outline at (x,y) with size (w,h) using the current color.
     pill-outline: func(x: s32, y: s32, w: u32, h: u32);
+
+    // =========================
+    // 3D Graphics
+    // =========================
+
+    /// Enable or disable 3D rendering mode.
+    set-3d: func(enable: bool);
+
+    /// Set the camera view matrix using look-at parameters.
+    camera-look-at: func(eye-x: f32, eye-y: f32, eye-z: f32, target-x: f32, target-y: f32, target-z: f32, up-x: f32, up-y: f32, up-z: f32);
+
+    /// Set the camera projection matrix.
+    camera-perspective: func(fovy: f32, aspect: f32, near: f32, far: f32);
+
+    /// Create a mesh from raw vertex data.
+    /// Vertices are [x, y, z, u, v, nx, ny, nz] (8 floats).
+    /// Returns true on success.
+    mesh-create: func(key: u64, vertices: list<f32>, indices: list<u32>) -> bool;
+
+    /// Create a mesh from OBJ source text.
+    /// Returns true on success.
+    mesh-create-obj: func(key: u64, data: string) -> bool;
+
+    /// Create a mesh from STL binary data.
+    /// Returns true on success.
+    mesh-create-stl: func(key: u64, data: list<u8>) -> bool;
+
+    /// Draw a mesh instance.
+    /// Rotation is Euler angles in radians (x, y, z).
+    mesh-draw: func(key: u64, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32);
   }
 
   import input: interface {

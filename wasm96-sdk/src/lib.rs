@@ -155,6 +155,55 @@ pub mod sys {
         #[link_name = "wasm96_graphics_pill_outline"]
         pub fn graphics_pill_outline(x: i32, y: i32, w: u32, h: u32);
 
+        // 3D Graphics
+        #[link_name = "wasm96_graphics_set_3d"]
+        pub fn graphics_set_3d(enable: u32);
+
+        #[link_name = "wasm96_graphics_camera_look_at"]
+        pub fn graphics_camera_look_at(
+            eye_x: f32,
+            eye_y: f32,
+            eye_z: f32,
+            target_x: f32,
+            target_y: f32,
+            target_z: f32,
+            up_x: f32,
+            up_y: f32,
+            up_z: f32,
+        );
+
+        #[link_name = "wasm96_graphics_camera_perspective"]
+        pub fn graphics_camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32);
+
+        #[link_name = "wasm96_graphics_mesh_create"]
+        pub fn graphics_mesh_create(
+            key: u64,
+            v_ptr: *const f32,
+            v_len: usize,
+            i_ptr: *const u32,
+            i_len: usize,
+        ) -> u32;
+
+        #[link_name = "wasm96_graphics_mesh_create_obj"]
+        pub fn graphics_mesh_create_obj(key: u64, ptr: *const u8, len: usize) -> u32;
+
+        #[link_name = "wasm96_graphics_mesh_create_stl"]
+        pub fn graphics_mesh_create_stl(key: u64, ptr: *const u8, len: usize) -> u32;
+
+        #[link_name = "wasm96_graphics_mesh_draw"]
+        pub fn graphics_mesh_draw(
+            key: u64,
+            x: f32,
+            y: f32,
+            z: f32,
+            rx: f32,
+            ry: f32,
+            rz: f32,
+            sx: f32,
+            sy: f32,
+            sz: f32,
+        );
+
         // Input
         #[link_name = "wasm96_input_is_button_down"]
         pub fn input_is_button_down(port: u32, btn: u32) -> u32;
@@ -328,6 +377,64 @@ pub mod graphics {
         unsafe { sys::graphics_pill_outline(x, y, w, h) }
     }
 
+    // =========================
+    // 3D Graphics
+    // =========================
+
+    pub fn set_3d(enable: bool) {
+        unsafe { sys::graphics_set_3d(enable as u32) }
+    }
+
+    pub fn camera_look_at(eye: (f32, f32, f32), target: (f32, f32, f32), up: (f32, f32, f32)) {
+        unsafe {
+            sys::graphics_camera_look_at(
+                eye.0, eye.1, eye.2, target.0, target.1, target.2, up.0, up.1, up.2,
+            )
+        }
+    }
+
+    pub fn camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32) {
+        unsafe { sys::graphics_camera_perspective(fovy, aspect, near, far) }
+    }
+
+    pub fn mesh_create(key: &str, vertices: &[f32], indices: &[u32]) -> bool {
+        let k = hash_key(key);
+        unsafe {
+            sys::graphics_mesh_create(
+                k,
+                vertices.as_ptr(),
+                vertices.len(),
+                indices.as_ptr(),
+                indices.len(),
+            ) != 0
+        }
+    }
+
+    pub fn mesh_create_obj(key: &str, obj_data: &str) -> bool {
+        let k = hash_key(key);
+        unsafe { sys::graphics_mesh_create_obj(k, obj_data.as_ptr(), obj_data.len()) != 0 }
+    }
+
+    pub fn mesh_create_stl(key: &str, stl_data: &[u8]) -> bool {
+        let k = hash_key(key);
+        unsafe { sys::graphics_mesh_create_stl(k, stl_data.as_ptr(), stl_data.len()) != 0 }
+    }
+
+    pub fn mesh_draw(
+        key: &str,
+        pos: (f32, f32, f32),
+        rot: (f32, f32, f32),
+        scale: (f32, f32, f32),
+    ) {
+        let k = hash_key(key);
+        unsafe {
+            sys::graphics_mesh_draw(
+                k, pos.0, pos.1, pos.2, rot.0, rot.1, rot.2, scale.0, scale.1, scale.2,
+            )
+        }
+    }
+
+    /// Register an SVG resource under a string key.
     /// Register an SVG resource (encoded bytes) under a string key.
     /// Returns true on success.
     pub fn svg_register(key: &str, svg_bytes: &[u8]) -> bool {

@@ -83,6 +83,22 @@ This avoids global mutable “resource id” state in guests and makes resource 
 - Measure text:
   - `graphics::text_measure_key("font/spleen/16", "Hello")`
 
+### 3D Graphics
+- Enable 3D mode:
+  - `graphics::set_3d(true)`
+- Camera setup:
+  - `graphics::camera_perspective(fovy, aspect, near, far)`
+  - `graphics::camera_look_at(eye, target, up)`
+- Create meshes:
+  - From raw data:
+    - `graphics::mesh_create("cube", vertices, indices)`
+  - From OBJ string:
+    - `graphics::mesh_create_obj("model", obj_string)`
+  - From STL bytes:
+    - `graphics::mesh_create_stl("part", stl_bytes)`
+- Draw meshes:
+  - `graphics::mesh_draw("cube", pos, rot, scale)`
+
 ## SDK
 
 ### Rust SDK (`wasm96-sdk/`)
@@ -106,6 +122,7 @@ The `example/` directory contains guest applications:
 - `rust-guest-mp-platformer/`: Multiplayer platformer game (Rust)
 - `rust-guest-showcase/`: Comprehensive demo of all features (Rust)
 - `rust-guest-text/`: Text rendering example (Rust)
+- `rust-guest-3d/`: 3D rotating cube example (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 
 To build a Rust example:
@@ -204,6 +221,9 @@ TTF and OTF font rendering has been improved with subpixel positioning correctio
 
 ### ABI Update: u64 keys (host/core/sdk)
 The resource ABI has been updated to use `u64` keys instead of string pointers. This improves portability and performance at the boundary. The Rust and Zig SDKs have been updated to automatically hash string keys to `u64` so application code remains unchanged.
+
+### 3D Graphics Support (host/core/sdk)
+Added a hardware-accelerated (wgpu) renderer for 3D graphics. Guests can now enable 3D mode, configure a camera, create meshes from raw data, OBJ strings, or STL bytes, and draw them with transformations.
 
 ## License
 
