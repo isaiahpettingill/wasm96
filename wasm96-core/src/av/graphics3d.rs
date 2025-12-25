@@ -702,35 +702,6 @@ pub fn flush_to_host() {
                 let a = src_row[i * 4 + 3];
 
                 if a > 0 {
-                    // Simple alpha blend over existing pixel
-                    // This allows 2D background to show through if 3D is transparent (or cleared to transparent)
-                    // But we cleared to transparent in clear_depth().
-                    // So we can composite.
-                    // But wait, we want 3D to be BEHIND 2D?
-                    // If we call flush_to_host() at the end of the frame, we overwrite 2D.
-                    // We should call flush_to_host() BEFORE 2D drawing?
-                    // But 2D drawing happens in `draw()`.
-                    // If we want 3D to be behind, we should draw 3D first.
-                    // The guest calls `background` (clears 2D), then `mesh_draw` (draws 3D), then `text` (draws 2D).
-                    // If `mesh_draw` is immediate, we are fine.
-                    // But we are batching/accumulating in the texture.
-                    // We need to flush the texture to the CPU buffer *before* `text` is drawn?
-                    // Or we just composite here.
-                    // If we composite here, we are writing ON TOP of whatever is in `fb`.
-                    // If `fb` has 2D content, we overwrite it.
-                    // So `mesh_draw` should ideally happen before 2D.
-                    // If the guest calls `mesh_draw` then `text`, we want `text` on top.
-                    // So we should flush 3D *before* `text`?
-                    // But we don't know when `text` is called.
-                    //
-                    // Solution: We assume `flush_to_host` is called at the end of `video_present_host`,
-                    // AND we assume the guest draws 3D *before* 2D?
-                    // No, if we flush at the end, we overwrite 2D.
-                    //
-                    // Actually, if we use the depth buffer in 2D, we could mix.
-                    // But we don't.
-                    //
-                    // Let's just do a simple copy for now.
                     // If alpha > 0, we overwrite.
                     *pixel =
                         ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);

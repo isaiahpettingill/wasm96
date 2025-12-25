@@ -5,7 +5,9 @@ build-examples:
     cargo build -p rust_guest_osmosis --release --target wasm32-unknown-unknown
     cargo build -p rust_guest_text --release --target wasm32-unknown-unknown
     cargo build -p rust-guest-3d --release --target wasm32-unknown-unknown
+    cargo build -p rust-guest-rapier --release --target wasm32-unknown-unknown
     cd example/zig-guest && zig build
+    cd example/v-guest-3d && just build
 
 build-sdks:
     cargo build -p wasm96-sdk --release
@@ -32,6 +34,9 @@ run-rust-platformer:
 run-rust-3d:
     just run ./target/wasm32-unknown-unknown/release/rust_guest_3d.wasm
 
+run-rust-rapier:
+    just run target/wasm32-unknown-unknown/debug/rust_guest_rapier.wasm
+
 run-rust-osmosis:
     just run ./target/wasm32-unknown-unknown/release/rust_guest_osmosis.wasm
 
@@ -40,3 +45,15 @@ run-rust-text:
 
 run-zig-guest:
     just run ./example/zig-guest/zig-out/bin/zig-guest.wasm
+
+run-v-guest-3d:
+    just run ./example/v-guest-3d/v-guest-3d.wasm
+
+push-v-sdk version:
+    git add ./wasm96-v-sdk/v.mod
+    git commit -m "release: version {{ version }}"
+    git subtree push --prefix=wasm96-v-sdk origin-sdk main
+    git subtree split --prefix=wasm96-v-sdk -b release-{{ version }}
+    git tag {{ version }} release-{{ version }}
+    git push origin-sdk {{ version }}
+    git branch -D release-{{ version }}

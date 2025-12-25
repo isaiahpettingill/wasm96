@@ -9,6 +9,7 @@ members = [
   "example/rust-guest-osmosis",
   "example/rust-guest-text",
   "example/rust-guest-3d",
+  "example/rust-guest-rapier",
 ]
 
 # Optional: allows `cargo build` at the workspace root to default to building the core.

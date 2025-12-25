@@ -123,6 +123,7 @@ The `example/` directory contains guest applications:
 - `rust-guest-showcase/`: Comprehensive demo of all features (Rust)
 - `rust-guest-text/`: Text rendering example (Rust)
 - `rust-guest-3d/`: 3D rotating cube example (Rust)
+- `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 
 To build a Rust example:
