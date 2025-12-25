@@ -93,9 +93,10 @@ fn C.wasm96_system_millis() u64
 
 // Graphics API.
 
-fn hash_key(key []u8) u64 {
+fn hash_key(key string) u64 {
 	mut hash := u64(0xcbf29ce484222325)
-	for b in key {
+	for i := 0; i < key.len; i++ {
+		b := key[i]
 		hash ^= u64(b)
 		hash *= 0x100000001b3
 	}
@@ -149,13 +150,13 @@ pub fn graphics_circle_outline(x int, y int, r u32) {
 
 // Draw an image/sprite.
 // data is a slice of RGBA bytes (4 bytes per pixel).
-pub fn graphics_image(x int, y int, w u32, h u32, data []u8) {
-	C.wasm96_graphics_image(x, y, w, h, &data[0], usize(data.len))
+pub fn graphics_image(x int, y int, w u32, h u32, data_ptr &u8, data_len usize) {
+	C.wasm96_graphics_image(x, y, w, h, data_ptr, data_len)
 }
 
 // Draw an image from raw PNG bytes.
-pub fn graphics_image_png(x int, y int, data []u8) {
-	C.wasm96_graphics_image_png(x, y, &data[0], usize(data.len))
+pub fn graphics_image_png(x int, y int, data_ptr &u8, data_len usize) {
+	C.wasm96_graphics_image_png(x, y, data_ptr, data_len)
 }
 
 // Draw a filled triangle.
@@ -189,88 +190,88 @@ pub fn graphics_pill_outline(x int, y int, w u32, h u32) {
 }
 
 // Register an SVG resource under a string key.
-pub fn graphics_svg_register(key []u8, data []u8) bool {
-	return C.wasm96_graphics_svg_register(hash_key(key), &data[0], usize(data.len)) != 0
+pub fn graphics_svg_register(key string, data_ptr &u8, data_len usize) bool {
+	return C.wasm96_graphics_svg_register(hash_key(key), data_ptr, data_len) != 0
 }
 
 // Draw a registered SVG by key.
-pub fn graphics_svg_draw_key(key []u8, x int, y int, w u32, h u32) {
+pub fn graphics_svg_draw_key(key string, x int, y int, w u32, h u32) {
 	C.wasm96_graphics_svg_draw_key(hash_key(key), x, y, w, h)
 }
 
 // Unregister an SVG by key.
-pub fn graphics_svg_unregister(key []u8) {
+pub fn graphics_svg_unregister(key string) {
 	C.wasm96_graphics_svg_unregister(hash_key(key))
 }
 
 // Register a GIF resource under a string key.
-pub fn graphics_gif_register(key []u8, data []u8) bool {
-	return C.wasm96_graphics_gif_register(hash_key(key), &data[0], usize(data.len)) != 0
+pub fn graphics_gif_register(key string, data_ptr &u8, data_len usize) bool {
+	return C.wasm96_graphics_gif_register(hash_key(key), data_ptr, data_len) != 0
 }
 
 // Draw a registered GIF by key at natural size.
-pub fn graphics_gif_draw_key(key []u8, x int, y int) {
+pub fn graphics_gif_draw_key(key string, x int, y int) {
 	C.wasm96_graphics_gif_draw_key(hash_key(key), x, y)
 }
 
 // Draw a registered GIF by key scaled.
-pub fn graphics_gif_draw_key_scaled(key []u8, x int, y int, w u32, h u32) {
+pub fn graphics_gif_draw_key_scaled(key string, x int, y int, w u32, h u32) {
 	C.wasm96_graphics_gif_draw_key_scaled(hash_key(key), x, y, w, h)
 }
 
 // Unregister a GIF by key.
-pub fn graphics_gif_unregister(key []u8) {
+pub fn graphics_gif_unregister(key string) {
 	C.wasm96_graphics_gif_unregister(hash_key(key))
 }
 
 // Register a PNG resource under a string key.
-pub fn graphics_png_register(key []u8, data []u8) bool {
-	return C.wasm96_graphics_png_register(hash_key(key), &data[0], usize(data.len)) != 0
+pub fn graphics_png_register(key string, data_ptr &u8, data_len usize) bool {
+	return C.wasm96_graphics_png_register(hash_key(key), data_ptr, data_len) != 0
 }
 
 // Draw a registered PNG by key at natural size.
-pub fn graphics_png_draw_key(key []u8, x int, y int) {
+pub fn graphics_png_draw_key(key string, x int, y int) {
 	C.wasm96_graphics_png_draw_key(hash_key(key), x, y)
 }
 
 // Draw a registered PNG by key scaled.
-pub fn graphics_png_draw_key_scaled(key []u8, x int, y int, w u32, h u32) {
+pub fn graphics_png_draw_key_scaled(key string, x int, y int, w u32, h u32) {
 	C.wasm96_graphics_png_draw_key_scaled(hash_key(key), x, y, w, h)
 }
 
 // Unregister a PNG by key.
-pub fn graphics_png_unregister(key []u8) {
+pub fn graphics_png_unregister(key string) {
 	C.wasm96_graphics_png_unregister(hash_key(key))
 }
 
 // Register a TTF font under a string key.
-pub fn graphics_font_register_ttf(key []u8, data []u8) bool {
-	return C.wasm96_graphics_font_register_ttf(hash_key(key), &data[0], usize(data.len)) != 0
+pub fn graphics_font_register_ttf(key string, data_ptr &u8, data_len usize) bool {
+	return C.wasm96_graphics_font_register_ttf(hash_key(key), data_ptr, data_len) != 0
 }
 
 // Register a BDF font under a string key.
-pub fn graphics_font_register_bdf(key []u8, data []u8) bool {
-	return C.wasm96_graphics_font_register_bdf(hash_key(key), &data[0], usize(data.len)) != 0
+pub fn graphics_font_register_bdf(key string, data_ptr &u8, data_len usize) bool {
+	return C.wasm96_graphics_font_register_bdf(hash_key(key), data_ptr, data_len) != 0
 }
 
 // Register a built-in Spleen font under a string key.
-pub fn graphics_font_register_spleen(key []u8, size u32) bool {
+pub fn graphics_font_register_spleen(key string, size u32) bool {
 	return C.wasm96_graphics_font_register_spleen(hash_key(key), size) != 0
 }
 
 // Unregister a font by key.
-pub fn graphics_font_unregister(key []u8) {
+pub fn graphics_font_unregister(key string) {
 	C.wasm96_graphics_font_unregister(hash_key(key))
 }
 
 // Draw text using a font referenced by key.
-pub fn graphics_text_key(x int, y int, font_key []u8, str []u8) {
-	C.wasm96_graphics_text_key(x, y, hash_key(font_key), &str[0], usize(str.len))
+pub fn graphics_text_key(x int, y int, font_key string, str string) {
+	C.wasm96_graphics_text_key(x, y, hash_key(font_key), &u8(str.str), usize(str.len))
 }
 
 // Measure text using a font referenced by key.
-pub fn graphics_text_measure_key(font_key []u8, str []u8) TextSize {
-	result := C.wasm96_graphics_text_measure_key(hash_key(font_key), &str[0], usize(str.len))
+pub fn graphics_text_measure_key(font_key string, str string) TextSize {
+	result := C.wasm96_graphics_text_measure_key(hash_key(font_key), &u8(str.str), usize(str.len))
 	return TextSize{
 		width: u32(result >> 32)
 		height: u32(result & 0xFFFFFFFF)
@@ -296,22 +297,22 @@ pub fn graphics_camera_perspective(fovy f32, aspect f32, near f32, far f32) {
 
 // Create a mesh from raw vertex and index data.
 // vertices: [x, y, z, u, v, nx, ny, nz, ...]
-pub fn graphics_mesh_create(key []u8, vertices []f32, indices []u32) {
-	C.wasm96_graphics_mesh_create(hash_key(key), &vertices[0], usize(vertices.len), &indices[0], usize(indices.len))
+pub fn graphics_mesh_create(key string, vertices_ptr &f32, vertices_len usize, indices_ptr &u32, indices_len usize) {
+	C.wasm96_graphics_mesh_create(hash_key(key), vertices_ptr, vertices_len, indices_ptr, indices_len)
 }
 
 // Create a mesh from OBJ file data.
-pub fn graphics_mesh_create_obj(key []u8, data []u8) {
-	C.wasm96_graphics_mesh_create_obj(hash_key(key), &data[0], usize(data.len))
+pub fn graphics_mesh_create_obj(key string, data_ptr &u8, data_len usize) {
+	C.wasm96_graphics_mesh_create_obj(hash_key(key), data_ptr, data_len)
 }
 
 // Create a mesh from STL file data.
-pub fn graphics_mesh_create_stl(key []u8, data []u8) {
-	C.wasm96_graphics_mesh_create_stl(hash_key(key), &data[0], usize(data.len))
+pub fn graphics_mesh_create_stl(key string, data_ptr &u8, data_len usize) {
+	C.wasm96_graphics_mesh_create_stl(hash_key(key), data_ptr, data_len)
 }
 
 // Draw a mesh with transformation.
-pub fn graphics_mesh_draw(key []u8, pos_x f32, pos_y f32, pos_z f32, rot_x f32, rot_y f32, rot_z f32, scale_x f32, scale_y f32, scale_z f32) {
+pub fn graphics_mesh_draw(key string, pos_x f32, pos_y f32, pos_z f32, rot_x f32, rot_y f32, rot_z f32, scale_x f32, scale_y f32, scale_z f32) {
 	C.wasm96_graphics_mesh_draw(hash_key(key), pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, scale_x, scale_y, scale_z)
 }
 
@@ -352,33 +353,33 @@ pub fn audio_init(sample_rate u32) u32 {
 
 // Push a chunk of audio samples.
 // Samples are interleaved stereo (L, R, L, R...) signed 16-bit integers.
-pub fn audio_push_samples(samples []i16) {
-	C.wasm96_audio_push_samples(&samples[0], usize(samples.len))
+pub fn audio_push_samples(samples_ptr &i16, samples_len usize) {
+	C.wasm96_audio_push_samples(samples_ptr, samples_len)
 }
 
 // Play a WAV file.
 // The WAV data is decoded and played as a one-shot audio channel.
-pub fn audio_play_wav(data []u8) {
-	C.wasm96_audio_play_wav(&data[0], usize(data.len))
+pub fn audio_play_wav(data_ptr &u8, data_len usize) {
+	C.wasm96_audio_play_wav(data_ptr, data_len)
 }
 
 // Play a QOA file.
 // The QOA data is decoded and played as a looping audio channel.
-pub fn audio_play_qoa(data []u8) {
-	C.wasm96_audio_play_qoa(&data[0], usize(data.len))
+pub fn audio_play_qoa(data_ptr &u8, data_len usize) {
+	C.wasm96_audio_play_qoa(data_ptr, data_len)
 }
 
 // Play an XM file.
 // The XM data is decoded using xmrsplayer and played as a looping audio channel.
-pub fn audio_play_xm(data []u8) {
-	C.wasm96_audio_play_xm(&data[0], usize(data.len))
+pub fn audio_play_xm(data_ptr &u8, data_len usize) {
+	C.wasm96_audio_play_xm(data_ptr, data_len)
 }
 
 // System API.
 
 // Log a message to the host console.
-pub fn system_log(message []u8) {
-	C.wasm96_system_log(&message[0], usize(message.len))
+pub fn system_log(message string) {
+	C.wasm96_system_log(&u8(message.str), usize(message.len))
 }
 
 // Get the number of milliseconds since the app started.

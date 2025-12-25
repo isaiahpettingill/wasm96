@@ -1,2 +1,0 @@
-build:
-    v -b wasm -enable-globals -o ./out/v-guest-3d.wasm main.v

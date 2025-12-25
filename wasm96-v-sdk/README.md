@@ -110,12 +110,26 @@ wasm96.graphics_mesh_draw('cube'.bytes(), pos_x, pos_y, pos_z, rot_x, rot_y, rot
 
 See the [wasm96 repository](https://github.com/isaiahpettingill/wasm96/tree/main/example) for complete examples:
 
-- `v-guest-3d/`: 3D rotating cube demo (note: currently has compatibility issues)
+- `v-guest-3d/`: 3D rotating cube demo (cannot be built due to V's WASM backend limitations)
 
 ## Known Issues
 
 - The V SDK may have module import issues depending on your V installation and module paths.
 - Ensure the module is correctly placed in `~/.vmodules/isaiahpettingill/wasm96.v`
+
+### WASM Backend Limitations
+
+V's WebAssembly backend has several limitations that affect the SDK:
+
+- **Slice Length Access**: Properties like `.len` on slice types (`[]T`) are not supported. The SDK uses pointer and length parameters instead of slices for data passing.
+- **For-In Loops**: `for x in iterable` syntax is not supported. The SDK uses traditional for loops with indices.
+- **Array Types in WASM**: Certain array operations may not work as expected. Mesh creation requires explicit pointer and length arguments.
+
+These limitations are worked around in the SDK implementation, but may affect custom V code targeting WASM.
+
+### Alternative Compilation Methods
+
+Compiling V code to C and then to WebAssembly using external C compilers (e.g., zig cc) is not currently supported due to missing libraries in the WASI environment, such as garbage collection headers and mmap emulation. Stick to V's native WASM backend for compilation.
 
 ## ABI Compatibility
 

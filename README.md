@@ -134,7 +134,7 @@ The `example/` directory contains guest applications:
 - `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 - `zig-guest-3d/`: 3D rotating cube example (Zig)
-- `v-guest-3d/`: 3D rotating cube example (V) - *currently has compatibility issues*
+- `v-guest-3d/`: 3D rotating cube example (V) - *cannot be built due to V's WASM backend limitations with arrays*
 - `wat-guest/`: Simple 2D controllable rectangle example (WAT)
 - `kotlin-guest/`: 2D graphics shapes demo (Kotlin) - *currently has compatibility issues*
 
