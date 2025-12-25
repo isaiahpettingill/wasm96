@@ -1,6 +1,6 @@
 module main
 
-import isaiahpettingill.wasm96
+import wasm96
 
 
 __global (

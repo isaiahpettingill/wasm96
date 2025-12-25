@@ -60,6 +60,10 @@ run-v-guest-3d:
     cd example/v-guest-3d && just build
     just run ./example/v-guest-3d/v-guest-3d.wasm
 
+run-wat-guest:
+    cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
+    just run ./example/wat-guest/wat-guest.wasm
+
 push-v-sdk version:
     git add ./wasm96-v-sdk/v.mod || true
     git commit -m "release: version {{ version }}" || true
