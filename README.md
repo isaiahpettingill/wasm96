@@ -24,7 +24,7 @@ The core library will be at `target/release/libwasm96_core.so` (or equivalent fo
    - If `draw()` is not exported, the core will treat `_start()` as the draw function.
    - If `draw()` and `_start()` are not exported, the core will treat `main()` as the draw function.
 5. Compile to WASM32 target
-6. Load the `.wasm` file into the wasm96 core via your libretro frontend
+6. Load the `.wasm` or `.w96` file into the wasm96 core via your libretro frontend
 
 ### Entrypoint precedence rules
 - `setup()` is required.
@@ -33,7 +33,7 @@ The core library will be at `target/release/libwasm96_core.so` (or equivalent fo
 - `update()` is optional; if missing, update is treated as a no-op.
 
 ### Running
-Load the wasm96 core in your libretro frontend and select a `.wasm` file as the "game". The core will instantiate the WASM module and start calling the guest entrypoints according to the precedence rules above.
+Load the wasm96 core in your libretro frontend and select a `.wasm` or `.w96` file as the "game". The core will instantiate the WASM module and start calling the guest entrypoints according to the precedence rules above.
 
 ## ABI notes: keyed resources (hashed strings)
 The core uses **keyed resources** for images and fonts. Instead of receiving numeric handles from `*_create(...)`, guests register assets under a stable key and later draw/use them by that key.
@@ -108,6 +108,14 @@ This avoids global mutable “resource id” state in guests and makes resource 
 - Supports `no_std` for minimal WASM builds
 - Optional wee_alloc for custom allocator
 
+### Kotlin SDK (`wasm96-kotlin-sdk/`)
+- Handwritten bindings matching the core ABI
+- Safe wrappers around raw extern functions
+- Entry point: `import wasm96.*`
+- Compiles to WASM32 using Kotlin/WASM
+- Provides high-level API for graphics, audio, input, and storage
+- **Note**: Kotlin/WASM guest compilation has compatibility issues with the current wasm96 core due to WASI dependencies
+
 ### Zig SDK (`wasm96-zig-sdk/`)
 - Handwritten bindings matching the core ABI
 - Safe wrappers around raw extern functions
@@ -125,15 +133,30 @@ The `example/` directory contains guest applications:
 - `rust-guest-3d/`: 3D rotating cube example (Rust)
 - `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
+- `zig-guest-3d/`: 3D rotating cube example (Zig)
+- `kotlin-guest/`: 2D graphics shapes demo (Kotlin) - *currently has compatibility issues*
 
 To build a Rust example:
 ```bash
-cargo build --package <example-name> --target wasm32-unknown-unknown
+cargo build -p <example-name> --target wasm32-unknown-unknown
 ```
 
-To build the Zig example:
+To build the Zig examples:
 ```bash
 cd example/zig-guest && zig build
+cd example/zig-guest-3d && zig build
+```
+
+To build the Kotlin example:
+```bash
+cd example/kotlin-guest && ./gradlew build
+```
+*Note: The Kotlin example currently has compatibility issues with the wasm96 core and cannot be run.*
+
+To build the Zig examples:
+```bash
+cd example/zig-guest && zig build
+cd example/zig-guest-3d && zig build
 ```
 
 ## Project Structure
@@ -142,6 +165,7 @@ cd example/zig-guest && zig build
 wasm96/
 ├── wasm96-core/          # Libretro core implementation
 ├── wasm96-sdk/           # Handwritten Rust SDK
+├── wasm96-kotlin-sdk/    # Handwritten Kotlin SDK
 ├── wasm96-zig-sdk/       # Handwritten Zig SDK
 ├── wit/                  # WIT interface definitions
 ├── example/              # Guest examples
@@ -193,7 +217,7 @@ The libretro core correctly decodes animated GIFs as indexed-color images and ex
 The core supports decoding **encoded PNG bytes** on the host. Guests can draw PNGs directly via `image_png` or register them as keyed resources for repeated use (see “ABI notes: keyed resources (hashed strings)” above).
 
 ### SDK Parity
-Both Rust and Zig SDKs now implement the full set of core features, including all drawing primitives, audio playback, and input handling.
+Both Rust and Zig SDKs now implement the full set of core features, including all drawing primitives, audio playback, input handling, and 3D graphics.
 
 ### Triangle rasterization (host/core)
 Filled triangles are rasterized using a barycentric (edge-function) fill in the core. The implementation is winding-invariant (vertex order does not change filled results), deterministic, and clips to the framebuffer bounds.

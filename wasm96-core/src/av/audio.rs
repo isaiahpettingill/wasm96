@@ -265,12 +265,17 @@ pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Res
 }
 
 pub fn audio_drain_host(max_frames: u32) -> u32 {
-    let (handle_ptr, sample_rate) = {
+    let (audio_batch_cb, audio_sample_cb, sample_rate) = {
         let s = global().lock().unwrap();
-        (s.handle, s.audio.sample_rate)
+        (
+            s.audio_sample_batch_cb,
+            s.audio_sample_cb,
+            s.audio.sample_rate,
+        )
     };
 
-    if handle_ptr.is_null() {
+    // If no audio callbacks are available, we can't output audio.
+    if audio_batch_cb.is_none() && audio_sample_cb.is_none() {
         return 0;
     }
 
@@ -358,10 +363,21 @@ pub fn audio_drain_host(max_frames: u32) -> u32 {
         }
     }
 
-    // SAFETY: handle pointer checked.
-    let h = unsafe { &mut *handle_ptr };
-    h.upload_audio_frame(&mixed);
+    // Upload audio
+    let frames = mixed.len() / samples_per_frame;
+
+    if let Some(batch_cb) = audio_batch_cb {
+        unsafe {
+            batch_cb(mixed.as_ptr(), frames);
+        }
+    } else if let Some(sample_cb) = audio_sample_cb {
+        for chunk in mixed.chunks(samples_per_frame) {
+            unsafe {
+                sample_cb(chunk[0], chunk[1]);
+            }
+        }
+    }
 
     // Report how many *audio frames* we uploaded (stereo frames).
-    (mixed.len() / samples_per_frame) as u32
+    frames as u32
 }

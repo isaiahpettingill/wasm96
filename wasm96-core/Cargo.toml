@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 libretro-backend = { workspace = true }
 libretro-sys = "0.1.1"
+gl = "0.14"
 
 # Runtime: Wasmtime (broader feature support + WASI integration)
 # Enable a broad set of Wasmtime crate feature flags to support more module types.

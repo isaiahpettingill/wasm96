@@ -13,11 +13,10 @@
 mod abi;
 mod av;
 mod input;
+mod libretro_glue;
 mod loader;
 mod runtime;
 mod state;
-
-use libretro_backend::{Core, CoreInfo, RuntimeHandle, libretro_core};
 
 use crate::abi::GuestEntrypoints;
 
@@ -28,7 +27,7 @@ pub struct Wasm96Core {
     module: Option<wasmtime::Module>,
     instance: Option<wasmtime::Instance>,
     entrypoints: Option<GuestEntrypoints>,
-    game_data: Option<libretro_backend::GameData>,
+    setup_called: bool,
 }
 
 impl Wasm96Core {
@@ -94,56 +93,23 @@ impl Wasm96Core {
         self.entrypoints = None;
         // Keep `rt` allocated so subsequent loads are faster; it’s safe because imports are pure host fns.
     }
-}
 
-impl Core for Wasm96Core {
-    fn save_memory(&mut self) -> Option<&mut [u8]> {
-        None
-    }
-    fn rtc_memory(&mut self) -> Option<&mut [u8]> {
-        None
-    }
-    fn system_memory(&mut self) -> Option<&mut [u8]> {
-        None
-    }
-    fn video_memory(&mut self) -> Option<&mut [u8]> {
-        None
-    }
+    // Public API for libretro_glue
 
-    fn info() -> CoreInfo {
-        CoreInfo::new("Wasm96", "1.0.0")
-            .supports_roms_with_extension("wasm")
-            .supports_roms_with_extension("wat")
-    }
-
-    fn on_load_game(
-        &mut self,
-        game_data: libretro_backend::GameData,
-    ) -> libretro_backend::LoadGameResult {
-        self.game_data = Some(game_data);
-
+    pub fn load_game_from_bytes(&mut self, data: &[u8]) -> Result<(), anyhow::Error> {
         // Ensure runtime exists so we have an Engine to compile against.
         if self.ensure_runtime().is_err() {
             state::clear_on_unload();
-            return libretro_backend::LoadGameResult::Failed(self.game_data.take().unwrap());
+            return Err(anyhow::anyhow!("Failed to initialize runtime"));
         }
-
-        // Copy game bytes out of `GameData` so we don't hold an immutable borrow of `self.game_data`
-        // across calls that mutably borrow `self` (and so the slice doesn't outlive any temporary borrow).
-        let data: Vec<u8> = match self.game_data.as_ref().and_then(|g| g.data()) {
-            Some(d) => d.to_vec(),
-            None => {
-                return libretro_backend::LoadGameResult::Failed(self.game_data.take().unwrap());
-            }
-        };
 
         let rt = self.rt.as_ref().unwrap();
 
         // Compile module (WASM or WAT) using Wasmtime Engine.
-        let module = match loader::compile_module(&rt.engine, &data) {
+        let module = match loader::compile_module(&rt.engine, data) {
             Ok(m) => m,
-            Err(_) => {
-                return libretro_backend::LoadGameResult::Failed(self.game_data.take().unwrap());
+            Err(e) => {
+                return Err(anyhow::anyhow!("Failed to compile module: {:?}", e));
             }
         };
 
@@ -153,36 +119,26 @@ impl Core for Wasm96Core {
         if self.instantiate().is_err() {
             state::clear_on_unload();
             self.clear_guest();
-            return libretro_backend::LoadGameResult::Failed(self.game_data.take().unwrap());
+            return Err(anyhow::anyhow!("Failed to instantiate module"));
         }
 
         // Call setup
-        self.call_guest_setup();
+        // self.call_guest_setup();
+        self.setup_called = false;
 
-        // Get resolution from state (it might have been set by setup())
-        let (w, h) = {
-            let s = state::global().lock().unwrap();
-            (s.video.width, s.video.height)
-        };
-
-        // Return default AV info.
-        let av_info = libretro_backend::AudioVideoInfo::new()
-            .video(w, h, 60.0, libretro_backend::PixelFormat::ARGB8888)
-            .audio(44100.0)
-            .region(libretro_backend::Region::NTSC);
-
-        libretro_backend::LoadGameResult::Success(av_info)
+        Ok(())
     }
 
-    fn on_unload_game(&mut self) -> libretro_backend::GameData {
+    pub fn unload(&mut self) {
         self.clear_guest();
         state::clear_on_unload();
-        self.game_data.take().unwrap()
     }
 
-    fn on_run(&mut self, handle: &mut RuntimeHandle) {
-        // Update global handle pointer first.
-        state::set_runtime_handle(handle);
+    pub fn run_frame(&mut self) {
+        if !self.setup_called {
+            self.call_guest_setup();
+            self.setup_called = true;
+        }
 
         // Snapshot inputs once per frame for determinism.
         input::snapshot_per_frame();
@@ -198,9 +154,7 @@ impl Core for Wasm96Core {
         av::audio_drain_host(0);
     }
 
-    fn on_reset(&mut self) {
-        self.call_guest_setup();
+    pub fn reset(&mut self) {
+        self.setup_called = false;
     }
 }
-
-libretro_core!(Wasm96Core);

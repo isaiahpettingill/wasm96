@@ -131,7 +131,7 @@ static STATE: Mutex<Option<GameState>> = Mutex::new(None);
 
 #[no_mangle]
 pub extern "C" fn setup() {
-    wasm96::graphics::set_size(320, 240);
+    wasm96::graphics::set_size(640, 480);
     wasm96::graphics::set_3d(true);
     wasm96::graphics::font_register_spleen("spleen", 12);
 
@@ -172,6 +172,13 @@ pub extern "C" fn draw() {
             state.camera_dist -= 0.1;
         }
 
+        if wasm96::input::is_button_down(0, wasm96::Button::L1) {
+            state.camera_angle_x -= 0.05;
+        }
+        if wasm96::input::is_button_down(0, wasm96::Button::R1) {
+            state.camera_angle_x += 0.05;
+        }
+
         // Calculate Camera Position
         let cam_x = state.camera_target.x
             + state.camera_dist * state.camera_angle_x.sin() * state.camera_angle_y.cos();
@@ -205,7 +212,7 @@ pub extern "C" fn draw() {
 
         // Render
         wasm96::graphics::background(30, 30, 30);
-        wasm96::graphics::camera_perspective(1.0, 320.0 / 240.0, 0.1, 100.0);
+        wasm96::graphics::camera_perspective(1.0, 640.0 / 480.0, 0.1, 100.0);
         wasm96::graphics::camera_look_at(
             (cam_pos.x, cam_pos.y, cam_pos.z),
             (
@@ -226,6 +233,7 @@ pub extern "C" fn draw() {
                 if let Some(collider) = state.collider_set.get(*collider_handle) {
                     let shape = collider.shape();
                     if let Some(_ball) = shape.as_ball() {
+                        wasm96::graphics::set_color(255, 100, 100, 255);
                         wasm96::graphics::mesh_draw(
                             "sphere",
                             (pos.x, pos.y, pos.z),
@@ -234,6 +242,7 @@ pub extern "C" fn draw() {
                         );
                     } else if let Some(_cuboid) = shape.as_cuboid() {
                         if body.is_fixed() {
+                            wasm96::graphics::set_color(100, 255, 100, 255);
                             wasm96::graphics::mesh_draw(
                                 "cube",
                                 (pos.x, pos.y, pos.z),
@@ -241,6 +250,7 @@ pub extern "C" fn draw() {
                                 (20.0, 1.0, 20.0),
                             );
                         } else {
+                            wasm96::graphics::set_color(100, 100, 255, 255);
                             wasm96::graphics::mesh_draw(
                                 "cube",
                                 (pos.x, pos.y, pos.z),
@@ -255,12 +265,12 @@ pub extern "C" fn draw() {
 
         // Crosshair
         wasm96::graphics::set_color(255, 255, 255, 255);
-        wasm96::graphics::line(160 - 5, 120, 160 + 5, 120);
-        wasm96::graphics::line(160, 120 - 5, 160, 120 + 5);
+        wasm96::graphics::line(320 - 5, 240, 320 + 5, 240);
+        wasm96::graphics::line(320, 240 - 5, 320, 240 + 5);
 
         wasm96::graphics::text_key(10, 10, "spleen", "Rapier3D Demo");
         wasm96::graphics::text_key(10, 25, "spleen", "DPAD: Pan, X/Y: Zoom");
-        wasm96::graphics::text_key(10, 40, "spleen", "A: Fire, B: Drop Cube");
+        wasm96::graphics::text_key(10, 40, "spleen", "L1/R1: Rotate, A: Fire, B: Drop Cube");
     }
 }
 

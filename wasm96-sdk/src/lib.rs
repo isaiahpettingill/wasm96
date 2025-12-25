@@ -231,6 +231,14 @@ pub mod sys {
         #[link_name = "wasm96_audio_play_xm"]
         pub fn audio_play_xm(ptr: u32, len: u32);
 
+        // Storage
+        #[link_name = "wasm96_storage_save"]
+        pub fn storage_save(key: u64, data_ptr: u32, data_len: u32);
+        #[link_name = "wasm96_storage_load"]
+        pub fn storage_load(key: u64) -> u64;
+        #[link_name = "wasm96_storage_free"]
+        pub fn storage_free(ptr: u32, len: u32);
+
         // System
         #[link_name = "wasm96_system_log"]
         pub fn system_log(ptr: u32, len: u32);
@@ -244,7 +252,7 @@ pub mod graphics {
     use super::sys;
     use crate::TextSize;
 
-    fn hash_key(key: &str) -> u64 {
+    pub(crate) fn hash_key(key: &str) -> u64 {
         let mut hash: u64 = 0xcbf29ce484222325;
         for byte in key.bytes() {
             hash ^= byte as u64;
@@ -611,6 +619,46 @@ pub mod audio {
     }
 }
 
+/// Storage API.
+pub mod storage {
+    use super::sys;
+
+    /// Save data to persistent storage.
+    pub fn save(key: &str, data: &[u8]) {
+        unsafe {
+            sys::storage_save(
+                super::graphics::hash_key(key),
+                data.as_ptr() as u32,
+                data.len() as u32,
+            )
+        }
+    }
+
+    /// Load data from persistent storage.
+    /// Returns `Some(data)` if found, `None` otherwise.
+    pub fn load(key: &str) -> Option<Vec<u8>> {
+        let packed = unsafe { sys::storage_load(super::graphics::hash_key(key)) };
+        if packed == 0 {
+            return None;
+        }
+
+        let ptr = (packed >> 32) as u32;
+        let len = packed as u32;
+
+        // Read data from guest memory
+        let mut data = Vec::with_capacity(len as usize);
+        unsafe {
+            core::ptr::copy_nonoverlapping(ptr as *const u8, data.as_mut_ptr(), len as usize);
+            data.set_len(len as usize);
+        }
+
+        // Free the memory in guest space
+        unsafe { sys::storage_free(ptr, len) };
+
+        Some(data)
+    }
+}
+
 /// System API.
 pub mod system {
     use super::sys;
@@ -633,6 +681,7 @@ pub mod prelude {
     pub use crate::audio;
     pub use crate::graphics;
     pub use crate::input;
+    pub use crate::storage;
     pub use crate::system;
 }
 

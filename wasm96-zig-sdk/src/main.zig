@@ -46,6 +46,15 @@ pub const sys = struct {
     extern fn wasm96_graphics_bezier_cubic(x1: i32, y1: i32, cx1: i32, cy1: i32, cx2: i32, cy2: i32, x2: i32, y2: i32, segments: u32) void;
     extern fn wasm96_graphics_pill(x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_pill_outline(x: i32, y: i32, w: u32, h: u32) void;
+
+    // 3D Graphics
+    extern fn wasm96_graphics_set_3d(enable: u32) void;
+    extern fn wasm96_graphics_camera_look_at(eye_x: f32, eye_y: f32, eye_z: f32, target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) void;
+    extern fn wasm96_graphics_camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32) void;
+    extern fn wasm96_graphics_mesh_create(key: u64, v_ptr: [*]const f32, v_len: usize, i_ptr: [*]const u32, i_len: usize) u32;
+    extern fn wasm96_graphics_mesh_create_obj(key: u64, ptr: [*]const u8, len: usize) u32;
+    extern fn wasm96_graphics_mesh_create_stl(key: u64, ptr: [*]const u8, len: usize) u32;
+    extern fn wasm96_graphics_mesh_draw(key: u64, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32) void;
     extern fn wasm96_graphics_svg_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_svg_draw_key(key: u64, x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_svg_unregister(key: u64) void;
@@ -82,6 +91,10 @@ pub const sys = struct {
     extern fn wasm96_audio_play_xm(ptr: [*]const u8, len: usize) void;
 
     // System
+    extern fn wasm96_storage_save(key: u64, data_ptr: [*]const u8, data_len: usize) void;
+    extern fn wasm96_storage_load(key: u64) u64;
+    extern fn wasm96_storage_free(ptr: [*]const u8, len: usize) void;
+
     extern fn wasm96_system_log(ptr: [*]const u8, len: usize) void;
     extern fn wasm96_system_millis() u64;
 };
@@ -181,6 +194,50 @@ pub const graphics = struct {
     /// Draw a pill outline.
     pub fn pillOutline(x: i32, y: i32, w: u32, h: u32) void {
         sys.wasm96_graphics_pill_outline(x, y, w, h);
+    }
+
+    // =========================
+    // 3D Graphics
+    // =========================
+
+    /// Enable or disable 3D rendering mode.
+    pub fn set3d(enable: bool) void {
+        sys.wasm96_graphics_set_3d(@intFromBool(enable));
+    }
+
+    /// Set the camera view matrix using look-at parameters.
+    pub fn cameraLookAt(eye_x: f32, eye_y: f32, eye_z: f32, target_x: f32, target_y: f32, target_z: f32, up_x: f32, up_y: f32, up_z: f32) void {
+        sys.wasm96_graphics_camera_look_at(eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z);
+    }
+
+    /// Set the camera projection matrix.
+    pub fn cameraPerspective(fovy: f32, aspect: f32, near: f32, far: f32) void {
+        sys.wasm96_graphics_camera_perspective(fovy, aspect, near, far);
+    }
+
+    /// Create a mesh from raw vertex data.
+    /// Vertices are [x, y, z, u, v, nx, ny, nz] (8 floats).
+    /// Returns true on success.
+    pub fn meshCreate(key: []const u8, vertices: []const f32, indices: []const u32) bool {
+        return sys.wasm96_graphics_mesh_create(hashKey(key), vertices.ptr, vertices.len, indices.ptr, indices.len) != 0;
+    }
+
+    /// Create a mesh from OBJ source text.
+    /// Returns true on success.
+    pub fn meshCreateObj(key: []const u8, data: []const u8) bool {
+        return sys.wasm96_graphics_mesh_create_obj(hashKey(key), data.ptr, data.len) != 0;
+    }
+
+    /// Create a mesh from STL binary data.
+    /// Returns true on success.
+    pub fn meshCreateStl(key: []const u8, data: []const u8) bool {
+        return sys.wasm96_graphics_mesh_create_stl(hashKey(key), data.ptr, data.len) != 0;
+    }
+
+    /// Draw a mesh instance.
+    /// Rotation is Euler angles in radians (x, y, z).
+    pub fn meshDraw(key: []const u8, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32) void {
+        sys.wasm96_graphics_mesh_draw(hashKey(key), x, y, z, rx, ry, rz, sx, sy, sz);
     }
 
     /// Register an SVG resource under a string key.
@@ -331,6 +388,35 @@ pub const audio = struct {
     /// The XM data is decoded using xmrsplayer and played as a looping audio channel.
     pub fn playXm(data: []const u8) void {
         sys.wasm96_audio_play_xm(data.ptr, data.len);
+    }
+};
+
+/// Storage API.
+pub const storage = struct {
+    /// Save data to persistent storage.
+    pub fn save(key: []const u8, data: []const u8) void {
+        sys.wasm96_storage_save(graphics.hashKey(key), data.ptr, data.len);
+    }
+
+    /// Load data from persistent storage.
+    /// Returns the data if found, null otherwise.
+    pub fn load(allocator: std.mem.Allocator, key: []const u8) !?[]u8 {
+        const packed_result = sys.wasm96_storage_load(graphics.hashKey(key));
+        if (packed_result == 0) return null;
+
+        const ptr_int = packed_result >> 32;
+        const len = packed_result & 0xFFFFFFFF;
+
+        const ptr = @as([*]const u8, @ptrFromInt(ptr_int));
+
+        // Copy data from guest memory
+        const data = try allocator.alloc(u8, @as(usize, @intCast(len)));
+        @memcpy(data, ptr[0..@as(usize, @intCast(len))]);
+
+        // Free the memory in guest space
+        sys.wasm96_storage_free(ptr, @as(usize, @intCast(len)));
+
+        return data;
     }
 };
 

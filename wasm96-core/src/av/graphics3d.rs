@@ -1,416 +1,457 @@
-use crate::state;
-use glam::{Mat4, Vec3};
+//! 3D Graphics implementation using raw OpenGL (via `gl` crate).
+//!
+//! This module handles:
+//! - OpenGL context initialization (loading function pointers).
+//! - Managing 3D resources (meshes, shaders).
+//! - Drawing 3D scenes.
+//! - Compositing the 2D host framebuffer (overlay) onto the 3D scene.
+
 use std::collections::HashMap;
+use std::ffi::{CString, c_void};
+
 use std::sync::{Mutex, OnceLock};
-use wasmtime::Caller;
-use wgpu::util::DeviceExt;
+
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec3};
+
+use crate::state::global;
+
+// --- Data Structures ---
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub uv: [f32; 2],
+    pub normal: [f32; 3],
+}
+
+pub struct Mesh {
+    pub vao: u32,
+    #[allow(dead_code)]
+    pub vbo: u32,
+    #[allow(dead_code)]
+    pub ebo: u32,
+    pub index_count: i32,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct State3d {
+    pub enabled: bool,
+    pub view: Mat4,
+    pub projection: Mat4,
+}
+
+struct GlState {
+    // 3D Shader
+    program_3d: u32,
+    uniform_mvp: i32,
+    uniform_normal_mat: i32,
+    uniform_color: i32,
+
+    // Overlay Shader (2D)
+    program_overlay: u32,
+    #[allow(dead_code)]
+    uniform_tex: i32,
+
+    // Overlay Resources
+    overlay_vao: u32, // Empty VAO for attribute-less rendering
+    overlay_texture: u32,
+    overlay_texture_size: (u32, u32),
+
+    output_fbo: u32,
+}
+
+// --- Global State ---
+
+static STATE_3D: Mutex<State3d> = Mutex::new(State3d {
+    enabled: false,
+    view: Mat4::IDENTITY,
+    projection: Mat4::IDENTITY,
+});
 
 lazy_static::lazy_static! {
-    static ref STATE_3D: Mutex<State3d> = Mutex::new(State3d::default());
     static ref MESH_STORE: Mutex<HashMap<u64, Mesh>> = Mutex::new(HashMap::new());
 }
+static GL_STATE: OnceLock<Mutex<GlState>> = OnceLock::new();
 
-static WGPU_STATE: OnceLock<Option<Mutex<WgpuState>>> = OnceLock::new();
+// --- Shaders ---
 
-struct WgpuState {
-    instance: wgpu::Instance,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    target_texture: Option<wgpu::Texture>,
-    depth_texture: Option<wgpu::Texture>,
-    output_buffer: Option<wgpu::Buffer>,
-    texture_size: (u32, u32),
+const VS_3D_SRC: &str = r#"
+#version 330 core
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 uv;
+layout(location = 2) in vec3 normal;
+
+uniform mat4 mvp;
+uniform mat4 normal_mat;
+
+out vec3 v_normal;
+
+void main() {
+    gl_Position = mvp * vec4(position, 1.0);
+    v_normal = mat3(normal_mat) * normal;
+}
+"#;
+
+const FS_3D_SRC: &str = r#"
+#version 330 core
+in vec3 v_normal;
+uniform vec3 color;
+out vec4 FragColor;
+
+void main() {
+    // Simple directional lighting
+    vec3 light_dir = normalize(vec3(0.5, 1.0, 0.5));
+    float diff = max(dot(normalize(v_normal), light_dir), 0.2);
+    FragColor = vec4(color * diff, 1.0);
+}
+"#;
+
+const VS_OVERLAY_SRC: &str = r#"
+#version 330 core
+// Fullscreen triangle strip generated in shader
+const vec2 verts[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
+const vec2 uvs[4] = vec2[](vec2(0,1), vec2(1,1), vec2(0,0), vec2(1,0));
+
+out vec2 v_uv;
+
+void main() {
+    gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);
+    v_uv = uvs[gl_VertexID];
+}
+"#;
+
+const FS_OVERLAY_SRC: &str = r#"
+#version 330 core
+in vec2 v_uv;
+uniform sampler2D tex;
+out vec4 FragColor;
+
+void main() {
+    vec4 c = texture(tex, v_uv);
+    // Assume texture is BGRA (uploaded from XRGB/ARGB host buffer).
+    // If alpha is 0, discard to show 3D scene behind.
+    if (c.a == 0.0) discard;
+    FragColor = c;
+}
+"#;
+
+// --- Initialization ---
+
+pub fn init_gl_context<F>(loader: F)
+where
+    F: Fn(&str) -> *const c_void,
+{
+    // Load GL functions
+    gl::load_with(loader);
+
+    // Clear mesh store as GL context is new
+    MESH_STORE.lock().unwrap().clear();
+
+    // Initialize GL state
+    let program_3d = create_program(VS_3D_SRC, FS_3D_SRC);
+    check_gl_error("create_program 3d");
+    let program_overlay = create_program(VS_OVERLAY_SRC, FS_OVERLAY_SRC);
+    check_gl_error("create_program overlay");
+
+    let uniform_mvp = unsafe {
+        let name = CString::new("mvp").unwrap();
+        gl::GetUniformLocation(program_3d, name.as_ptr())
+    };
+    let uniform_normal_mat = unsafe {
+        let name = CString::new("normal_mat").unwrap();
+        gl::GetUniformLocation(program_3d, name.as_ptr())
+    };
+    let uniform_color = unsafe {
+        let name = CString::new("color").unwrap();
+        gl::GetUniformLocation(program_3d, name.as_ptr())
+    };
+
+    let uniform_tex = unsafe {
+        let name = CString::new("tex").unwrap();
+        gl::GetUniformLocation(program_overlay, name.as_ptr())
+    };
+    check_gl_error("get uniforms");
+
+    let mut overlay_vao = 0;
+    let mut overlay_texture = 0;
+    unsafe {
+        gl::GenVertexArrays(1, &mut overlay_vao);
+        gl::GenTextures(1, &mut overlay_texture);
+
+        // Setup default texture params
+        gl::BindTexture(gl::TEXTURE_2D, overlay_texture);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+    }
+    check_gl_error("overlay setup");
+
+    let state = GlState {
+        program_3d,
+        uniform_mvp,
+        uniform_normal_mat,
+        uniform_color,
+        program_overlay,
+        uniform_tex,
+        overlay_vao,
+        overlay_texture,
+        overlay_texture_size: (0, 0),
+        output_fbo: 0,
+    };
+
+    GL_STATE.get_or_init(|| Mutex::new(state));
+
+    // Initial GL setup
+    unsafe {
+        gl::Enable(gl::DEPTH_TEST);
+        gl::Enable(gl::CULL_FACE);
+        gl::CullFace(gl::BACK);
+        gl::FrontFace(gl::CCW);
+    }
+
+    check_gl_error("init_gl_context");
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    uv: [f32; 2],
-    normal: [f32; 3],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Uniforms {
-    mvp: [[f32; 4]; 4],
-    normal_mat: [[f32; 4]; 4],
-}
-
-struct Mesh {
-    vertices: Vec<Vertex>,
-    indices: Vec<u32>,
-    gpu_buffers: Option<(wgpu::Buffer, wgpu::Buffer)>,
-}
-
-struct State3d {
-    enabled: bool,
-    view: Mat4,
-    projection: Mat4,
-}
-
-impl Default for State3d {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            view: Mat4::IDENTITY,
-            projection: Mat4::IDENTITY,
+fn check_gl_error(label: &str) {
+    unsafe {
+        let mut err = gl::GetError();
+        while err != gl::NO_ERROR {
+            eprintln!("GL Error at {}: 0x{:X}", label, err);
+            err = gl::GetError();
         }
     }
 }
 
-// Minimal block_on for wgpu async init
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+fn create_program(vs_src: &str, fs_src: &str) -> u32 {
+    unsafe {
+        let vs = compile_shader(gl::VERTEX_SHADER, vs_src);
+        let fs = compile_shader(gl::FRAGMENT_SHADER, fs_src);
+        let program = gl::CreateProgram();
+        gl::AttachShader(program, vs);
+        gl::AttachShader(program, fs);
+        gl::LinkProgram(program);
 
-    unsafe fn clone(_: *const ()) -> RawWaker {
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-    unsafe fn wake(_: *const ()) {}
-    unsafe fn wake_by_ref(_: *const ()) {}
-    unsafe fn drop(_: *const ()) {}
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-
-    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
-    let mut context = Context::from_waker(&waker);
-    let mut pinned = Box::pin(future);
-
-    loop {
-        match pinned.as_mut().poll(&mut context) {
-            Poll::Ready(val) => return val,
-            Poll::Pending => std::thread::yield_now(),
+        // Check link status
+        let mut success = 0;
+        gl::GetProgramiv(program, gl::LINK_STATUS, &mut success);
+        if success == 0 {
+            let mut len = 0;
+            gl::GetProgramiv(program, gl::INFO_LOG_LENGTH, &mut len);
+            let mut buffer = Vec::with_capacity(len as usize);
+            buffer.set_len((len as usize) - 1);
+            gl::GetProgramInfoLog(
+                program,
+                len,
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr() as *mut i8,
+            );
+            eprintln!("Program link error: {}", String::from_utf8_lossy(&buffer));
         }
+
+        gl::DeleteShader(vs);
+        gl::DeleteShader(fs);
+        program
     }
 }
 
-pub fn init_gl_context() {
-    // Initialize WGPU on the first context reset
-    WGPU_STATE.get_or_init(|| {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+fn compile_shader(type_: u32, src: &str) -> u32 {
+    unsafe {
+        let shader = gl::CreateShader(type_);
+        let c_str = CString::new(src).unwrap();
+        gl::ShaderSource(shader, 1, &c_str.as_ptr(), std::ptr::null());
+        gl::CompileShader(shader);
 
-        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }));
-
-        let adapter = match adapter {
-            Ok(a) => a,
-            Err(e) => {
-                eprintln!("Failed to find an appropriate wgpu adapter: {:?}", e);
-                return None;
-            }
-        };
-
-        let (device, queue): (wgpu::Device, wgpu::Queue) =
-            match block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                label: Some("Wasm96 Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-                ..Default::default()
-            })) {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("Failed to create wgpu device: {:?}", e);
-                    return None;
-                }
-            };
-
-        // Shader
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-                "shader.wgsl"
-            ))),
-        });
-
-        // Uniforms
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Pipeline"),
-            layout: Some(&pipeline_layout),
-            multiview_mask: None,
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            offset: 0,
-                            shader_location: 0,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: 12,
-                            shader_location: 1,
-                            format: wgpu::VertexFormat::Float32x2,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: 20,
-                            shader_location: 2,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                    ],
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-
-            cache: None,
-        });
-
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Uniform Buffer"),
-            size: std::mem::size_of::<Uniforms>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-        });
-
-        Some(Mutex::new(WgpuState {
-            instance,
-            device,
-            queue,
-            pipeline,
-            uniform_buffer,
-            bind_group,
-            target_texture: None,
-            depth_texture: None,
-            output_buffer: None,
-            texture_size: (0, 0),
-        }))
-    });
+        // Check compile status
+        let mut success = 0;
+        gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
+        if success == 0 {
+            let mut len = 0;
+            gl::GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut len);
+            let mut buffer = Vec::with_capacity(len as usize);
+            buffer.set_len((len as usize) - 1);
+            gl::GetShaderInfoLog(
+                shader,
+                len,
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr() as *mut i8,
+            );
+            eprintln!("Shader compile error: {}", String::from_utf8_lossy(&buffer));
+        }
+        shader
+    }
 }
 
-pub fn graphics_set_3d(enable: bool) {
-    let mut state = STATE_3D.lock().unwrap();
-    state.enabled = enable;
-    if enable {
-        init_gl_context();
-    }
+// --- API ---
+
+pub fn graphics_set_3d(enabled: bool) {
+    let mut s = STATE_3D.lock().unwrap();
+    s.enabled = enabled;
+
+    // If enabling 3D, we might want to clear the framebuffer here?
+    // For now, we rely on the frame loop.
 }
 
 pub fn graphics_camera_look_at(
     eye_x: f32,
     eye_y: f32,
     eye_z: f32,
-    target_x: f32,
-    target_y: f32,
-    target_z: f32,
+    center_x: f32,
+    center_y: f32,
+    center_z: f32,
     up_x: f32,
     up_y: f32,
     up_z: f32,
 ) {
-    let mut state = STATE_3D.lock().unwrap();
-    state.view = Mat4::look_at_rh(
+    let mut s = STATE_3D.lock().unwrap();
+    s.view = Mat4::look_at_rh(
         Vec3::new(eye_x, eye_y, eye_z),
-        Vec3::new(target_x, target_y, target_z),
+        Vec3::new(center_x, center_y, center_z),
         Vec3::new(up_x, up_y, up_z),
     );
 }
 
 pub fn graphics_camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32) {
-    let mut state = STATE_3D.lock().unwrap();
-    state.projection = Mat4::perspective_rh(fovy, aspect, near, far);
+    let mut s = STATE_3D.lock().unwrap();
+    s.projection = Mat4::perspective_rh(fovy, aspect, near, far);
 }
 
 pub fn graphics_mesh_create(
-    caller: &mut Caller<'_, ()>,
+    env: &mut wasmtime::Caller<'_, ()>,
     key: u64,
     v_ptr: u32,
     v_len: u32,
     i_ptr: u32,
     i_len: u32,
 ) -> u32 {
-    let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
-        Some(m) => m,
-        None => return 0,
+    let memory = match env.get_export("memory") {
+        Some(wasmtime::Extern::Memory(m)) => m,
+        _ => return 0,
     };
 
-    let v_byte_len = (v_len as usize) * 8 * 4;
-    let mut v_bytes = vec![0u8; v_byte_len];
-    if memory
-        .read(&mut *caller, v_ptr as usize, &mut v_bytes)
-        .is_err()
-    {
-        return 0;
-    }
+    let (vertices, indices) = {
+        let data = memory.data(env);
+        let v_size = std::mem::size_of::<Vertex>();
+        let v_bytes = v_len as usize * v_size;
+        let i_bytes = i_len as usize * 4; // u32 indices
 
-    let mut vertices = Vec::with_capacity(v_len as usize);
-    for i in 0..v_len as usize {
-        let offset = i * 8 * 4;
-        let floats: &[f32] = bytemuck::cast_slice(&v_bytes[offset..offset + 32]);
-        vertices.push(Vertex {
-            position: [floats[0], floats[1], floats[2]],
-            uv: [floats[3], floats[4]],
-            normal: [floats[5], floats[6], floats[7]],
-        });
-    }
+        let v_ptr = v_ptr as usize;
+        let i_ptr = i_ptr as usize;
 
-    let i_byte_len = (i_len as usize) * 4;
-    let mut i_bytes = vec![0u8; i_byte_len];
-    if memory
-        .read(&mut *caller, i_ptr as usize, &mut i_bytes)
-        .is_err()
-    {
-        return 0;
-    }
-    let indices: Vec<u32> = bytemuck::cast_slice(&i_bytes).to_vec();
-
-    let mut meshes = MESH_STORE.lock().unwrap();
-    meshes.insert(
-        key,
-        Mesh {
-            vertices,
-            indices,
-            gpu_buffers: None,
-        },
-    );
-    1
-}
-
-pub fn graphics_mesh_create_obj(caller: &mut Caller<'_, ()>, key: u64, ptr: u32, len: u32) -> u32 {
-    let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
-        Some(m) => m,
-        None => return 0,
-    };
-
-    let mut bytes = vec![0u8; len as usize];
-    if memory.read(&mut *caller, ptr as usize, &mut bytes).is_err() {
-        return 0;
-    }
-
-    let Ok(obj): Result<obj::Obj<obj::TexturedVertex, u32>, _> =
-        obj::load_obj(std::io::Cursor::new(&bytes))
-    else {
-        return 0;
-    };
-
-    let mut vertices = Vec::new();
-    for v in obj.vertices {
-        vertices.push(Vertex {
-            position: v.position,
-            uv: [v.texture[0], v.texture[1]],
-            normal: v.normal,
-        });
-    }
-    let indices = obj.indices;
-
-    let mut meshes = MESH_STORE.lock().unwrap();
-    meshes.insert(
-        key,
-        Mesh {
-            vertices,
-            indices,
-            gpu_buffers: None,
-        },
-    );
-    1
-}
-
-pub fn graphics_mesh_create_stl(caller: &mut Caller<'_, ()>, key: u64, ptr: u32, len: u32) -> u32 {
-    let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
-        Some(m) => m,
-        None => return 0,
-    };
-
-    let mut bytes = vec![0u8; len as usize];
-    if memory.read(&mut *caller, ptr as usize, &mut bytes).is_err() {
-        return 0;
-    }
-
-    let mut reader = std::io::Cursor::new(&bytes);
-    let Ok(mesh) = nom_stl::parse_stl(&mut reader) else {
-        return 0;
-    };
-
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    for triangle in mesh.triangles() {
-        let n = triangle.normal();
-        for v in triangle.vertices() {
-            vertices.push(Vertex {
-                position: v,
-                uv: [0.0, 0.0],
-                normal: n,
-            });
-            indices.push((vertices.len() - 1) as u32);
+        if v_ptr + v_bytes > data.len() || i_ptr + i_bytes > data.len() {
+            return 0;
         }
+
+        let v_slice = &data[v_ptr..v_ptr + v_bytes];
+        let i_slice = &data[i_ptr..i_ptr + i_bytes];
+
+        let vertices: &[Vertex] = bytemuck::cast_slice(v_slice);
+        let indices: &[u32] = bytemuck::cast_slice(i_slice);
+
+        (vertices.to_vec(), indices.to_vec())
+    };
+
+    let mut vao = 0;
+    let mut vbo = 0;
+    let mut ebo = 0;
+
+    if GL_STATE.get().is_none() {
+        return 0;
     }
 
-    let mut meshes = MESH_STORE.lock().unwrap();
-    meshes.insert(
+    unsafe {
+        gl::GenVertexArrays(1, &mut vao);
+        gl::GenBuffers(1, &mut vbo);
+        gl::GenBuffers(1, &mut ebo);
+
+        gl::BindVertexArray(vao);
+
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            (vertices.len() * std::mem::size_of::<Vertex>()) as isize,
+            vertices.as_ptr() as *const c_void,
+            gl::STATIC_DRAW,
+        );
+
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+        gl::BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (indices.len() * 4) as isize,
+            indices.as_ptr() as *const c_void,
+            gl::STATIC_DRAW,
+        );
+
+        // Vertex attributes
+        // 0: Position (3 floats)
+        gl::VertexAttribPointer(
+            0,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            0 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(0);
+
+        // 1: UV (2 floats)
+        gl::VertexAttribPointer(
+            1,
+            2,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            12 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(1);
+
+        // 2: Normal (3 floats)
+        gl::VertexAttribPointer(
+            2,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            20 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(2);
+
+        gl::BindVertexArray(0);
+
+        check_gl_error("graphics_mesh_create");
+    }
+
+    let mut store = MESH_STORE.lock().unwrap();
+    store.insert(
         key,
         Mesh {
-            vertices,
-            indices,
-            gpu_buffers: None,
+            vao,
+            vbo,
+            ebo,
+            index_count: i_len as i32,
         },
     );
     1
+}
+
+pub fn graphics_mesh_create_obj(
+    _env: &mut wasmtime::Caller<'_, ()>,
+    _key: u64,
+    _ptr: u32,
+    _len: u32,
+) -> u32 {
+    0
+}
+
+pub fn graphics_mesh_create_stl(
+    _env: &mut wasmtime::Caller<'_, ()>,
+    _key: u64,
+    _ptr: u32,
+    _len: u32,
+) -> u32 {
+    0
 }
 
 pub fn graphics_mesh_draw(
@@ -425,290 +466,201 @@ pub fn graphics_mesh_draw(
     sy: f32,
     sz: f32,
 ) {
-    let state = STATE_3D.lock().unwrap();
-    if !state.enabled {
+    let gl_state_lock = GL_STATE.get();
+    if gl_state_lock.is_none() {
+        return;
+    }
+    let gl_state = gl_state_lock.unwrap().lock().unwrap();
+
+    let state_3d = STATE_3D.lock().unwrap();
+    if !state_3d.enabled {
         return;
     }
 
-    let Some(wgpu_mutex) = WGPU_STATE.get().and_then(|opt| opt.as_ref()) else {
-        return;
-    };
-    let mut wgpu_state = wgpu_mutex.lock().unwrap();
-
-    let mut meshes = MESH_STORE.lock().unwrap();
-    let Some(mesh) = meshes.get_mut(&key) else {
-        return;
+    let store = MESH_STORE.lock().unwrap();
+    let mesh = match store.get(&key) {
+        Some(m) => m,
+        None => return,
     };
 
-    // Upload mesh if needed
-    if mesh.gpu_buffers.is_none() {
-        let vb = wgpu_state
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Mesh VB"),
-                contents: bytemuck::cast_slice(&mesh.vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let ib = wgpu_state
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Mesh IB"),
-                contents: bytemuck::cast_slice(&mesh.indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
-        mesh.gpu_buffers = Some((vb, ib));
-    }
-
-    // Ensure textures match screen size
-    let (width, height) = {
-        let global = state::global().lock().unwrap();
-        (global.video.width, global.video.height)
-    };
-
-    if wgpu_state.texture_size != (width, height) {
-        let texture = wgpu_state.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Target Texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-
-        let depth_texture = wgpu_state.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Depth Texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-
-        // Buffer for readback
-        let _output_buffer_size = (width * height * 4) as wgpu::BufferAddress;
-        // Align to 256 bytes
-        let aligned_width_bytes = (width * 4 + 255) & !255;
-        let aligned_output_buffer_size = (aligned_width_bytes * height) as wgpu::BufferAddress;
-
-        let output_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Output Buffer"),
-            size: aligned_output_buffer_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        wgpu_state.target_texture = Some(texture);
-        wgpu_state.depth_texture = Some(depth_texture);
-        wgpu_state.output_buffer = Some(output_buffer);
-        wgpu_state.texture_size = (width, height);
-    }
-
-    // Update Uniforms
+    // Calculate matrices
     let model = Mat4::from_translation(Vec3::new(x, y, z))
-        * Mat4::from_euler(glam::EulerRot::XYZ, rx, ry, rz)
+        * Mat4::from_rotation_z(rz)
+        * Mat4::from_rotation_y(ry)
+        * Mat4::from_rotation_x(rx)
         * Mat4::from_scale(Vec3::new(sx, sy, sz));
-    let mvp = state.projection * state.view * model;
+
+    let mvp = state_3d.projection * state_3d.view * model;
     let normal_mat = model.inverse().transpose();
 
-    let uniforms = Uniforms {
-        mvp: mvp.to_cols_array_2d(),
-        normal_mat: normal_mat.to_cols_array_2d(),
-    };
-    wgpu_state.queue.write_buffer(
-        &wgpu_state.uniform_buffer,
-        0,
-        bytemuck::cast_slice(&[uniforms]),
-    );
+    unsafe {
+        gl::BindFramebuffer(gl::FRAMEBUFFER, gl_state.output_fbo);
+        gl::UseProgram(gl_state.program_3d);
 
-    // Render
-    let mut encoder = wgpu_state
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        gl::UniformMatrix4fv(
+            gl_state.uniform_mvp,
+            1,
+            gl::FALSE,
+            mvp.to_cols_array().as_ptr(),
+        );
+        gl::UniformMatrix4fv(
+            gl_state.uniform_normal_mat,
+            1,
+            gl::FALSE,
+            normal_mat.to_cols_array().as_ptr(),
+        );
 
-    {
-        let view = wgpu_state
-            .target_texture
-            .as_ref()
-            .unwrap()
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let depth_view = wgpu_state
-            .depth_texture
-            .as_ref()
-            .unwrap()
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        // Get color from global state or use default
+        // Previous implementation used a uniform color.
+        // We'll use white for now or get it from `VideoState`?
+        // `VideoState` has `draw_color`.
+        let color_u32 = global().lock().unwrap().video.draw_color;
+        let r = ((color_u32 >> 16) & 0xFF) as f32 / 255.0;
+        let g = ((color_u32 >> 8) & 0xFF) as f32 / 255.0;
+        let b = (color_u32 & 0xFF) as f32 / 255.0;
+        gl::Uniform3f(gl_state.uniform_color, r, g, b);
 
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            multiview_mask: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load, // Accumulate
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load, // Accumulate depth
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
+        gl::BindVertexArray(mesh.vao);
+        gl::DrawElements(
+            gl::TRIANGLES,
+            mesh.index_count,
+            gl::UNSIGNED_INT,
+            std::ptr::null(),
+        );
+        gl::BindVertexArray(0);
 
-        if let Some((vb, ib)) = &mesh.gpu_buffers {
-            rpass.set_pipeline(&wgpu_state.pipeline);
-            rpass.set_bind_group(0, &wgpu_state.bind_group, &[]);
-            rpass.set_vertex_buffer(0, vb.slice(..));
-            rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
-        }
+        check_gl_error("graphics_mesh_draw");
     }
-
-    wgpu_state.queue.submit(Some(encoder.finish()));
 }
 
+#[allow(dead_code)]
 pub fn clear_depth() {
-    if let Some(wgpu_mutex) = WGPU_STATE.get().and_then(|opt| opt.as_ref()) {
-        let wgpu_state = wgpu_mutex.lock().unwrap();
-        if let Some(target) = &wgpu_state.target_texture {
-            let view = target.create_view(&wgpu::TextureViewDescriptor::default());
-            let depth_view = wgpu_state
-                .depth_texture
-                .as_ref()
-                .unwrap()
-                .create_view(&wgpu::TextureViewDescriptor::default());
-
-            let mut encoder = wgpu_state
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-            {
-                let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Clear Pass"),
-                    multiview_mask: None,
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-            }
-            wgpu_state.queue.submit(Some(encoder.finish()));
-        }
+    unsafe {
+        gl::Clear(gl::DEPTH_BUFFER_BIT);
     }
 }
 
-pub fn flush_to_host() {
-    let Some(wgpu_mutex) = WGPU_STATE.get().and_then(|opt| opt.as_ref()) else {
+pub fn prepare_frame(fbo: usize) {
+    let gl_state_lock = GL_STATE.get();
+    if gl_state_lock.is_none() {
         return;
+    }
+    let mut gl_state = gl_state_lock.unwrap().lock().unwrap();
+    gl_state.output_fbo = fbo as u32;
+
+    let (width, height) = {
+        let s = global().lock().unwrap();
+        (s.video.width, s.video.height)
     };
-    let wgpu_state = wgpu_mutex.lock().unwrap();
-    let Some(texture) = &wgpu_state.target_texture else {
-        return;
-    };
-    let Some(output_buffer) = &wgpu_state.output_buffer else {
-        return;
-    };
 
-    let (width, height) = wgpu_state.texture_size;
-    let aligned_width_bytes = (width * 4 + 255) & !255;
-
-    let mut encoder = wgpu_state
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-    encoder.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo {
-            texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        wgpu::TexelCopyBufferInfo {
-            buffer: output_buffer,
-            layout: wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(aligned_width_bytes),
-                rows_per_image: Some(height),
-            },
-        },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-    );
-
-    let _index = wgpu_state.queue.submit(Some(encoder.finish()));
-
-    let buffer_slice = output_buffer.slice(..);
-    let (tx, rx) = std::sync::mpsc::channel();
-    buffer_slice.map_async(wgpu::MapMode::Read, move |v| tx.send(v).unwrap());
-    wgpu_state.instance.poll_all(true);
-    rx.recv().unwrap().unwrap();
-
-    {
-        let data = buffer_slice.get_mapped_range();
-        let mut global = state::global().lock().unwrap();
-        let fb = &mut global.video.framebuffer;
-
-        // Copy row by row to handle padding
-        for y in 0..height {
-            let src_offset = (y * aligned_width_bytes) as usize;
-            let dst_offset = (y * width) as usize;
-            let src_row = &data[src_offset..src_offset + (width as usize) * 4];
-            let dst_row = &mut fb[dst_offset..dst_offset + (width as usize)];
-
-            // Convert RGBA (wgpu) to ARGB (libretro)
-            // WGPU Rgba8Unorm: R, G, B, A
-            // Libretro XRGB8888: B, G, R, X (Little Endian u32) -> 0x00RRGGBB
-            // Actually, libretro ARGB8888 is 0xAARRGGBB.
-            // Let's assume we just need to pack it.
-            for (i, pixel) in dst_row.iter_mut().enumerate() {
-                let r = src_row[i * 4];
-                let g = src_row[i * 4 + 1];
-                let b = src_row[i * 4 + 2];
-                let a = src_row[i * 4 + 3];
-
-                if a > 0 {
-                    // If alpha > 0, we overwrite.
-                    *pixel =
-                        ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-                }
-            }
-        }
+    unsafe {
+        gl::BindFramebuffer(gl::FRAMEBUFFER, fbo as u32);
+        gl::Viewport(0, 0, width as i32, height as i32);
     }
 
-    output_buffer.unmap();
+    check_gl_error("prepare_frame");
+}
+
+pub fn flush_to_host() -> bool {
+    let gl_state_lock = GL_STATE.get();
+    if gl_state_lock.is_none() {
+        return false;
+    }
+    let mut gl_state = gl_state_lock.unwrap().lock().unwrap();
+
+    let (width, height, fb, video_cb) = {
+        let s = global().lock().unwrap();
+        (
+            s.video.width,
+            s.video.height,
+            s.video.framebuffer.clone(),
+            s.video_refresh_cb,
+        )
+    };
+
+    if width == 0 || height == 0 {
+        return true;
+    }
+
+    unsafe {
+        // 1. Upload 2D framebuffer to texture
+        gl::BindTexture(gl::TEXTURE_2D, gl_state.overlay_texture);
+
+        if gl_state.overlay_texture_size != (width, height) {
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGBA8 as i32,
+                width as i32,
+                height as i32,
+                0,
+                gl::BGRA,
+                gl::UNSIGNED_BYTE,
+                fb.as_ptr() as *const c_void,
+            );
+            gl_state.overlay_texture_size = (width, height);
+        } else {
+            gl::TexSubImage2D(
+                gl::TEXTURE_2D,
+                0,
+                0,
+                0,
+                width as i32,
+                height as i32,
+                gl::BGRA,
+                gl::UNSIGNED_BYTE,
+                fb.as_ptr() as *const c_void,
+            );
+        }
+
+        // 2. Draw Overlay
+        gl::BindFramebuffer(gl::FRAMEBUFFER, gl_state.output_fbo);
+
+        // Enable blending for transparency
+        gl::Enable(gl::BLEND);
+        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+
+        gl::UseProgram(gl_state.program_overlay);
+        gl::BindVertexArray(gl_state.overlay_vao);
+        gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+
+        gl::Disable(gl::BLEND);
+        gl::BindVertexArray(0);
+
+        // 3. Present
+        // In HW render mode, we call video_refresh with RETRO_HW_FRAME_BUFFER_VALID (-1 cast to ptr)
+        if let Some(cb) = video_cb {
+            cb(
+                libretro_sys::HW_FRAME_BUFFER_VALID as *const c_void,
+                width,
+                height,
+                0, // Pitch is ignored for HW render
+            );
+        }
+
+        check_gl_error("flush_to_host");
+    }
+    true
+}
+
+// Helper to clear the screen at the start of the frame (if needed)
+// This should be called by the core loop, but we don't have a hook there yet.
+// For now, we can rely on the fact that we draw 3D over whatever was there,
+// and if we want a clear, we should add `graphics_clear` API.
+// But `graphics_background` in 2D clears the 2D buffer.
+// We might want `graphics_clear_3d`?
+// I'll add a public function that the core *could* call if I modified `lib.rs`.
+pub fn clear_framebuffer(r: f32, g: f32, b: f32, a: f32) -> bool {
+    let gl_state_lock = GL_STATE.get();
+    if gl_state_lock.is_none() {
+        return false;
+    }
+    let gl_state = gl_state_lock.unwrap().lock().unwrap();
+
+    unsafe {
+        gl::BindFramebuffer(gl::FRAMEBUFFER, gl_state.output_fbo);
+        gl::ClearColor(r, g, b, a);
+        gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+    }
+    true
 }

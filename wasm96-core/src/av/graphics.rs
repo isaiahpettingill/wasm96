@@ -34,21 +34,33 @@ pub fn graphics_set_size(width: u32, height: u32) {
 }
 
 /// Set the current drawing color.
-pub fn graphics_set_color(r: u32, g: u32, b: u32, _a: u32) {
+pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
     let mut s = global().lock().unwrap();
-    // Pack as 0x00RRGGBB (XRGB8888). We ignore Alpha for the framebuffer format usually,
-    // but we might use it for blending later. For now, simple overwrite.
-    // Libretro XRGB8888 expects 0x00RRGGBB.
-    let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    // Pack as 0xAARRGGBB (ARGB8888).
+    // We use the alpha channel for the overlay shader (0 = transparent).
+    let color = ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
     s.video.draw_color = color;
 }
 
 /// Clear the screen to a specific color.
 pub fn graphics_background(r: u32, g: u32, b: u32) {
+    // Clear GL framebuffer (color + depth)
+    let gl_cleared = super::graphics3d::clear_framebuffer(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        1.0,
+    );
+
     let mut s = global().lock().unwrap();
-    let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
-    s.video.framebuffer.fill(color);
-    super::graphics3d::clear_depth();
+    if gl_cleared {
+        // Clear software framebuffer to transparent so it doesn't occlude the 3D scene
+        s.video.framebuffer.fill(0x00000000);
+    } else {
+        // Fallback for software rendering: clear to requested color
+        let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+        s.video.framebuffer.fill(color);
+    }
 }
 
 /// Draw a single pixel.
@@ -1396,30 +1408,26 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
 /// Present the framebuffer to libretro.
 pub fn video_present_host() {
     // Flush any 3D content to the framebuffer before presenting
-    super::graphics3d::flush_to_host();
+    if super::graphics3d::flush_to_host() {
+        return;
+    }
 
-    let (handle_ptr, _width, _height, fb) = {
+    let (video_cb, width, height, fb) = {
         let s = global().lock().unwrap();
         (
-            s.handle,
+            s.video_refresh_cb,
             s.video.width,
             s.video.height,
             s.video.framebuffer.clone(),
         )
     };
 
-    if handle_ptr.is_null() {
-        return;
+    if let Some(cb) = video_cb {
+        let data_ptr = fb.as_ptr() as *const std::ffi::c_void;
+        let pitch = (width * 4) as usize;
+
+        unsafe {
+            cb(data_ptr, width, height, pitch);
+        }
     }
-
-    // Convert Vec<u32> to &[u8] for libretro.
-    // XRGB8888 is 4 bytes per pixel.
-    // We can cast the slice safely because the layout is compatible (little endian).
-    let data_ptr = fb.as_ptr() as *const u8;
-    let data_len = fb.len() * 4;
-    let data_slice = unsafe { std::slice::from_raw_parts(data_ptr, data_len) };
-
-    // SAFETY: handle pointer checked.
-    let h = unsafe { &mut *handle_ptr };
-    h.upload_video_frame(data_slice);
 }

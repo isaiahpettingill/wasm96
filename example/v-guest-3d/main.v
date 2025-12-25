@@ -1,6 +1,7 @@
 module main
 
-import wasm96
+import isaiahpettingill.wasm96
+
 
 __global (
 	cube_rot f32

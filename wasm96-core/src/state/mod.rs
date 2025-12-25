@@ -8,7 +8,7 @@
 //! - Guest issues commands (draw rect, line, etc.) which modify the host framebuffer.
 //! - Host presents the framebuffer to libretro at the end of the frame.
 
-use libretro_backend::RuntimeHandle;
+use libretro_sys::{AudioSampleBatchFn, AudioSampleFn, InputPollFn, InputStateFn, VideoRefreshFn};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -70,8 +70,12 @@ impl Default for AudioChannel {
 /// - host import functions
 #[derive(Default)]
 pub struct GlobalState {
-    /// Current libretro runtime handle.
-    pub handle: *mut RuntimeHandle,
+    // Callbacks
+    pub video_refresh_cb: Option<VideoRefreshFn>,
+    pub audio_sample_cb: Option<AudioSampleFn>,
+    pub audio_sample_batch_cb: Option<AudioSampleBatchFn>,
+    pub input_poll_cb: Option<InputPollFn>,
+    pub input_state_cb: Option<InputStateFn>,
 
     /// Guest linear memory export (`memory`) for the Wasmtime runtime.
     ///
@@ -180,9 +184,24 @@ pub struct InputState {
     pub mouse_buttons: u32,
 }
 
-pub fn set_runtime_handle(handle: &mut RuntimeHandle) {
-    let mut s = global().lock().unwrap();
-    s.handle = handle as *mut _;
+pub fn set_video_refresh_cb(cb: Option<VideoRefreshFn>) {
+    global().lock().unwrap().video_refresh_cb = cb;
+}
+
+pub fn set_audio_sample_cb(cb: Option<AudioSampleFn>) {
+    global().lock().unwrap().audio_sample_cb = cb;
+}
+
+pub fn set_audio_sample_batch_cb(cb: Option<AudioSampleBatchFn>) {
+    global().lock().unwrap().audio_sample_batch_cb = cb;
+}
+
+pub fn set_input_poll_cb(cb: Option<InputPollFn>) {
+    global().lock().unwrap().input_poll_cb = cb;
+}
+
+pub fn set_input_state_cb(cb: Option<InputStateFn>) {
+    global().lock().unwrap().input_state_cb = cb;
 }
 
 /// Set the guest memory for the Wasmtime runtime.
@@ -201,7 +220,12 @@ pub fn clear_on_unload() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    s.handle = std::ptr::null_mut();
+    s.video_refresh_cb = None;
+    s.audio_sample_cb = None;
+    s.audio_sample_batch_cb = None;
+    s.input_poll_cb = None;
+    s.input_state_cb = None;
+
     s.memory_wasmtime = std::ptr::null();
     s.memory_owned = None;
 
