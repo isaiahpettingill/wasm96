@@ -129,7 +129,7 @@ These limitations are worked around in the SDK implementation, but may affect cu
 
 ### Alternative Compilation Methods
 
-Compiling V code to C and then to WebAssembly using external C compilers (e.g., zig cc) is not currently supported due to missing libraries in the WASI environment, such as garbage collection headers and mmap emulation. Stick to V's native WASM backend for compilation.
+Compiling V code to C and then to WebAssembly using external C compilers (e.g., zig cc) is not currently supported due to missing libraries in the WASI environment, such as garbage collection headers and mmap emulation. Despite multiple attempts, building V guests for wasm96 has proven impossible thus far due to V's WebAssembly backend limitations and compatibility issues. Stick to V's native WASM backend for compilation, though it also has significant limitations.
 
 ## ABI Compatibility
 
