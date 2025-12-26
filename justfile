@@ -4,6 +4,26 @@ build-sdks:
     cd wasm96-go-sdk && go build .
     cd wasm96-zig-sdk && zig build
 
+# --- Release helpers (examples) ----------------------------------------------
+#
+# Build all guest examples and collect them into:
+#   dist/examples/*.w96
+#
+# `.w96` is just a renamed `.wasm` file (same bytes), convenient for distributing
+# example guests alongside the core releases.
+#
+# Requirements depend on which examples you have installed tooling for:
+# - Rust + wasm32-unknown-unknown target (Rust examples)
+# - zig (Zig examples, and C/C++ examples via zig cc/c++)
+# - node + npm (AssemblyScript example)
+# - wabt (wat2wasm) (WAT example)
+#
+# Usage:
+#   just dist-examples
+
+dist-examples:
+    sh ./scripts/dist-examples.sh
+
 build-core:
     cargo build -p wasm96-core --release
 
