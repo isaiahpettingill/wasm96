@@ -36,10 +36,18 @@ zig-out/bin/zig-guest-3d.wasm
 
 ## Controls (joypad)
 
-- D-Pad Up/Down: camera pitch
-- L1/R1: camera yaw (rotate left/right)
-- A: accelerate forward (relative to camera yaw)
-- B: brake
+Movement (relative to your current viewport):
+- D-Pad Up: move forward
+- D-Pad Down: move backward
+- D-Pad Left: strafe left
+- D-Pad Right: strafe right
+
+Camera:
+- L1/R1: yaw (rotate left/right)
+- X/Y: pitch (look up/down)
+- A/B: roll (tilt)
+
+Other:
 - Y: jump
 - Start: reset
 

@@ -60,6 +60,18 @@ run-v-guest-3d:
     cd example/v-guest-3d && just build
     just run ./example/v-guest-3d/v-guest-3d.wasm
 
+build-c-guest:
+    cd example/c-guest && make
+
+run-c-guest: build-c-guest
+    just run ./example/c-guest/wasm96-example.wasm
+
+build-cpp-guest:
+    cd example/cpp-guest && make
+
+run-cpp-guest: build-cpp-guest
+    just run ./example/cpp-guest/wasm96-example.wasm
+
 run-wat-guest:
     cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
     just run ./example/wat-guest/wat-guest.wasm

@@ -11,6 +11,33 @@ Wasmtime configuration is set up to enable a broad set of WebAssembly feature fl
 cargo build --release --package wasm96-core
 ```
 
+## C / C++ SDK + guests (Zig toolchain)
+The repository includes:
+- C SDK header: `wasm96-c-sdk/wasm96.h`
+- C++ SDK header: `wasm96-cpp-sdk/wasm96.hpp`
+- Example guests:
+  - `example/c-guest/`
+  - `example/cpp-guest/`
+
+### Build with `just`
+- Build the C guest:
+  - `just build-c-guest`
+- Run the C guest:
+  - `just run-c-guest`
+
+- Build the C++ guest:
+  - `just build-cpp-guest`
+- Run the C++ guest:
+  - `just run-cpp-guest`
+
+### How it works
+The C and C++ guests are built as **freestanding** WebAssembly modules (no WASI `_start`, no `main`), exporting:
+- `setup`
+- `update`
+- `draw`
+
+The wasm96 host API functions are treated as **WebAssembly imports** (provided by the wasm96 core at runtime).
+
 ## Materials (MTL) + textures (PNG/JPEG)
 The core supports an OBJ-style workflow where you can load a `.mtl` material file and register its referenced diffuse textures (`map_Kd`) as keyed images.
 

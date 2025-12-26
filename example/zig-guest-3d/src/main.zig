@@ -60,6 +60,7 @@ const Game = struct {
     // Camera
     cam_yaw: f32 = 0.0,
     cam_pitch: f32 = 0.6,
+    cam_roll: f32 = 0.0,
     cam_dist: f32 = 12.0,
 
     // Accumulator
@@ -71,6 +72,7 @@ const Game = struct {
         self.on_ground = false;
         self.cam_yaw = 0.0;
         self.cam_pitch = 0.6;
+        self.cam_roll = 0.0;
         self.cam_dist = 12.0;
     }
 };
@@ -258,37 +260,74 @@ fn updateGame(dt: f32) void {
         return;
     }
 
-    // Camera control
+    // Camera control (requested mapping)
+    // - L1/R1 = yaw
+    // - X/Y  = pitch
+    // - A/B  = roll
     const yaw_speed: f32 = 2.2;
     const pitch_speed: f32 = 1.6;
-    const pitch_min: f32 = 0.2;
+    const roll_speed: f32 = 2.0;
+
+    const pitch_min: f32 = -1.2;
     const pitch_max: f32 = 1.2;
 
     if (wasm96.input.isButtonDown(0, .l1)) g.cam_yaw -= yaw_speed * dt;
     if (wasm96.input.isButtonDown(0, .r1)) g.cam_yaw += yaw_speed * dt;
 
-    if (wasm96.input.isButtonDown(0, .up)) g.cam_pitch += pitch_speed * dt;
-    if (wasm96.input.isButtonDown(0, .down)) g.cam_pitch -= pitch_speed * dt;
+    if (wasm96.input.isButtonDown(0, .x)) g.cam_pitch += pitch_speed * dt;
+    if (wasm96.input.isButtonDown(0, .y)) g.cam_pitch -= pitch_speed * dt;
+
+    if (wasm96.input.isButtonDown(0, .a)) g.cam_roll -= roll_speed * dt;
+    if (wasm96.input.isButtonDown(0, .b)) g.cam_roll += roll_speed * dt;
 
     if (g.cam_pitch < pitch_min) g.cam_pitch = pitch_min;
     if (g.cam_pitch > pitch_max) g.cam_pitch = pitch_max;
 
-    const accelerate = wasm96.input.isButtonDown(0, .a);
-    const braking = wasm96.input.isButtonDown(0, .b);
+    // Movement (requested): D-Pad moves the player relative to camera/viewport.
+    // Up = forward, Down = backward, Left/Right = strafe
+    const move_forward = wasm96.input.isButtonDown(0, .up);
+    const move_back = wasm96.input.isButtonDown(0, .down);
+    const move_left = wasm96.input.isButtonDown(0, .left);
+    const move_right = wasm96.input.isButtonDown(0, .right);
 
+    // Camera-relative movement:
+    // The camera is positioned at:
+    //   cam_pos = target + ( sin(yaw)*cos(pitch), sin(pitch), cos(yaw)*cos(pitch) ) * dist
+    // so the camera looks back toward the target. That means "screen forward" (into the view)
+    // corresponds to the *negative* yaw-forward direction in the XZ plane.
     const forward = Vec3{
-        .x = @sin(g.cam_yaw),
+        .x = -@sin(g.cam_yaw),
         .y = 0.0,
-        .z = @cos(g.cam_yaw),
+        .z = -@cos(g.cam_yaw),
+    };
+    const right = Vec3{
+        .x = @cos(g.cam_yaw),
+        .y = 0.0,
+        .z = -@sin(g.cam_yaw),
     };
 
-    if (accelerate) {
-        g.vel.x += forward.x * accel * dt;
-        g.vel.z += forward.z * accel * dt;
+    var move: Vec3 = .{ .x = 0.0, .y = 0.0, .z = 0.0 };
+    if (move_forward) move = move.add(forward);
+    if (move_back) move = move.sub(forward);
+    if (move_right) move = move.add(right);
+    if (move_left) move = move.sub(right);
+
+    const move_len = Vec3.len(move);
+    if (move_len > 0.001) {
+        const inv = 1.0 / move_len;
+        move = move.mul(inv);
+
+        g.vel.x += move.x * accel * dt;
+        g.vel.z += move.z * accel * dt;
     }
 
+    // Friction / damping:
+    // - When you're on the ground and not pushing movement input, apply stronger friction
+    //   so the sphere comes to rest.
+    // - In the air, use light damping.
+    const has_move_input = move_forward or move_back or move_left or move_right;
     const fric_base = if (g.on_ground) ground_friction else air_friction;
-    const fric = if (braking and g.on_ground) brake_friction else fric_base;
+    const fric = if (g.on_ground and !has_move_input) brake_friction else fric_base;
     const decay = @exp(-fric * dt);
     g.vel.x *= decay;
     g.vel.z *= decay;
@@ -393,7 +432,35 @@ export fn draw() void {
     };
 
     wasm96.graphics.cameraPerspective(1.0, @as(f32, @floatFromInt(SCREEN_W)) / @as(f32, @floatFromInt(SCREEN_H)), 0.1, 400.0);
-    wasm96.graphics.cameraLookAt(cam_pos.x, cam_pos.y, cam_pos.z, target.x, target.y, target.z, 0.0, 1.0, 0.0);
+
+    // Apply camera roll by rolling the up-vector around the forward axis (camera -> target).
+    const fwd = Vec3{
+        .x = target.x - cam_pos.x,
+        .y = target.y - cam_pos.y,
+        .z = target.z - cam_pos.z,
+    };
+    const fwd_len = Vec3.len(fwd);
+    const fwd_n = if (fwd_len > 0.0001) fwd.mul(1.0 / fwd_len) else Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
+
+    const base_up = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    const c = @cos(g.cam_roll);
+    const s = @sin(g.cam_roll);
+
+    // Rodrigues' rotation formula (rotate base_up around fwd_n by cam_roll).
+    // Use intermediate terms for clarity and to keep Zig parsing happy.
+    const cross = Vec3{
+        .x = fwd_n.y * base_up.z - fwd_n.z * base_up.y,
+        .y = fwd_n.z * base_up.x - fwd_n.x * base_up.z,
+        .z = fwd_n.x * base_up.y - fwd_n.y * base_up.x,
+    };
+    const dot = Vec3.dot(fwd_n, base_up);
+
+    const up = Vec3.add(
+        Vec3.add(base_up.mul(c), cross.mul(s)),
+        fwd_n.mul(dot * (1.0 - c)),
+    );
+
+    wasm96.graphics.cameraLookAt(cam_pos.x, cam_pos.y, cam_pos.z, target.x, target.y, target.z, up.x, up.y, up.z);
 
     // Ground base
     wasm96.graphics.setColor(28, 30, 34, 255);
@@ -440,11 +507,13 @@ export fn draw() void {
     // If they load, place them near the origin so you can immediately see them while rolling.
     if (bird1_loaded) {
         wasm96.graphics.setColor(230, 230, 230, 255);
-        wasm96.graphics.meshDraw("bird_12248", 4.0, 0.6, 6.0, 0.0, 0.8, 0.0, 0.06, 0.06, 0.06);
+        // Birds were sideways / facing into the ground: rotate them upright.
+        // Assumption: OBJ authored Z-up or different forward; adjust with +/-90° on X.
+        wasm96.graphics.meshDraw("bird_12248", 4.0, 0.0, 6.0, -1.5707963, 0.8, 0.0, 0.06, 0.06, 0.06);
     }
     if (bird2_loaded) {
         wasm96.graphics.setColor(230, 230, 230, 255);
-        wasm96.graphics.meshDraw("bird_12249", -5.0, 0.6, 7.0, 0.0, -0.6, 0.0, 0.06, 0.06, 0.06);
+        wasm96.graphics.meshDraw("bird_12249", -5.0, 0.0, 7.0, -1.5707963, -0.6, 0.0, 0.06, 0.06, 0.06);
     }
 
     // Player sphere
@@ -469,7 +538,7 @@ export fn draw() void {
 
     // HUD (primary path: 2D overlay text)
     wasm96.graphics.setColor(255, 255, 255, 255);
-    wasm96.graphics.textKey(10, 10, "spleen", "Roll on Grid (DPad pitch, L1/R1 yaw, A accel, B brake, Y jump, Start reset)");
+    wasm96.graphics.textKey(10, 10, "spleen", "Roll on Ground (DPad move, L1/R1 yaw, X/Y pitch, A/B roll, Y jump, Start reset)");
     if (!bird1_loaded or !bird2_loaded) {
         wasm96.graphics.setColor(255, 220, 140, 255);
         wasm96.graphics.textKey(10, 26, "spleen", "Note: birds not loaded (core may stub meshCreateObj)");

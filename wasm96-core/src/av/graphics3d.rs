@@ -509,6 +509,9 @@ pub fn graphics_mesh_create_obj(
     let (models, _materials) = match tobj::load_obj_buf(
         &mut reader,
         &tobj::LoadOptions {
+            // Use tobj's standard behavior as much as possible:
+            // - triangulate for our renderer
+            // - single_index so tobj unifies position/uv/normal into one index stream
             triangulate: true,
             single_index: true,
             ..Default::default()
@@ -527,8 +530,29 @@ pub fn graphics_mesh_create_obj(
         return 0;
     }
 
+    // TEMP DEBUG (remove when done):
+    // Dump tobj-produced stream sizes to compare against expected unified tuple counts.
+    // For the included duck OBJs, expected unified vertex counts (from offline analysis):
+    // - 12248_Bird_v1_L2.obj: 9582
+    // - 12249_Bird_v1_L2.obj: 9760
+    eprintln!("wasm96: OBJ load OK key={} models={}", key, models.len());
+    for (mi, model) in models.iter().enumerate() {
+        let m = &model.mesh;
+        eprintln!(
+            "wasm96: OBJ model[{mi}] pos={} uv={} n={} idx={} (single_index=true triangulate=true)",
+            m.positions.len() / 3,
+            m.texcoords.len() / 2,
+            m.normals.len() / 3,
+            m.indices.len(),
+        );
+    }
+
     // Convert to wasm96-core's `Vertex` and u32 indices by concatenating all models into one mesh.
     // This preserves a single VAO/VBO/EBO per `key` as expected by the current renderer.
+    //
+    // IMPORTANT:
+    // We rely on `tobj`'s unified indexing (`single_index: true`) so positions/UVs/normals stay
+    // correctly associated even for OBJs that use separate v/vt/vn indices on faces.
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
@@ -546,6 +570,13 @@ pub fn graphics_mesh_create_obj(
             return 0;
         }
 
+        // With `single_index: true`, `tobj` has already unified the attribute indices:
+        // - `mesh.positions` / `mesh.texcoords` / `mesh.normals` have matching vertex order
+        // - `mesh.indices` references that unified vertex stream
+        if mesh.indices.is_empty() {
+            continue;
+        }
+
         let base_vertex = vertices.len() as u32;
         let vertex_count = mesh.positions.len() / 3;
 
@@ -555,7 +586,7 @@ pub fn graphics_mesh_create_obj(
             let pz = mesh.positions[i * 3 + 2];
 
             let (u, v) = if mesh.texcoords.len() >= (i * 2 + 2) {
-                (mesh.texcoords[i * 2 + 0], mesh.texcoords[i * 2 + 1])
+                (mesh.texcoords[i * 2 + 0], 1.0 - mesh.texcoords[i * 2 + 1])
             } else {
                 (0.0, 0.0)
             };
@@ -783,11 +814,21 @@ pub fn graphics_mesh_draw(
                 gl::GenTextures(1, &mut texture_id);
                 gl::BindTexture(gl::TEXTURE_2D, texture_id);
 
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+                // Avoid shimmering/aliasing artifacts on textured 3D meshes:
+                // - Use mipmaps for minification
+                // - Use linear filtering for magnification
+                gl::TexParameteri(
+                    gl::TEXTURE_2D,
+                    gl::TEXTURE_MIN_FILTER,
+                    gl::LINEAR_MIPMAP_LINEAR as i32,
+                );
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
 
+                // Avoid wrap edge artifacts on UV seams.
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+
+                // Ensure tightly packed RGBA upload.
                 gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
 
                 gl::TexImage2D(
@@ -801,6 +842,42 @@ pub fn graphics_mesh_draw(
                     gl::UNSIGNED_BYTE,
                     img.rgba.as_ptr() as *const c_void,
                 );
+
+                // Generate mipmaps after uploading the base level.
+                gl::GenerateMipmap(gl::TEXTURE_2D);
+
+                // Improve minification quality when the driver supports anisotropic filtering.
+                // If the extension isn't present, this is a no-op.
+                //
+                // Note: We query via GetStringi to avoid relying on extension loader helpers.
+                let mut has_aniso = false;
+                let mut ext_count: i32 = 0;
+                gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut ext_count);
+                let needle = b"GL_EXT_texture_filter_anisotropic";
+                let mut i: i32 = 0;
+                while i < ext_count {
+                    let ext = gl::GetStringi(gl::EXTENSIONS, i as u32);
+                    if !ext.is_null() {
+                        // SAFETY: OpenGL guarantees NUL-terminated strings for extension names.
+                        let s = std::ffi::CStr::from_ptr(ext as *const i8).to_bytes();
+                        if s == needle {
+                            has_aniso = true;
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
+                if has_aniso {
+                    // These constants are from GL_EXT_texture_filter_anisotropic.
+                    const TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
+                    const MAX_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FF;
+
+                    let mut max_aniso: f32 = 1.0;
+                    gl::GetFloatv(MAX_TEXTURE_MAX_ANISOTROPY_EXT, &mut max_aniso);
+                    // A reasonable cap; drivers may support very high values.
+                    let aniso = if max_aniso > 8.0 { 8.0 } else { max_aniso };
+                    gl::TexParameterf(gl::TEXTURE_2D, TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+                }
 
                 gl::ActiveTexture(gl::TEXTURE0);
                 gl::BindTexture(gl::TEXTURE_2D, texture_id);

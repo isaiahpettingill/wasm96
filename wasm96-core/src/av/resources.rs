@@ -35,10 +35,6 @@ pub struct Resources {
     pub keyed_svgs: HashMap<u64, u32>,
     pub keyed_gifs: HashMap<u64, u32>,
 
-    // Backwards-compatibility: historically keyed PNGs were stored separately.
-    // Keep this alias so existing PNG APIs and guests continue to work unchanged.
-    pub keyed_pngs: HashMap<u64, ImageResource>,
-
     // New generalized keyed decoded images (RGBA8888), to be used for PNG/JPEG (and later other formats).
     pub keyed_images: HashMap<u64, ImageResource>,
 
