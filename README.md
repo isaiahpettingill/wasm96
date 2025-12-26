@@ -14,7 +14,7 @@ cargo build --release --package wasm96-core
 The core library will be at `target/release/libwasm96_core.so` (or equivalent for your platform).
 
 ### Writing a Guest
-1. Use the Rust SDK (`wasm96-sdk`) or Zig SDK (`wasm96-zig-sdk`) for ergonomic bindings.
+1. Use the Rust SDK (`wasm96-sdk`), Zig SDK (`wasm96-zig-sdk`), or Go SDK (`wasm96-go-sdk`) for ergonomic bindings.
 2. Implement the required export:
    - `setup()`: Initialize your application (e.g., set screen size, register assets)
 3. Implement optional exports (preferred runtime entrypoints):
@@ -52,6 +52,21 @@ This avoids global mutable “resource id” state in guests and makes resource 
   - `graphics::png_draw_key_scaled("ui/logo", x, y, w, h)`
 - Unregister (optional):
   - `graphics::png_unregister("ui/logo")`
+
+PNG is treated as **RGBA** (alpha respected).
+
+### JPEG (encoded bytes)
+- Direct draw (one-shot):
+  - `graphics::image_jpeg(x, y, jpeg_bytes)`
+- Register once (typically in `setup()`):
+  - `graphics::jpeg_register("ui/photo", jpeg_bytes)`
+- Draw by key (in `draw()`):
+  - `graphics::jpeg_draw_key("ui/photo", x, y)`
+  - `graphics::jpeg_draw_key_scaled("ui/photo", x, y, w, h)`
+- Unregister (optional):
+  - `graphics::jpeg_unregister("ui/photo")`
+
+JPEG is treated as **RGB** (opaque).
 
 ### SVG (encoded bytes)
 - Register:
@@ -94,8 +109,15 @@ This avoids global mutable “resource id” state in guests and makes resource 
     - `graphics::mesh_create("cube", vertices, indices)`
   - From OBJ string:
     - `graphics::mesh_create_obj("model", obj_string)`
+      - Host-side OBJ loading is implemented using the `obj-rs` crate.
+      - The current loader expects the OBJ to provide **normals** and **UVs** (i.e., `vn` and `vt` data). If either is missing, mesh creation may fail.
   - From STL bytes:
     - `graphics::mesh_create_stl("part", stl_bytes)`
+- Bind a texture to a mesh (keyed image):
+  - `graphics::mesh_set_texture("model", "model/tex")`
+  - Register the image first using either:
+    - `graphics::png_register("model/tex", png_bytes)` (RGBA; alpha respected)
+    - `graphics::jpeg_register("model/tex", jpeg_bytes)` (RGB; opaque)
 - Draw meshes:
   - `graphics::mesh_draw("cube", pos, rot, scale)`
 
@@ -122,6 +144,12 @@ This avoids global mutable “resource id” state in guests and makes resource 
 - Entry point: `@import("wasm96")`
 - Compiles directly to WASM32 (freestanding); produces a module exporting `setup`, `update`, and `draw` (no WASI `_start`)
 
+### Go SDK (`wasm96-go-sdk/`)
+- Handwritten bindings matching the core ABI
+- Safe wrappers around raw `//go:wasmimport` functions
+- Entry point: `import "github.com/isaiahpettingill/wasm96-go-sdk"`
+- **Note:** Requires TinyGo for proper WebAssembly host imports; standard Go's WebAssembly target is browser-oriented and doesn't support direct host imports
+
 ## Examples
 
 The `example/` directory contains guest applications:
@@ -134,6 +162,7 @@ The `example/` directory contains guest applications:
 - `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 - `zig-guest-3d/`: 3D rotating cube example (Zig)
+- `go-guest-tetris/`: 2D Tetris game example (Go) - *requires TinyGo for compilation*
 - `v-guest-2d/`: 2D bouncing rectangle example (V) - *thus far impossible to build due to V's WASM backend limitations and compilation issues*
 - `wat-guest/`: Simple 2D controllable rectangle example (WAT)
 - `kotlin-guest/`: 2D graphics shapes demo (Kotlin) - *currently has compatibility issues*
@@ -149,6 +178,11 @@ cd example/zig-guest && zig build
 cd example/zig-guest-3d && zig build
 ```
 
+To build the Go example (requires TinyGo):
+```bash
+cd example/go-guest-tetris && tinygo build -o go-guest-tetris.wasm -target wasm
+```
+
 To build the WAT example:
 ```bash
 cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
@@ -160,18 +194,13 @@ cd example/kotlin-guest && ./gradlew build
 ```
 *Note: The Kotlin example currently has compatibility issues with the wasm96 core and cannot be run.*
 
-To build the Zig examples:
-```bash
-cd example/zig-guest && zig build
-cd example/zig-guest-3d && zig build
-```
-
 ## Project Structure
 
 ```
 wasm96/
 ├── wasm96-core/          # Libretro core implementation
 ├── wasm96-sdk/           # Handwritten Rust SDK
+├── wasm96-go-sdk/        # Handwritten Go SDK
 ├── wasm96-kotlin-sdk/    # Handwritten Kotlin SDK
 ├── wasm96-zig-sdk/       # Handwritten Zig SDK
 ├── wit/                  # WIT interface definitions
@@ -224,7 +253,7 @@ The libretro core correctly decodes animated GIFs as indexed-color images and ex
 The core supports decoding **encoded PNG bytes** on the host. Guests can draw PNGs directly via `image_png` or register them as keyed resources for repeated use (see “ABI notes: keyed resources (hashed strings)” above).
 
 ### SDK Parity
-Both Rust and Zig SDKs now implement the full set of core features, including all drawing primitives, audio playback, input handling, and 3D graphics.
+The Rust, Zig, and Go SDKs now implement the full set of core features, including all drawing primitives, audio playback, input handling, and 3D graphics.
 
 ### Triangle rasterization (host/core)
 Filled triangles are rasterized using a barycentric (edge-function) fill in the core. The implementation is winding-invariant (vertex order does not change filled results), deterministic, and clips to the framebuffer bounds.
@@ -252,7 +281,7 @@ The core now supports registering custom BDF fonts via `graphics::font_register_
 TTF and OTF font rendering has been improved with subpixel positioning correction and gamma-correct blending. This results in smoother text edges and better legibility, especially at smaller sizes.
 
 ### ABI Update: u64 keys (host/core/sdk)
-The resource ABI has been updated to use `u64` keys instead of string pointers. This improves portability and performance at the boundary. The Rust and Zig SDKs have been updated to automatically hash string keys to `u64` so application code remains unchanged.
+The resource ABI has been updated to use `u64` keys instead of string pointers. This improves portability and performance at the boundary. The Rust, Zig, and Go SDKs have been updated to automatically hash string keys to `u64` so application code remains unchanged.
 
 ### 3D Graphics Support (host/core/sdk)
 Added a hardware-accelerated (wgpu) renderer for 3D graphics. Guests can now enable 3D mode, configure a camera, create meshes from raw data, OBJ strings, or STL bytes, and draw them with transformations.

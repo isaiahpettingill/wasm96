@@ -15,7 +15,7 @@ use std::collections::HashMap;
 // Storage ABI helpers
 use alloc::vec::Vec;
 
-use super::resources::{AvError, FontResource, GifResource, PngResource, RESOURCES};
+use super::resources::{AvError, FontResource, GifResource, ImageResource, RESOURCES};
 use super::utils::{
     graphics_image_from_host, graphics_line_internal, read_guest_bytes, system_millis, tri_edge,
 };
@@ -25,7 +25,10 @@ pub fn graphics_set_size(width: u32, height: u32) {
     if width == 0 || height == 0 {
         return;
     }
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.video.width = width;
     s.video.height = height;
     s.video.framebuffer.resize((width * height) as usize, 0);
@@ -35,7 +38,10 @@ pub fn graphics_set_size(width: u32, height: u32) {
 
 /// Set the current drawing color.
 pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     // Pack as 0xAARRGGBB (ARGB8888).
     // We use the alpha channel for the overlay shader (0 = transparent).
     let color = ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
@@ -52,7 +58,10 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
         1.0,
     );
 
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     if gl_cleared {
         // Clear software framebuffer to transparent so it doesn't occlude the 3D scene
         s.video.framebuffer.fill(0x00000000);
@@ -65,7 +74,10 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
 
 /// Draw a single pixel.
 pub fn graphics_point(x: i32, y: i32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
 
@@ -77,7 +89,10 @@ pub fn graphics_point(x: i32, y: i32) {
 
 /// Draw a line using Bresenham's algorithm.
 pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     let color = s.video.draw_color;
@@ -149,7 +164,10 @@ pub fn graphics_rect_outline(x: i32, y: i32, w: u32, h: u32) {
 
 /// Draw a filled circle.
 pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     let color = s.video.draw_color;
@@ -175,8 +193,12 @@ pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
 }
 
 /// Draw a circle outline (Bresenham's circle algorithm).
+/// Draw a circle outline.
 pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     let color = s.video.draw_color;
@@ -249,7 +271,10 @@ pub fn graphics_image(
         .map_err(|_| AvError::MemoryReadFailed)?;
 
     // Lock and draw
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let screen_w = s.video.width as i32;
     let screen_h = s.video.height as i32;
     let fb = &mut s.video.framebuffer;
@@ -295,8 +320,6 @@ pub fn graphics_image(
 /// Decode PNG bytes from guest memory and draw at (x, y) at the image's natural size.
 ///
 /// If decoding fails, this is a no-op.
-///
-/// NOTE: this requires adding the `png` crate dependency to `wasm96-core/Cargo.toml`.
 pub fn graphics_image_png(
     env: &mut Caller<'_, ()>,
     x: i32,
@@ -306,51 +329,37 @@ pub fn graphics_image_png(
 ) -> Result<(), AvError> {
     let png_bytes = read_guest_bytes(env, ptr, len)?;
 
-    // Decode PNG into RGBA8
-    let cursor = std::io::Cursor::new(png_bytes);
-    let decoder = png::Decoder::new(cursor);
-    let mut reader = match decoder.read_info() {
-        Ok(r) => r,
-        Err(_) => return Ok(()),
+    let decoded = match decode_png_to_rgba(&png_bytes) {
+        Some(d) => d,
+        None => return Ok(()),
     };
 
-    let mut buf = vec![0u8; reader.output_buffer_size()];
-    let info = match reader.next_frame(&mut buf) {
-        Ok(i) => i,
-        Err(_) => return Ok(()),
-    };
-
-    let w = info.width;
-    let h = info.height;
-    if w == 0 || h == 0 {
-        return Ok(());
-    }
-
-    let bytes = &buf[..info.buffer_size()];
-
-    // Convert decoded buffer to RGBA8 (if needed)
-    let rgba: Vec<u8> = match info.color_type {
-        png::ColorType::Rgba => bytes.to_vec(),
-        png::ColorType::Rgb => bytes
-            .chunks_exact(3)
-            .flat_map(|p| [p[0], p[1], p[2], 255])
-            .collect(),
-        png::ColorType::Grayscale => bytes.iter().flat_map(|&g| [g, g, g, 255]).collect(),
-        png::ColorType::GrayscaleAlpha => bytes
-            .chunks_exact(2)
-            .flat_map(|p| [p[0], p[0], p[0], p[1]])
-            .collect(),
-        png::ColorType::Indexed => {
-            // The decoder should have expanded indexed color, but if not, bail out.
-            return Ok(());
-        }
-    };
-
-    graphics_image_from_host(x, y, w, h, &rgba);
+    graphics_image_from_host(x, y, decoded.width, decoded.height, &decoded.rgba);
     Ok(())
 }
 
-fn decode_png_to_rgba(png_bytes: &[u8]) -> Option<PngResource> {
+/// Decode JPEG bytes from guest memory and draw at (x, y) at the image's natural size.
+///
+/// If decoding fails, this is a no-op.
+pub fn graphics_image_jpeg(
+    env: &mut Caller<'_, ()>,
+    x: i32,
+    y: i32,
+    ptr: u32,
+    len: u32,
+) -> Result<(), AvError> {
+    let jpeg_bytes = read_guest_bytes(env, ptr, len)?;
+
+    let decoded = match decode_jpeg_to_rgba(&jpeg_bytes) {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+
+    graphics_image_from_host(x, y, decoded.width, decoded.height, &decoded.rgba);
+    Ok(())
+}
+
+fn decode_png_to_rgba(png_bytes: &[u8]) -> Option<ImageResource> {
     let cursor = std::io::Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
     let mut reader = decoder.read_info().ok()?;
@@ -383,7 +392,62 @@ fn decode_png_to_rgba(png_bytes: &[u8]) -> Option<PngResource> {
         }
     };
 
-    Some(PngResource {
+    Some(ImageResource {
+        rgba,
+        width: w,
+        height: h,
+    })
+}
+
+fn decode_jpeg_to_rgba(jpeg_bytes: &[u8]) -> Option<ImageResource> {
+    let mut decoder = jpeg_decoder::Decoder::new(std::io::Cursor::new(jpeg_bytes));
+    let pixels = decoder.decode().ok()?;
+    let info = decoder.info()?;
+
+    let w = info.width as u32;
+    let h = info.height as u32;
+    if w == 0 || h == 0 {
+        return None;
+    }
+
+    let rgba: Vec<u8> = match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => pixels
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        jpeg_decoder::PixelFormat::L8 => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        jpeg_decoder::PixelFormat::L16 => {
+            // 16-bit grayscale: take the high byte as an 8-bit intensity.
+            pixels
+                .chunks_exact(2)
+                .flat_map(|p| {
+                    let g = p[0]; // high byte
+                    [g, g, g, 255]
+                })
+                .collect()
+        }
+        jpeg_decoder::PixelFormat::CMYK32 => {
+            // Minimal support: convert CMYK -> RGB using a simple approximation.
+            // RGB = 255 - min(255, C + K) (same for M/Y)
+            pixels
+                .chunks_exact(4)
+                .flat_map(|p| {
+                    let c = p[0] as u16;
+                    let m = p[1] as u16;
+                    let y = p[2] as u16;
+                    let k = p[3] as u16;
+
+                    let r = 255u8.saturating_sub((c + k).min(255) as u8);
+                    let g = 255u8.saturating_sub((m + k).min(255) as u8);
+                    let b = 255u8.saturating_sub((y + k).min(255) as u8);
+
+                    [r, g, b, 255]
+                })
+                .collect()
+        }
+    };
+
+    Some(ImageResource {
         rgba,
         width: w,
         height: h,
@@ -408,41 +472,95 @@ pub fn graphics_png_register(
     };
 
     let mut res = RESOURCES.lock().unwrap();
-    res.keyed_pngs.insert(key, decoded);
+    res.keyed_images.insert(key, decoded);
     1
 }
 
 /// Draw a keyed PNG at natural size.
 pub fn graphics_png_draw_key(key: u64, x: i32, y: i32) {
-    let png = {
-        let res = RESOURCES.lock().unwrap();
-        res.keyed_pngs.get(&key).cloned()
-    };
-
-    if let Some(png) = png {
-        graphics_image_from_host(x, y, png.width, png.height, &png.rgba);
-    }
+    graphics_image_draw_key(key, x, y);
 }
 
 /// Draw a keyed PNG scaled (nearest-neighbor).
 pub fn graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) {
-    let png = {
-        let res = RESOURCES.lock().unwrap();
-        res.keyed_pngs.get(&key).cloned()
+    graphics_image_draw_key_scaled(key, x, y, w, h);
+}
+
+/// Unregister a keyed PNG.
+pub fn graphics_png_unregister(key: u64) {
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_images.remove(&key);
+}
+
+/// Register a JPEG under a string key (bytes are encoded JPEG).
+pub fn graphics_jpeg_register(
+    env: &mut Caller<'_, ()>,
+    key: u64,
+    data_ptr: u32,
+    data_len: u32,
+) -> u32 {
+    let jpeg_bytes = match read_guest_bytes(env, data_ptr, data_len) {
+        Ok(b) => b,
+        Err(_) => return 0,
     };
 
-    let Some(png) = png else {
+    let decoded = match decode_jpeg_to_rgba(&jpeg_bytes) {
+        Some(d) => d,
+        None => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_images.insert(key, decoded);
+    1
+}
+
+/// Draw a keyed JPEG at natural size.
+pub fn graphics_jpeg_draw_key(key: u64, x: i32, y: i32) {
+    graphics_image_draw_key(key, x, y);
+}
+
+/// Draw a keyed JPEG scaled (nearest-neighbor).
+pub fn graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) {
+    graphics_image_draw_key_scaled(key, x, y, w, h);
+}
+
+/// Unregister a keyed JPEG.
+pub fn graphics_jpeg_unregister(key: u64) {
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_images.remove(&key);
+}
+
+/// Draw any keyed decoded image at natural size.
+fn graphics_image_draw_key(key: u64, x: i32, y: i32) {
+    let img = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_images.get(&key).cloned()
+    };
+
+    if let Some(img) = img {
+        graphics_image_from_host(x, y, img.width, img.height, &img.rgba);
+    }
+}
+
+/// Draw any keyed decoded image scaled (nearest-neighbor).
+fn graphics_image_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) {
+    let img = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_images.get(&key).cloned()
+    };
+
+    let Some(img) = img else {
         return;
     };
 
     // Natural size if either dimension is 0.
     if w == 0 || h == 0 {
-        graphics_image_from_host(x, y, png.width, png.height, &png.rgba);
+        graphics_image_from_host(x, y, img.width, img.height, &img.rgba);
         return;
     }
 
-    let src_w = png.width;
-    let src_h = png.height;
+    let src_w = img.width;
+    let src_h = img.height;
     if src_w == 0 || src_h == 0 {
         return;
     }
@@ -458,22 +576,16 @@ pub fn graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) {
             let sidx = ((sy as usize) * (src_w as usize) + (sx as usize)) * 4;
             let didx = ((dy as usize) * (w as usize) + (dx as usize)) * 4;
 
-            if sidx + 3 < png.rgba.len() && didx + 3 < dst.len() {
-                dst[didx] = png.rgba[sidx];
-                dst[didx + 1] = png.rgba[sidx + 1];
-                dst[didx + 2] = png.rgba[sidx + 2];
-                dst[didx + 3] = png.rgba[sidx + 3];
+            if sidx + 3 < img.rgba.len() && didx + 3 < dst.len() {
+                dst[didx] = img.rgba[sidx];
+                dst[didx + 1] = img.rgba[sidx + 1];
+                dst[didx + 2] = img.rgba[sidx + 2];
+                dst[didx + 3] = img.rgba[sidx + 3];
             }
         }
     }
 
     graphics_image_from_host(x, y, w, h, &dst);
-}
-
-/// Unregister a keyed PNG.
-pub fn graphics_png_unregister(key: u64) {
-    let mut res = RESOURCES.lock().unwrap();
-    res.keyed_pngs.remove(&key);
 }
 
 /// Draw a filled triangle using a barycentric (edge-function) rasterizer.
@@ -482,8 +594,16 @@ pub fn graphics_png_unregister(key: u64) {
 /// - Works for any vertex order (winding), filled area is consistent.
 /// - Clips to framebuffer bounds.
 /// - Uses integer edge functions for stability/determinism.
+///
+/// Rasterization rule:
+/// - We treat pixels as **samples at pixel centers**: (x + 0.5, y + 0.5).
+///   This avoids cases where a triangle covers no integer lattice points and would
+///   otherwise render as empty for small/skinny triangles.
 pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     if w <= 0 || h <= 0 {
@@ -493,9 +613,11 @@ pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
-    let v0 = (x1, y1);
-    let v1 = (x2, y2);
-    let v2 = (x3, y3);
+    // Use 2x fixed-point coordinates so we can represent pixel centers as integers.
+    // A pixel center at (x + 0.5, y + 0.5) becomes P2 = (2x + 1, 2y + 1).
+    let v0 = (x1 * 2, y1 * 2);
+    let v1 = (x2 * 2, y2 * 2);
+    let v2 = (x3 * 2, y3 * 2);
 
     // Degenerate (area==0): nothing to fill.
     let area = tri_edge(v0, v1, v2);
@@ -503,11 +625,12 @@ pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
         return;
     }
 
-    // Bounding box (inclusive), clipped to framebuffer.
-    let min_x = v0.0.min(v1.0).min(v2.0).max(0);
-    let max_x = v0.0.max(v1.0).max(v2.0).min(w - 1);
-    let min_y = v0.1.min(v1.1).min(v2.1).max(0);
-    let max_y = v0.1.max(v1.1).max(v2.1).min(h - 1);
+    // Bounding box in pixel coordinates (inclusive), computed from the triangle vertices.
+    // We convert from 2x space back into pixel indices.
+    let min_x = ((v0.0.min(v1.0).min(v2.0)) >> 1).max(0);
+    let max_x = ((v0.0.max(v1.0).max(v2.0)) >> 1).min(w - 1);
+    let min_y = ((v0.1.min(v1.1).min(v2.1)) >> 1).max(0);
+    let max_y = ((v0.1.max(v1.1).max(v2.1)) >> 1).min(h - 1);
 
     if min_x > max_x || min_y > max_y {
         return;
@@ -523,13 +646,21 @@ pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
     for y in min_y..=max_y {
         let row = (y as usize) * (w as usize);
         for x in min_x..=max_x {
-            let p = (x, y);
+            // Sample at pixel center in 2x space.
+            let p = (x * 2 + 1, y * 2 + 1);
 
             // Edge functions for triangle v0,v1,v2.
             // Multiply by `sign` so "inside" corresponds to >= 0 regardless of winding.
-            let w0 = tri_edge(v1, v2, p) * sign;
-            let w1 = tri_edge(v2, v0, p) * sign;
-            let w2 = tri_edge(v0, v1, p) * sign;
+            //
+            // NOTE:
+            // `tri_edge(a, b, c)` computes a left-of test for the directed edge a->b at point c.
+            // For point-in-triangle, the consistent set is:
+            //   w0 = edge(v0->v1, p)
+            //   w1 = edge(v1->v2, p)
+            //   w2 = edge(v2->v0, p)
+            let w0 = tri_edge(v0, v1, p) * sign;
+            let w1 = tri_edge(v1, v2, p) * sign;
+            let w2 = tri_edge(v2, v0, p) * sign;
 
             if w0 >= 0 && w1 >= 0 && w2 >= 0 {
                 fb[row + x as usize] = color;
@@ -1281,7 +1412,10 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
         match font {
             FontResource::Ttf(f) => {
                 // Lock global state once for the whole string to enable blending
-                let mut s = global().lock().unwrap();
+                let mut s = match global().lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 let width = s.video.width as i32;
                 let height = s.video.height as i32;
                 let draw_color = s.video.draw_color;
@@ -1413,7 +1547,10 @@ pub fn video_present_host() {
     }
 
     let (video_cb, width, height, fb) = {
-        let s = global().lock().unwrap();
+        let s = match global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         (
             s.video_refresh_cb,
             s.video.width,

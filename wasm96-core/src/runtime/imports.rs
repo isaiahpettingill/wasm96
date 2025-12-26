@@ -1,18 +1,18 @@
 //! Host import definitions for the Wasmtime runtime.
 //!
 //! This module defines all the host functions imported by guest modules under the "env" module.
+//!
+//! NOTE: Keep this file in a **single-pass**/single `define_imports` implementation to avoid
+//! accidentally registering imports twice (or returning early and leaving dead code below).
 
 use crate::{
     abi::{IMPORT_MODULE, host_imports},
     av, input,
 };
-
 use wasmtime::{Caller, Linker};
 
 /// Define all host imports expected by guests under module `"env"`.
-///
-/// Must be called before instantiating the module.
-pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
+pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     // --- Graphics ---
     linker.func_wrap(
         IMPORT_MODULE,
@@ -95,6 +95,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
+    // One-shot PNG decode+draw: (x,y,ptr,len)
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_IMAGE_PNG,
@@ -103,7 +104,16 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
-    // --- Keyed resources (SVG/GIF/PNG) ---
+    // One-shot JPEG decode+draw: (x,y,ptr,len)
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_IMAGE_JPEG,
+        |mut caller: Caller<'_, ()>, x: i32, y: i32, ptr: u32, len: u32| {
+            let _ = av::graphics_image_jpeg(&mut caller, x, y, ptr, len);
+        },
+    )?;
+
+    // --- Keyed resources (SVG/GIF/PNG/JPEG) ---
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SVG_REGISTER,
@@ -139,9 +149,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GIF_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| {
-            av::graphics_gif_draw_key(key, x, y);
-        },
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_gif_draw_key(key, x, y),
     )?;
 
     linker.func_wrap(
@@ -171,9 +179,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| {
-            av::graphics_png_draw_key(key, x, y);
-        },
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_png_draw_key(key, x, y),
     )?;
 
     linker.func_wrap(
@@ -192,7 +198,37 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
-    // --- Keyed fonts + text ---
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_JPEG_REGISTER,
+        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
+            av::graphics_jpeg_register(&mut caller, key, data_ptr, data_len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_JPEG_DRAW_KEY,
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_jpeg_draw_key(key, x, y),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_JPEG_DRAW_KEY_SCALED,
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, w: u32, h: u32| {
+            av::graphics_jpeg_draw_key_scaled(key, x, y, w, h)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_JPEG_UNREGISTER,
+        |_caller: Caller<'_, ()>, key: u64| {
+            av::graphics_jpeg_unregister(key);
+        },
+    )?;
+
+    // Fonts (keyed)
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_REGISTER_TTF,
@@ -246,7 +282,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
-    // --- Shapes ---
+    // Shapes
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TRIANGLE,
@@ -311,7 +347,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
-    // --- 3D Graphics ---
+    // 3D
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SET_3D,
@@ -377,6 +413,14 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::GRAPHICS_MESH_SET_TEXTURE,
+        |_caller: Caller<'_, ()>, mesh_key: u64, image_key: u64| -> u32 {
+            av::graphics_mesh_set_texture(mesh_key, image_key)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_DRAW,
         |_caller: Caller<'_, ()>,
          key: u64,
@@ -390,6 +434,43 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
          sy: f32,
          sz: f32| {
             av::graphics_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+        },
+    )?;
+
+    // --- Input ---
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::INPUT_IS_BUTTON_DOWN,
+        |_caller: Caller<'_, ()>, port: u32, btn: u32| -> u32 {
+            input::joypad_button_pressed(port, btn)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::INPUT_IS_KEY_DOWN,
+        |_caller: Caller<'_, ()>, key: u32| -> u32 { input::key_pressed(key) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::INPUT_GET_MOUSE_X,
+        |_caller: Caller<'_, ()>| -> i32 { input::mouse_x() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::INPUT_GET_MOUSE_Y,
+        |_caller: Caller<'_, ()>| -> i32 { input::mouse_y() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::INPUT_IS_MOUSE_DOWN,
+        |_caller: Caller<'_, ()>, btn: u32| -> u32 {
+            let mask = input::mouse_buttons();
+            let requested = 1u32 << btn;
+            if (mask & requested) != 0 { 1 } else { 0 }
         },
     )?;
 
@@ -432,43 +513,6 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
         },
     )?;
 
-    // --- Input ---
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::INPUT_IS_BUTTON_DOWN,
-        |_caller: Caller<'_, ()>, port: u32, btn: u32| -> u32 {
-            input::joypad_button_pressed(port, btn)
-        },
-    )?;
-
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::INPUT_IS_KEY_DOWN,
-        |_caller: Caller<'_, ()>, key: u32| -> u32 { input::key_pressed(key) },
-    )?;
-
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::INPUT_GET_MOUSE_X,
-        |_caller: Caller<'_, ()>| -> i32 { input::mouse_x() },
-    )?;
-
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::INPUT_GET_MOUSE_Y,
-        |_caller: Caller<'_, ()>| -> i32 { input::mouse_y() },
-    )?;
-
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::INPUT_IS_MOUSE_DOWN,
-        |_caller: Caller<'_, ()>, btn: u32| -> u32 {
-            let mask = input::mouse_buttons();
-            let requested = 1u32 << btn;
-            if (mask & requested) != 0 { 1 } else { 0 }
-        },
-    )?;
-
     // --- System ---
     linker.func_wrap(
         IMPORT_MODULE,
@@ -491,13 +535,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> Result<(), anyhow::Error> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_MILLIS,
-        |_caller: Caller<'_, ()>| -> u64 {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default();
-            now.as_millis() as u64
-        },
+        |_caller: Caller<'_, ()>| -> u64 { crate::av::utils::system_millis() },
     )?;
 
     // --- Storage ---

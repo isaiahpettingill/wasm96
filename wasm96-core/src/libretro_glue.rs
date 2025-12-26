@@ -97,7 +97,16 @@ pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
                 &raw mut HW_RENDER as *mut _ as *mut c_void,
             );
             if !ret {
-                eprintln!("Failed to set HW render environment");
+                // Some frontends/drivers may reject HW render env setup during init.
+                // This is not necessarily fatal (the core may still run in software mode),
+                // so avoid spamming or treating it as a hard error.
+                static mut PRINTED_HW_RENDER_WARN: bool = false;
+                if !PRINTED_HW_RENDER_WARN {
+                    eprintln!(
+                        "(wasm96) HW render environment not available; continuing without it"
+                    );
+                    PRINTED_HW_RENDER_WARN = true;
+                }
             }
         }
     }
@@ -205,10 +214,15 @@ pub unsafe extern "C" fn retro_run() {
         }
     }
 
-    // Prepare 3D frame
+    // Prepare 3D frame (only if a valid HW framebuffer is available).
+    //
+    // Some frontends/drivers may reject HW rendering (or provide a 0 framebuffer).
+    // In that case, skip 3D prep so the core can still run (software/overlay-only).
     unsafe {
         let fbo = (HW_RENDER.get_current_framebuffer)();
-        graphics3d::prepare_frame(fbo);
+        if fbo != 0 {
+            graphics3d::prepare_frame(fbo);
+        }
     }
 
     // Run core frame

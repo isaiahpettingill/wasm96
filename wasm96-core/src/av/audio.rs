@@ -20,7 +20,10 @@ use super::utils::sat_add_i16;
 #[inline]
 
 pub fn audio_init(sample_rate: u32) -> u32 {
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.audio.sample_rate = sample_rate;
     // Return buffer size hint (e.g. 1 frame worth? or just 0).
     // The guest doesn't strictly need this if it pushes what it wants.
@@ -38,7 +41,10 @@ pub fn audio_init(sample_rate: u32) -> u32 {
 
 pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     let memory_ptr = {
-        let s = crate::state::global().lock().unwrap();
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         s.memory_wasmtime
     };
 
@@ -97,13 +103,19 @@ pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         sample_rate,
     };
 
-    let mut s = crate::state::global().lock().unwrap();
+    let mut s = match crate::state::global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.audio.channels.push(channel);
 }
 
 pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     let memory_ptr = {
-        let s = crate::state::global().lock().unwrap();
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         s.memory_wasmtime
     };
 
@@ -156,13 +168,19 @@ pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         sample_rate,
     };
 
-    let mut s = crate::state::global().lock().unwrap();
+    let mut s = match crate::state::global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.audio.channels.push(channel);
 }
 
 pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     let memory_ptr = {
-        let s = crate::state::global().lock().unwrap();
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         s.memory_wasmtime
     };
 
@@ -191,7 +209,10 @@ pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
 
     // Get sample rate.
     let sample_rate = {
-        let s = crate::state::global().lock().unwrap();
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         s.audio.sample_rate
     };
 
@@ -226,13 +247,19 @@ pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         sample_rate,
     };
 
-    let mut s = crate::state::global().lock().unwrap();
+    let mut s = match crate::state::global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.audio.channels.push(channel);
 }
 
 pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Result<(), AvError> {
     let memory_ptr = {
-        let s = global().lock().unwrap();
+        let s = match global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         s.memory_wasmtime
     };
 
@@ -258,7 +285,10 @@ pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Res
     }
 
     // Append to host queue
-    let mut s = global().lock().unwrap();
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     s.audio.host_queue.extend(samples);
 
     Ok(())
@@ -266,7 +296,10 @@ pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Res
 
 pub fn audio_drain_host(max_frames: u32) -> u32 {
     let (audio_batch_cb, audio_sample_cb, sample_rate) = {
-        let s = global().lock().unwrap();
+        let s = match global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         (
             s.audio_sample_batch_cb,
             s.audio_sample_cb,
@@ -303,7 +336,10 @@ pub fn audio_drain_host(max_frames: u32) -> u32 {
 
     // Mix guest-pushed raw samples (host_queue).
     {
-        let mut s = global().lock().unwrap();
+        let mut s = match global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         let available_samples = s.audio.host_queue.len();
         let available_frames = available_samples / samples_per_frame;

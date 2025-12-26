@@ -71,8 +71,12 @@ pub mod sys {
         pub fn graphics_circle_outline(x: i32, y: i32, r: u32);
         #[link_name = "wasm96_graphics_image"]
         pub fn graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32);
+
+        // One-shot (decode + draw at natural size)
         #[link_name = "wasm96_graphics_image_png"]
         pub fn graphics_image_png(x: i32, y: i32, ptr: u32, len: u32);
+        #[link_name = "wasm96_graphics_image_jpeg"]
+        pub fn graphics_image_jpeg(x: i32, y: i32, ptr: u32, len: u32);
 
         // --- Keyed resources (hashed keys) ---
         // SVG
@@ -102,6 +106,16 @@ pub mod sys {
         pub fn graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32);
         #[link_name = "wasm96_graphics_png_unregister"]
         pub fn graphics_png_unregister(key: u64);
+
+        // JPEG
+        #[link_name = "wasm96_graphics_jpeg_register"]
+        pub fn graphics_jpeg_register(key: u64, data_ptr: u32, data_len: u32) -> u32;
+        #[link_name = "wasm96_graphics_jpeg_draw_key"]
+        pub fn graphics_jpeg_draw_key(key: u64, x: i32, y: i32);
+        #[link_name = "wasm96_graphics_jpeg_draw_key_scaled"]
+        pub fn graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32);
+        #[link_name = "wasm96_graphics_jpeg_unregister"]
+        pub fn graphics_jpeg_unregister(key: u64);
 
         // Fonts + text (keyed by string)
         #[link_name = "wasm96_graphics_font_register_ttf"]
@@ -189,6 +203,9 @@ pub mod sys {
 
         #[link_name = "wasm96_graphics_mesh_create_stl"]
         pub fn graphics_mesh_create_stl(key: u64, ptr: *const u8, len: usize) -> u32;
+
+        #[link_name = "wasm96_graphics_mesh_set_texture"]
+        pub fn graphics_mesh_set_texture(mesh_key: u64, image_key: u64) -> u32;
 
         #[link_name = "wasm96_graphics_mesh_draw"]
         pub fn graphics_mesh_draw(
@@ -317,6 +334,11 @@ pub mod graphics {
         unsafe { sys::graphics_image_png(x, y, data.as_ptr() as u32, data.len() as u32) }
     }
 
+    /// Draw an image from raw JPEG bytes.
+    pub fn image_jpeg(x: i32, y: i32, data: &[u8]) {
+        unsafe { sys::graphics_image_jpeg(x, y, data.as_ptr() as u32, data.len() as u32) }
+    }
+
     /// Register an encoded PNG (bytes) with the host under a string key.
     /// Register a GIF resource (encoded bytes) under a string key.
     /// Returns true on success.
@@ -442,6 +464,16 @@ pub mod graphics {
         }
     }
 
+    /// Bind a keyed decoded image (PNG/JPEG) as the texture for a mesh.
+    /// Returns true on success.
+    ///
+    /// Notes:
+    /// - PNG alpha is respected (RGBA).
+    /// - JPEG is treated as opaque (RGB), but may still be uploaded as RGBA with A=255 on host.
+    pub fn mesh_set_texture(mesh_key: &str, image_key: &str) -> bool {
+        unsafe { sys::graphics_mesh_set_texture(hash_key(mesh_key), hash_key(image_key)) != 0 }
+    }
+
     /// Register an SVG resource under a string key.
     /// Register an SVG resource (encoded bytes) under a string key.
     /// Returns true on success.
@@ -477,9 +509,26 @@ pub mod graphics {
         }
     }
 
+    /// Register a JPEG resource (encoded bytes) under a string key.
+    /// Returns true on success.
+    pub fn jpeg_register(key: &str, jpeg_bytes: &[u8]) -> bool {
+        unsafe {
+            sys::graphics_jpeg_register(
+                hash_key(key),
+                jpeg_bytes.as_ptr() as u32,
+                jpeg_bytes.len() as u32,
+            ) != 0
+        }
+    }
+
     /// Draw a registered PNG by key at natural size.
     pub fn png_draw_key(key: &str, x: i32, y: i32) {
         unsafe { sys::graphics_png_draw_key(hash_key(key), x, y) }
+    }
+
+    /// Draw a registered JPEG by key at natural size.
+    pub fn jpeg_draw_key(key: &str, x: i32, y: i32) {
+        unsafe { sys::graphics_jpeg_draw_key(hash_key(key), x, y) }
     }
 
     /// Draw a registered PNG by key scaled.
@@ -487,9 +536,19 @@ pub mod graphics {
         unsafe { sys::graphics_png_draw_key_scaled(hash_key(key), x, y, w, h) }
     }
 
+    /// Draw a registered JPEG by key scaled.
+    pub fn jpeg_draw_key_scaled(key: &str, x: i32, y: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_jpeg_draw_key_scaled(hash_key(key), x, y, w, h) }
+    }
+
     /// Unregister a PNG by key.
     pub fn png_unregister(key: &str) {
         unsafe { sys::graphics_png_unregister(hash_key(key)) }
+    }
+
+    /// Unregister a JPEG by key.
+    pub fn jpeg_unregister(key: &str) {
+        unsafe { sys::graphics_jpeg_unregister(hash_key(key)) }
     }
 
     /// Register a TTF font under a string key.

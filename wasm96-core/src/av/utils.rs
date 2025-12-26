@@ -41,7 +41,12 @@ pub fn tri_edge(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i64 {
 }
 
 pub fn graphics_image_from_host(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
-    let mut s = global().lock().unwrap();
+    // If a previous panic occurred while holding the global lock, the mutex will be poisoned.
+    // For drawing helpers, prefer continuing with the inner state rather than panicking.
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let screen_w = s.video.width as i32;
     let screen_h = s.video.height as i32;
     let fb = &mut s.video.framebuffer;

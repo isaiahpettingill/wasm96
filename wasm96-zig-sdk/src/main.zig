@@ -40,6 +40,7 @@ pub const sys = struct {
     extern fn wasm96_graphics_circle_outline(x: i32, y: i32, r: u32) void;
     extern fn wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: [*]const u8, len: usize) void;
     extern fn wasm96_graphics_image_png(x: i32, y: i32, ptr: [*]const u8, len: usize) void;
+    extern fn wasm96_graphics_image_jpeg(x: i32, y: i32, ptr: [*]const u8, len: usize) void;
     extern fn wasm96_graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void;
     extern fn wasm96_graphics_triangle_outline(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void;
     extern fn wasm96_graphics_bezier_quadratic(x1: i32, y1: i32, cx: i32, cy: i32, x2: i32, y2: i32, segments: u32) void;
@@ -55,6 +56,7 @@ pub const sys = struct {
     extern fn wasm96_graphics_mesh_create_obj(key: u64, ptr: [*]const u8, len: usize) u32;
     extern fn wasm96_graphics_mesh_create_stl(key: u64, ptr: [*]const u8, len: usize) u32;
     extern fn wasm96_graphics_mesh_draw(key: u64, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32) void;
+    extern fn wasm96_graphics_mesh_set_texture(mesh_key: u64, image_key: u64) u32;
     extern fn wasm96_graphics_svg_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_svg_draw_key(key: u64, x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_svg_unregister(key: u64) void;
@@ -68,6 +70,11 @@ pub const sys = struct {
     extern fn wasm96_graphics_png_draw_key(key: u64, x: i32, y: i32) void;
     extern fn wasm96_graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_png_unregister(key: u64) void;
+
+    extern fn wasm96_graphics_jpeg_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
+    extern fn wasm96_graphics_jpeg_draw_key(key: u64, x: i32, y: i32) void;
+    extern fn wasm96_graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) void;
+    extern fn wasm96_graphics_jpeg_unregister(key: u64) void;
 
     extern fn wasm96_graphics_font_register_ttf(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_font_register_bdf(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
@@ -166,6 +173,10 @@ pub const graphics = struct {
         sys.wasm96_graphics_image_png(x, y, data.ptr, data.len);
     }
 
+    pub fn imageJpeg(x: i32, y: i32, data: []const u8) void {
+        sys.wasm96_graphics_image_jpeg(x, y, data.ptr, data.len);
+    }
+
     /// Draw a filled triangle.
     pub fn triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void {
         sys.wasm96_graphics_triangle(x1, y1, x2, y2, x3, y3);
@@ -240,6 +251,16 @@ pub const graphics = struct {
         sys.wasm96_graphics_mesh_draw(hashKey(key), x, y, z, rx, ry, rz, sx, sy, sz);
     }
 
+    /// Bind a keyed decoded image (PNG/JPEG) as the texture for a mesh.
+    /// Returns true on success.
+    ///
+    /// Notes:
+    /// - PNG alpha is respected (RGBA).
+    /// - JPEG is treated as opaque (RGB), but may still be uploaded as RGBA with A=255 on host.
+    pub fn meshSetTexture(meshKey: []const u8, imageKey: []const u8) bool {
+        return sys.wasm96_graphics_mesh_set_texture(hashKey(meshKey), hashKey(imageKey)) != 0;
+    }
+
     /// Register an SVG resource under a string key.
     pub fn svgRegister(key: []const u8, data: []const u8) bool {
         return sys.wasm96_graphics_svg_register(hashKey(key), data.ptr, data.len) != 0;
@@ -280,9 +301,17 @@ pub const graphics = struct {
         return sys.wasm96_graphics_png_register(hashKey(key), data.ptr, data.len) != 0;
     }
 
+    pub fn jpegRegister(key: []const u8, data: []const u8) bool {
+        return sys.wasm96_graphics_jpeg_register(hashKey(key), data.ptr, data.len) != 0;
+    }
+
     /// Draw a registered PNG by key at natural size.
     pub fn pngDrawKey(key: []const u8, x: i32, y: i32) void {
         sys.wasm96_graphics_png_draw_key(hashKey(key), x, y);
+    }
+
+    pub fn jpegDrawKey(key: []const u8, x: i32, y: i32) void {
+        sys.wasm96_graphics_jpeg_draw_key(hashKey(key), x, y);
     }
 
     /// Draw a registered PNG by key scaled.
@@ -290,9 +319,17 @@ pub const graphics = struct {
         sys.wasm96_graphics_png_draw_key_scaled(hashKey(key), x, y, w, h);
     }
 
+    pub fn jpegDrawKeyScaled(key: []const u8, x: i32, y: i32, w: u32, h: u32) void {
+        sys.wasm96_graphics_jpeg_draw_key_scaled(hashKey(key), x, y, w, h);
+    }
+
     /// Unregister a PNG by key.
     pub fn pngUnregister(key: []const u8) void {
         sys.wasm96_graphics_png_unregister(hashKey(key));
+    }
+
+    pub fn jpegUnregister(key: []const u8) void {
+        sys.wasm96_graphics_jpeg_unregister(hashKey(key));
     }
 
     /// Register a TTF font under a string key.

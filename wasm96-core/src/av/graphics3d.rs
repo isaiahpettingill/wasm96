@@ -2,12 +2,16 @@
 //!
 //! This module handles:
 //! - OpenGL context initialization (loading function pointers).
-//! - Managing 3D resources (meshes, shaders).
+//! - Managing 3D resources (meshes, shaders, textures).
 //! - Drawing 3D scenes.
 //! - Compositing the 2D host framebuffer (overlay) onto the 3D scene.
+//!
+//! NOTE: Some paths in this module create temporary GL textures during `graphics_mesh_draw`.
+//! Those textures must be deleted after drawing to avoid leaking GL texture IDs.
 
 use std::collections::HashMap;
 use std::ffi::{CString, c_void};
+use std::io::Cursor;
 
 use std::sync::{Mutex, OnceLock};
 
@@ -15,6 +19,9 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
 use crate::state::global;
+
+use super::resources::RESOURCES;
+use super::utils::read_guest_bytes;
 
 // --- Data Structures ---
 
@@ -33,6 +40,10 @@ pub struct Mesh {
     #[allow(dead_code)]
     pub ebo: u32,
     pub index_count: i32,
+
+    /// Optional bound texture for this mesh (keyed image id).
+    /// If `None`, the 3D shader will render using the uniform `color`.
+    pub texture_key: Option<u64>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -48,6 +59,8 @@ struct GlState {
     uniform_mvp: i32,
     uniform_normal_mat: i32,
     uniform_color: i32,
+    uniform_tex3d: i32,
+    uniform_use_tex: i32,
 
     // Overlay Shader (2D)
     program_overlay: u32,
@@ -87,24 +100,41 @@ uniform mat4 mvp;
 uniform mat4 normal_mat;
 
 out vec3 v_normal;
+out vec2 v_uv;
 
 void main() {
     gl_Position = mvp * vec4(position, 1.0);
     v_normal = mat3(normal_mat) * normal;
+    v_uv = uv;
 }
 "#;
 
 const FS_3D_SRC: &str = r#"
 #version 330 core
 in vec3 v_normal;
+in vec2 v_uv;
+
 uniform vec3 color;
+uniform sampler2D tex;
+uniform int use_tex;
+
 out vec4 FragColor;
 
 void main() {
     // Simple directional lighting
     vec3 light_dir = normalize(vec3(0.5, 1.0, 0.5));
     float diff = max(dot(normalize(v_normal), light_dir), 0.2);
-    FragColor = vec4(color * diff, 1.0);
+
+    vec3 base = color;
+    float alpha = 1.0;
+
+    if (use_tex != 0) {
+        vec4 t = texture(tex, v_uv);
+        base = t.rgb;
+        alpha = t.a;
+    }
+
+    FragColor = vec4(base * diff, alpha);
 }
 "#;
 
@@ -167,6 +197,14 @@ where
         let name = CString::new("color").unwrap();
         gl::GetUniformLocation(program_3d, name.as_ptr())
     };
+    let uniform_tex3d = unsafe {
+        let name = CString::new("tex").unwrap();
+        gl::GetUniformLocation(program_3d, name.as_ptr())
+    };
+    let uniform_use_tex = unsafe {
+        let name = CString::new("use_tex").unwrap();
+        gl::GetUniformLocation(program_3d, name.as_ptr())
+    };
 
     let uniform_tex = unsafe {
         let name = CString::new("tex").unwrap();
@@ -194,6 +232,8 @@ where
         uniform_mvp,
         uniform_normal_mat,
         uniform_color,
+        uniform_tex3d,
+        uniform_use_tex,
         program_overlay,
         uniform_tex,
         overlay_vao,
@@ -431,18 +471,139 @@ pub fn graphics_mesh_create(
             vbo,
             ebo,
             index_count: i_len as i32,
+            texture_key: None,
         },
     );
     1
 }
 
 pub fn graphics_mesh_create_obj(
-    _env: &mut wasmtime::Caller<'_, ()>,
-    _key: u64,
-    _ptr: u32,
-    _len: u32,
+    env: &mut wasmtime::Caller<'_, ()>,
+    key: u64,
+    ptr: u32,
+    len: u32,
 ) -> u32 {
-    0
+    // Ensure GL is initialized (we need a live context to create buffers).
+    if GL_STATE.get().is_none() {
+        return 0;
+    }
+
+    // Read OBJ bytes from guest memory.
+    let obj_bytes = match read_guest_bytes(env, ptr, len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    // Parse OBJ using obj-rs.
+    //
+    // NOTE: We intentionally load as `Obj<obj::TexturedVertex, u32>` so we get:
+    // - position (xyz)
+    // - normal (nx ny nz)
+    // - texture (uv)
+    //
+    // If the OBJ is missing normals/UVs, obj-rs may fail; we treat that as "can't load".
+    let obj = match obj::load_obj::<obj::TexturedVertex, _, u32>(Cursor::new(obj_bytes)) {
+        Ok(o) => o,
+        Err(_) => return 0,
+    };
+
+    // Convert to wasm96-core's `Vertex` and u32 indices.
+    let vertices: Vec<Vertex> = obj
+        .vertices
+        .iter()
+        .map(|v| Vertex {
+            position: [v.position[0], v.position[1], v.position[2]],
+            uv: [v.texture[0], v.texture[1]],
+            normal: [v.normal[0], v.normal[1], v.normal[2]],
+        })
+        .collect();
+
+    let indices: Vec<u32> = obj.indices;
+
+    if vertices.is_empty() || indices.is_empty() {
+        return 0;
+    }
+
+    // Create GL buffers (same path as `graphics_mesh_create`, but we already own the vectors).
+    let mut vao = 0;
+    let mut vbo = 0;
+    let mut ebo = 0;
+
+    unsafe {
+        gl::GenVertexArrays(1, &mut vao);
+        gl::GenBuffers(1, &mut vbo);
+        gl::GenBuffers(1, &mut ebo);
+
+        gl::BindVertexArray(vao);
+
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            (vertices.len() * std::mem::size_of::<Vertex>()) as isize,
+            vertices.as_ptr() as *const c_void,
+            gl::STATIC_DRAW,
+        );
+
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+        gl::BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (indices.len() * 4) as isize,
+            indices.as_ptr() as *const c_void,
+            gl::STATIC_DRAW,
+        );
+
+        // Vertex attributes
+        // 0: Position (3 floats)
+        gl::VertexAttribPointer(
+            0,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            0 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(0);
+
+        // 1: UV (2 floats)
+        gl::VertexAttribPointer(
+            1,
+            2,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            12 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(1);
+
+        // 2: Normal (3 floats)
+        gl::VertexAttribPointer(
+            2,
+            3,
+            gl::FLOAT,
+            gl::FALSE,
+            std::mem::size_of::<Vertex>() as i32,
+            20 as *const c_void,
+        );
+        gl::EnableVertexAttribArray(2);
+
+        gl::BindVertexArray(0);
+
+        check_gl_error("graphics_mesh_create_obj");
+    }
+
+    let mut store = MESH_STORE.lock().unwrap();
+    store.insert(
+        key,
+        Mesh {
+            vao,
+            vbo,
+            ebo,
+            index_count: indices.len() as i32,
+            texture_key: None,
+        },
+    );
+
+    1
 }
 
 pub fn graphics_mesh_create_stl(
@@ -452,6 +613,24 @@ pub fn graphics_mesh_create_stl(
     _len: u32,
 ) -> u32 {
     0
+}
+
+/// Bind a keyed image texture to an existing mesh.
+///
+/// This only stores the association (`mesh_key -> image_key`) inside the mesh store.
+/// The actual GL texture object upload/lookup is expected to be handled by the graphics
+/// resource system, and the draw path needs to bind the corresponding GL texture.
+///
+/// Returns 1 on success, 0 on failure (missing mesh).
+pub fn graphics_mesh_set_texture(mesh_key: u64, image_key: u64) -> u32 {
+    let mut store = MESH_STORE.lock().unwrap();
+    let mesh = match store.get_mut(&mesh_key) {
+        Some(m) => m,
+        None => return 0,
+    };
+
+    mesh.texture_key = Some(image_key);
+    1
 }
 
 pub fn graphics_mesh_draw(
@@ -520,6 +699,62 @@ pub fn graphics_mesh_draw(
         let b = (color_u32 & 0xFF) as f32 / 255.0;
         gl::Uniform3f(gl_state.uniform_color, r, g, b);
 
+        // Texture binding:
+        // - PNG is treated as RGBA (alpha respected)
+        // - JPEG is treated as RGB but stored/uploaded as RGBA with A=255
+        //
+        // Keyed textures are uploaded lazily on demand from `RESOURCES.keyed_images`.
+        let mut use_tex = 0i32;
+        let mut texture_id = 0u32;
+        let mut delete_texture_after_draw = false;
+
+        if let Some(img_key) = mesh.texture_key {
+            let img = {
+                let res = match RESOURCES.lock() {
+                    Ok(r) => r,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                res.keyed_images.get(&img_key).cloned()
+            };
+
+            if let Some(img) = img {
+                gl::GenTextures(1, &mut texture_id);
+                gl::BindTexture(gl::TEXTURE_2D, texture_id);
+
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+
+                gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+
+                gl::TexImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    gl::RGBA8 as i32,
+                    img.width as i32,
+                    img.height as i32,
+                    0,
+                    gl::RGBA,
+                    gl::UNSIGNED_BYTE,
+                    img.rgba.as_ptr() as *const c_void,
+                );
+
+                gl::ActiveTexture(gl::TEXTURE0);
+                gl::BindTexture(gl::TEXTURE_2D, texture_id);
+
+                use_tex = 1;
+                delete_texture_after_draw = true;
+            }
+        }
+
+        gl::Uniform1i(gl_state.uniform_use_tex, use_tex);
+        gl::Uniform1i(gl_state.uniform_tex3d, 0);
+
+        // NOTE:
+        // This uses per-draw texture creation (simple but not optimal). To avoid leaking GL texture
+        // IDs, we delete the texture after the draw call. A follow-up should cache GL texture ids
+        // per image key and delete them on unregister/context reset.
         gl::BindVertexArray(mesh.vao);
         gl::DrawElements(
             gl::TRIANGLES,
@@ -528,6 +763,12 @@ pub fn graphics_mesh_draw(
             std::ptr::null(),
         );
         gl::BindVertexArray(0);
+
+        if delete_texture_after_draw && texture_id != 0 {
+            // Ensure it is not bound when we delete it.
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+            gl::DeleteTextures(1, &texture_id);
+        }
 
         check_gl_error("graphics_mesh_draw");
     }

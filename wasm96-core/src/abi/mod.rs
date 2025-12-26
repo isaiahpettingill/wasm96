@@ -24,7 +24,10 @@
 //!
 //! Raw RGBA blit:
 //! - `wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32)`
+//!
+//! One-shot (decode and draw at natural size):
 //! - `wasm96_graphics_image_png(x: i32, y: i32, ptr: u32, len: u32)`
+//! - `wasm96_graphics_image_jpeg(x: i32, y: i32, ptr: u32, len: u32)`
 //!
 //! Keyed resources (no numeric ids required in the guest):
 //! - `wasm96_graphics_svg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
@@ -40,6 +43,16 @@
 //! - `wasm96_graphics_png_draw_key(key: u64, x: i32, y: i32)`
 //! - `wasm96_graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
 //! - `wasm96_graphics_png_unregister(key: u64)`
+//!
+//! - `wasm96_graphics_jpeg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
+//! - `wasm96_graphics_jpeg_draw_key(key: u64, x: i32, y: i32)`
+//! - `wasm96_graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
+//! - `wasm96_graphics_jpeg_unregister(key: u64)`
+//!
+//! - `wasm96_graphics_jpeg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
+//! - `wasm96_graphics_jpeg_draw_key(key: u64, x: i32, y: i32)`
+//! - `wasm96_graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
+//! - `wasm96_graphics_jpeg_unregister(key: u64)`
 //!
 //! Fonts (keyed; special key `"spleen"` refers to the built-in Spleen font):
 //! - `wasm96_graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
@@ -131,9 +144,10 @@ pub mod host_imports {
     pub const GRAPHICS_CIRCLE: &str = "wasm96_graphics_circle";
     pub const GRAPHICS_CIRCLE_OUTLINE: &str = "wasm96_graphics_circle_outline";
 
-    // Raw RGBA blit
+    // Raw RGBA blit / one-shot decode+draw
     pub const GRAPHICS_IMAGE: &str = "wasm96_graphics_image";
     pub const GRAPHICS_IMAGE_PNG: &str = "wasm96_graphics_image_png";
+    pub const GRAPHICS_IMAGE_JPEG: &str = "wasm96_graphics_image_jpeg";
 
     // Keyed resources: SVG
     pub const GRAPHICS_SVG_REGISTER: &str = "wasm96_graphics_svg_register";
@@ -152,6 +166,12 @@ pub mod host_imports {
     pub const GRAPHICS_PNG_DRAW_KEY_SCALED: &str = "wasm96_graphics_png_draw_key_scaled";
     pub const GRAPHICS_PNG_UNREGISTER: &str = "wasm96_graphics_png_unregister";
 
+    // Keyed resources: JPEG
+    pub const GRAPHICS_JPEG_REGISTER: &str = "wasm96_graphics_jpeg_register";
+    pub const GRAPHICS_JPEG_DRAW_KEY: &str = "wasm96_graphics_jpeg_draw_key";
+    pub const GRAPHICS_JPEG_DRAW_KEY_SCALED: &str = "wasm96_graphics_jpeg_draw_key_scaled";
+    pub const GRAPHICS_JPEG_UNREGISTER: &str = "wasm96_graphics_jpeg_unregister";
+
     // Shapes
     pub const GRAPHICS_TRIANGLE: &str = "wasm96_graphics_triangle";
     pub const GRAPHICS_TRIANGLE_OUTLINE: &str = "wasm96_graphics_triangle_outline";
@@ -167,6 +187,7 @@ pub mod host_imports {
     pub const GRAPHICS_MESH_CREATE: &str = "wasm96_graphics_mesh_create";
     pub const GRAPHICS_MESH_CREATE_OBJ: &str = "wasm96_graphics_mesh_create_obj";
     pub const GRAPHICS_MESH_CREATE_STL: &str = "wasm96_graphics_mesh_create_stl";
+    pub const GRAPHICS_MESH_SET_TEXTURE: &str = "wasm96_graphics_mesh_set_texture";
     pub const GRAPHICS_MESH_DRAW: &str = "wasm96_graphics_mesh_draw";
 
     // Fonts (keyed)

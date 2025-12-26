@@ -34,7 +34,14 @@ pub struct Resources {
     // Keyed indirection (new): map u64 keys (hashed strings) -> ids in the above maps.
     pub keyed_svgs: HashMap<u64, u32>,
     pub keyed_gifs: HashMap<u64, u32>,
-    pub keyed_pngs: HashMap<u64, PngResource>,
+
+    // Backwards-compatibility: historically keyed PNGs were stored separately.
+    // Keep this alias so existing PNG APIs and guests continue to work unchanged.
+    pub keyed_pngs: HashMap<u64, ImageResource>,
+
+    // New generalized keyed decoded images (RGBA8888), to be used for PNG/JPEG (and later other formats).
+    pub keyed_images: HashMap<u64, ImageResource>,
+
     pub keyed_fonts: HashMap<u64, u32>,
 
     pub next_id: u32,
@@ -48,7 +55,7 @@ pub struct GifResource {
 }
 
 #[derive(Clone)]
-pub struct PngResource {
+pub struct ImageResource {
     pub rgba: Vec<u8>, // RGBA8888 bytes
     pub width: u32,
     pub height: u32,
