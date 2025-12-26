@@ -42,7 +42,7 @@ core-cross-build-all:
 # `version` is the tag/version you want embedded in the filename (e.g. 0.1.2).
 core-dist version triple:
     mkdir -p dist/{{ triple }}
-    cp "{{ core_so_triple }}" "dist/{{ triple }}/wasm96_libretro.so"
+    cp "target/{{ triple }}/release/libwasm96_core.so" "dist/{{ triple }}/wasm96_libretro.so"
     cd dist && zip -r "wasm96-core-{{ version }}-{{ triple }}.zip" "{{ triple }}"
 
 core-dist-all version:

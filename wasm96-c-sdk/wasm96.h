@@ -31,27 +31,12 @@ for wasm.
   #define WASM96_WASM_IMPORT(module, name)
 #endif
 
-#if defined(__has_include)
-  #if __has_include(<string.h>)
-    #include <string.h>
-    #define WASM96_HAS_STRING_H 1
-  #else
-    #define WASM96_HAS_STRING_H 0
-  #endif
-#else
-  // Conservative default when __has_include isn't available.
-  #define WASM96_HAS_STRING_H 0
-#endif
-
-#if !WASM96_HAS_STRING_H
 static inline uint32_t wasm96_strlen_(const char* s) {
     uint32_t n = 0;
     if (!s) return 0;
     while (s[n] != '\0') n++;
     return n;
 }
-#endif
-
 // Joypad button ids.
 typedef enum {
     WASM96_BUTTON_B = 0,

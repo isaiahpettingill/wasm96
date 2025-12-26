@@ -281,7 +281,7 @@ fn create_program(vs_src: &str, fs_src: &str) -> u32 {
         if success == 0 {
             let mut len = 0;
             gl::GetProgramiv(program, gl::INFO_LOG_LENGTH, &mut len);
-            let mut buffer = Vec::with_capacity(len as usize);
+            let mut buffer = Vec::<u8>::with_capacity(len as usize);
             buffer.set_len((len as usize) - 1);
             gl::GetProgramInfoLog(
                 program,
@@ -311,7 +311,7 @@ fn compile_shader(type_: u32, src: &str) -> u32 {
         if success == 0 {
             let mut len = 0;
             gl::GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut len);
-            let mut buffer = Vec::with_capacity(len as usize);
+            let mut buffer = Vec::<u8>::with_capacity(len as usize);
             buffer.set_len((len as usize) - 1);
             gl::GetShaderInfoLog(
                 shader,
@@ -859,7 +859,7 @@ pub fn graphics_mesh_draw(
                     let ext = gl::GetStringi(gl::EXTENSIONS, i as u32);
                     if !ext.is_null() {
                         // SAFETY: OpenGL guarantees NUL-terminated strings for extension names.
-                        let s = std::ffi::CStr::from_ptr(ext as *const i8).to_bytes();
+                        let s = std::ffi::CStr::from_ptr(ext as *const _).to_bytes();
                         if s == needle {
                             has_aniso = true;
                             break;
