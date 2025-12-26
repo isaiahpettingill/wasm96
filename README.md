@@ -7,6 +7,18 @@ The core runs guest modules using **Wasmtime**.
 
 Wasmtime configuration is set up to enable a broad set of WebAssembly feature flags (in both Cargo features and `wasmtime::Config`) for maximum guest compatibility.
 
+### Text rendering (fonts)
+Text rendering uses **keyed fonts** (the core ABI takes a `u64 font_key`; SDKs typically hash a string key into that `u64`).
+
+Font registration calls include:
+- `wasm96_graphics_font_register_spleen(key: u64, size: u32) -> u32`
+- `wasm96_graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32`
+- `wasm96_graphics_font_register_bdf(key: u64, data_ptr: u32, data_len: u32) -> u32`
+
+If a guest calls `wasm96_graphics_text_key(...)` or `wasm96_graphics_text_measure_key(...)` with a `font_key` that is **not registered**, the core will fall back to rendering/measuring text with the built-in **Spleen** font at **size 16**.
+
+This fallback exists so guests can render text “out of the box” without explicit font registration. Guests that need a specific font/size should still register and use their own keyed font.
+
 # Build the libretro core
 cargo build --release --package wasm96-core
 ```

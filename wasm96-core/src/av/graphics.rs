@@ -1439,9 +1439,17 @@ pub fn graphics_text_key(
         res.keyed_fonts.get(&font_key).copied()
     };
 
-    let Some(font_id) = font_id else {
-        return;
+    // If no keyed font is registered, fall back to built-in Spleen at size 16.
+    // This makes text rendering work out-of-the-box even if the guest never
+    // called `wasm96_graphics_font_register_*`.
+    let font_id = match font_id {
+        Some(id) => id,
+        None => graphics_font_use_spleen(16),
     };
+
+    if font_id == 0 {
+        return;
+    }
 
     graphics_text(x, y, font_id, env, text_ptr, text_len);
 }
@@ -1458,9 +1466,16 @@ pub fn graphics_text_measure_key(
         res.keyed_fonts.get(&font_key).copied()
     };
 
-    let Some(font_id) = font_id else {
-        return 0;
+    // If no keyed font is registered, fall back to built-in Spleen at size 16.
+    // This keeps measure behavior consistent with `graphics_text_key`.
+    let font_id = match font_id {
+        Some(id) => id,
+        None => graphics_font_use_spleen(16),
     };
+
+    if font_id == 0 {
+        return 0;
+    }
 
     graphics_text_measure(font_id, env, text_ptr, text_len)
 }

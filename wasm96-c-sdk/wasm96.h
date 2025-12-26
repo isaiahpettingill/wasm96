@@ -364,3 +364,4 @@ void update(void);
 void draw(void);
 
 #endif // WASM96_H
+
