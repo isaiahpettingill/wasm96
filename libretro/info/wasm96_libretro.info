@@ -1,0 +1,31 @@
+# wasm96 libretro core info file for RetroArch.
+#
+# Install:
+#   - Copy this file into RetroArch's `info/` directory (e.g. ~/.config/retroarch/info/)
+#   - Ensure the core binary is installed (e.g. `wasm96_libretro.so` / `.dll` / `.dylib`)
+#   - Restart RetroArch (or update core info files) so it refreshes extension filters.
+#
+# Notes:
+# - RetroArch uses this file to populate the core list and the content file picker filters.
+# - `.w96` is a renamed `.wasm` (identical bytes), convenient for distribution.
+
+display_name = "Wasm96"
+categories = "Game"
+authors = "isaiahpettingill"
+supported_extensions = "wasm|wat|w96"
+corename = "Wasm96"
+manufacturer = "WebAssembly"
+systemname = "Wasm96"
+systemid = "wasm96"
+
+# A short description shown in core lists.
+description = "Run WebAssembly guest modules (WASM/WAT) with the wasm96 immediate-mode graphics/audio ABI."
+
+# Optional DB fields; keep generic so it doesn't miscategorize content.
+database = "None"
+
+# Core capabilities / expectations.
+supports_no_game = "false"
+# The core expects RetroArch to pass ROM bytes (need_fullpath=false in the core).
+# This field is informational here; RetroArch generally trusts the core for that.
+firmware_count = 0

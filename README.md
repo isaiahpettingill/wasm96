@@ -2,6 +2,39 @@
 git clone https://github.com/isaiahpettingill/wasm96.git
 cd wasm96
 
+## RetroArch: core `.info` + config snippets (so `.wat` / `.w96` show up)
+
+RetroArch’s content browser filters are driven by **core info files** (`*.info`). Even if the core reports `valid_extensions` at runtime, RetroArch may not show your content types in the file picker unless the matching `.info` file is installed.
+
+This repo includes:
+- Core info file: `libretro/info/wasm96_libretro.info`
+  - Advertises: `wasm|wat|w96`
+- Config snippet: `libretro/config/wasm96.cfg`
+  - Documents how to associate `.wasm/.wat/.w96` content with the wasm96 core
+
+### Install (Linux example)
+1. Copy the `.info` file into RetroArch’s info directory:
+   - Common path: `~/.config/retroarch/info/`
+   - File to copy: `libretro/info/wasm96_libretro.info`
+
+2. (Optional) Copy the config snippet somewhere convenient and include it from your `retroarch.cfg`:
+   - Config snippet: `libretro/config/wasm96.cfg`
+   - Add an include line to your main `retroarch.cfg` (use an absolute path):
+     - `#include "/absolute/path/to/wasm96.cfg"`
+
+3. Restart RetroArch.
+
+### Using the core with `.wasm/.wat/.w96`
+Practical ways to load:
+- Load core first:
+  - `Main Menu -> Load Core -> Wasm96`
+  - then `Main Menu -> Load Content ->` select a `.wasm/.wat/.w96`
+- Command line (useful for testing):
+  - `retroarch -L /path/to/wasm96_libretro.so /path/to/game.w96`
+
+Notes:
+- `.w96` is just a renamed `.wasm` file (identical bytes). It exists for convenient distribution.
+
 ## Runtime
 The core runs guest modules using **Wasmtime**.
 

@@ -4,6 +4,24 @@ build-sdks:
     cd wasm96-go-sdk && go build .
     cd wasm96-zig-sdk && zig build
 
+# --- RetroArch packaging helpers ----------------------------------------------
+#
+# RetroArch uses core `.info` files to drive the content file picker filters.
+# Package the info/config snippets so releases can ship them alongside the core.
+#
+# Output:
+#   dist/libretro/info/wasm96_libretro.info
+#   dist/libretro/config/wasm96.cfg
+#
+# Usage:
+#   just dist-libretro-metadata
+
+dist-libretro-metadata:
+    mkdir -p dist/libretro/info
+    mkdir -p dist/libretro/config
+    cp ./libretro/info/wasm96_libretro.info ./dist/libretro/info/wasm96_libretro.info
+    cp ./libretro/config/wasm96.cfg ./dist/libretro/config/wasm96.cfg
+
 # --- Release helpers (examples) ----------------------------------------------
 #
 # Build all guest examples and collect them into:
@@ -63,6 +81,11 @@ core-cross-build-all:
 core-dist version triple:
     mkdir -p dist/{{ triple }}
     cp "target/{{ triple }}/release/libwasm96_core.so" "dist/{{ triple }}/wasm96_libretro.so"
+    # Include RetroArch metadata (core info/config snippets) inside the zip.
+    mkdir -p dist/{{ triple }}/libretro/info
+    mkdir -p dist/{{ triple }}/libretro/config
+    cp ./libretro/info/wasm96_libretro.info dist/{{ triple }}/libretro/info/wasm96_libretro.info
+    cp ./libretro/config/wasm96.cfg dist/{{ triple }}/libretro/config/wasm96.cfg
     cd dist && zip -r "wasm96-core-{{ version }}-{{ triple }}.zip" "{{ triple }}"
 
 core-dist-all version:
