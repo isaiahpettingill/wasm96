@@ -5,13 +5,18 @@
   "description": "AssemblyScript guest module for wasm96 (manual ABI imports) - Generated Flappy example",
   "license": "MIT",
   "type": "commonjs",
-  "scripts": {
-    "build": "asc main.as.ts --target release --optimize --noAssert --exportRuntime --runtime stub --use abort= -o flappy.wasm",
-    "build:debug": "asc main.as.ts --target debug --exportRuntime --runtime stub --use abort= -o flappy.debug.wasm",
-    "clean": "rm -f flappy.wasm flappy.debug.wasm",
-    "check": "npm run build:debug"
-  },
+   "scripts": {
+     "build": "asc main.as.ts --target release --optimize --noAssert --exportRuntime --runtime stub --use abort= -o flappy.wasm",
+     "build:debug": "asc main.as.ts --target debug --exportRuntime --runtime stub --use abort= -o flappy.debug.wasm",
+     "clean": "rm -f flappy.wasm flappy.debug.wasm",
+     "check": "npm run build:debug",
+     "lint": "eslint main.as.ts",
+     "lint:fix": "eslint main.as.ts --fix"
+   },
   "devDependencies": {
-    "assemblyscript": "^0.28.7"
-  }
+    "@shopify/eslint-plugin-assemblyscript": "^0.1.13",
+    "assemblyscript": "^0.28.7",
+    "eslint": "^6.8.0"
+  },
+  "dependencies": {}
 }

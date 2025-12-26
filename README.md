@@ -330,6 +330,97 @@ cargo test --workspace
 cargo test --workspace --all-features
 ```
 
+## Releases
+
+This repo publishes:
+- **Rust SDK** (`wasm96-sdk`) to crates.io
+- **Libretro core** (`wasm96-core`) as prebuilt `.so` artifacts (Linux targets) uploaded to GitHub Releases
+
+### Release: Rust SDK (`wasm96-sdk`) to crates.io
+
+Prereqs:
+- You must be an owner of the `wasm96-sdk` crate on crates.io
+- You must have a crates.io API token configured for Cargo (`cargo login`)
+
+Recommended steps:
+```bash
+# From repo root
+cd wasm96
+
+# Verify the workspace and SDK compile
+cargo check
+cargo check -p wasm96-sdk
+
+# (Optional) verify docs build
+cargo doc -p wasm96-sdk --no-deps
+
+# Dry-run publish (catches missing files, README issues, etc.)
+cargo publish -p wasm96-sdk --dry-run
+
+# Publish the crate
+cargo publish -p wasm96-sdk
+```
+
+Notes:
+- Publishing requires the version in `wasm96/wasm96-sdk/Cargo.toml` to be incremented (and typically the workspace version in `wasm96/Cargo.toml` as well).
+- If you publish from a dirty tree, you may have trouble reproducing the release later. Prefer tagging the commit you published.
+
+### Release: libretro core zips (Linux x86_64, aarch64, armv7)
+
+We use `cross` to build Linux binaries in reproducible container toolchains, then zip the resulting `.so` per target triple.
+
+Prereqs:
+- `cross` installed (`cargo install cross` or per cross-rs docs)
+- `zip` installed
+- Docker/Podman configured for `cross`
+
+Build all Linux targets:
+```bash
+cd wasm96
+
+cross build -p wasm96-core --release --target x86_64-unknown-linux-gnu
+cross build -p wasm96-core --release --target aarch64-unknown-linux-gnu
+cross build -p wasm96-core --release --target armv7-unknown-linux-gnueabihf
+```
+
+Package into zips for GitHub Releases:
+```bash
+cd wasm96
+VERSION="0.1.2"  # set to the release version/tag you are shipping
+
+make_zip () {
+  TARGET="$1"
+  OUTDIR="dist/${TARGET}"
+  mkdir -p "${OUTDIR}"
+
+  # Default output name for the cdylib produced by wasm96-core.
+  # If your filename differs, adjust this path.
+  CORE_SO="target/${TARGET}/release/libwasm96_core.so"
+
+  # Standardize the filename inside the zip.
+  cp "${CORE_SO}" "${OUTDIR}/wasm96_libretro.so"
+
+  (cd dist && zip -r "wasm96-core-${VERSION}-${TARGET}.zip" "${TARGET}")
+}
+
+make_zip x86_64-unknown-linux-gnu
+make_zip aarch64-unknown-linux-gnu
+make_zip armv7-unknown-linux-gnueabihf
+```
+
+Output artifacts (examples):
+- `wasm96/dist/wasm96-core-0.1.2-x86_64-unknown-linux-gnu.zip`
+- `wasm96/dist/wasm96-core-0.1.2-aarch64-unknown-linux-gnu.zip`
+- `wasm96/dist/wasm96-core-0.1.2-armv7-unknown-linux-gnueabihf.zip`
+
+If the `.so` filename/path differs on your machine, inspect the build outputs:
+```bash
+ls -la target/*/release/*.so
+```
+
+Tip:
+- The repository `justfile` also contains helper recipes for these cross-build + zip steps. Use those to avoid typos and keep the release process consistent.
+
 ## Recent Fixes
 
 ### Wasmtime Migration (host/core)

@@ -3178,7 +3178,7 @@ dependencies = [
 
 [[package]]
 name = "wasm96-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "anyhow",
@@ -3207,7 +3207,7 @@ dependencies = [
 
 [[package]]
 name = "wasm96-sdk"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "wee_alloc",
 ]

@@ -45,6 +45,20 @@ Outputs:
 
 - `example/assemblyscript-guest/flappy.debug.wasm`
 
+## Lint
+
+This project uses ESLint with the `@shopify/eslint-plugin-assemblyscript` plugin for code quality:
+
+```sh
+npm run lint
+```
+
+To automatically fix issues:
+
+```sh
+npm run lint:fix
+```
+
 ---
 
 ## Run (via just + RetroArch)

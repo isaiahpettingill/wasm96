@@ -7,6 +7,49 @@ build-sdks:
 build-core:
     cargo build -p wasm96-core --release
 
+# --- Release helpers (core) ---------------------------------------------------
+#
+# These targets help you:
+# - cross-compile the libretro core shared library for Linux targets
+# - package each build into a zip suitable for uploading to GitHub releases
+#
+# Requirements:
+# - `cross` installed (https://github.com/cross-rs/cross)
+# - `zip` available
+#
+# Notes:
+# - Output artifact has historically been `libwasm96_core.so` under
+#   `target/<triple>/release/`. If your filename differs, adjust `core_so` below.
+# - We package the shared library as `wasm96_libretro.so` inside the zip.
+#
+# Usage:
+#   just core-cross-build-all
+#   just core-dist-all 0.1.2
+#
+
+core_so_triple := "target/{{ triple }}/release/libwasm96_core.so"
+
+core-cross-build triple:
+    cross build -p wasm96-core --release --target {{ triple }}
+
+core-cross-build-all:
+    just core-cross-build x86_64-unknown-linux-gnu
+    just core-cross-build aarch64-unknown-linux-gnu
+    just core-cross-build armv7-unknown-linux-gnueabihf
+
+# Create a zip for a specific target triple.
+
+# `version` is the tag/version you want embedded in the filename (e.g. 0.1.2).
+core-dist version triple:
+    mkdir -p dist/{{ triple }}
+    cp "{{ core_so_triple }}" "dist/{{ triple }}/wasm96_libretro.so"
+    cd dist && zip -r "wasm96-core-{{ version }}-{{ triple }}.zip" "{{ triple }}"
+
+core-dist-all version:
+    just core-dist {{ version }} x86_64-unknown-linux-gnu
+    just core-dist {{ version }} aarch64-unknown-linux-gnu
+    just core-dist {{ version }} armv7-unknown-linux-gnueabihf
+
 run_command := if os_family() == "windows" { "/c/RetroArch/retroarch.exe -L ./target/release/wasm96_core.dll" } else { "retroarch -L ./target/release/libwasm96_core.so" }
 
 run content-path: build-core

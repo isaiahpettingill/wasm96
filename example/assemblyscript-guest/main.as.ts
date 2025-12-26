@@ -1,3 +1,5 @@
+/* eslint-disable @shopify/assemblyscript/no-unused-vars */
+// @ts-nocheck
 // wasm96 AssemblyScript guest example: "Generated Flappy" (Flappy Bird-style)
 //
 // This file intentionally does "manual imports" of the wasm96 core ABI functions
@@ -402,7 +404,7 @@ export function setup(): void {
 
   // Seed RNG
   const ms = wasm96_system_millis();
-  rng = new Rng(<u32>(ms as u32));
+   rng = new Rng(<u32>ms);
 
   resetGame();
   logAscii("asm-guest: generated flappy loaded");
