@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::ffi::{CString, c_void};
 use std::io::Cursor;
+use std::path::Path;
 
 use std::sync::{Mutex, OnceLock};
 
@@ -494,31 +495,92 @@ pub fn graphics_mesh_create_obj(
         Err(_) => return 0,
     };
 
-    // Parse OBJ using obj-rs.
+    // Parse OBJ using `tobj` (more robust, supports MTL).
     //
-    // NOTE: We intentionally load as `Obj<obj::TexturedVertex, u32>` so we get:
-    // - position (xyz)
-    // - normal (nx ny nz)
-    // - texture (uv)
+    // We load from an in-memory buffer and provide a material loader closure. Since this core
+    // currently receives only OBJ bytes (no filesystem), we provide a "no materials" loader.
+    // This still correctly loads geometry and supports models that either don't reference MTL,
+    // or where materials are optional.
     //
-    // If the OBJ is missing normals/UVs, obj-rs may fail; we treat that as "can't load".
-    let obj = match obj::load_obj::<obj::TexturedVertex, _, u32>(Cursor::new(obj_bytes)) {
-        Ok(o) => o,
+    // Follow-up: we can extend the ABI to allow the guest to provide MTL bytes and texture bytes
+    // so `material_loader` can parse MTL and we can register textures automatically.
+    let mut reader = Cursor::new(obj_bytes);
+
+    let (models, _materials) = match tobj::load_obj_buf(
+        &mut reader,
+        &tobj::LoadOptions {
+            triangulate: true,
+            single_index: true,
+            ..Default::default()
+        },
+        |_p: &Path| -> tobj::MTLLoadResult {
+            // No filesystem access / no provided MTL bytes in this call.
+            // Return an empty material list (Ok) so model loading proceeds.
+            Ok((Vec::new(), ahash::AHashMap::new()))
+        },
+    ) {
+        Ok(r) => r,
         Err(_) => return 0,
     };
 
-    // Convert to wasm96-core's `Vertex` and u32 indices.
-    let vertices: Vec<Vertex> = obj
-        .vertices
-        .iter()
-        .map(|v| Vertex {
-            position: [v.position[0], v.position[1], v.position[2]],
-            uv: [v.texture[0], v.texture[1]],
-            normal: [v.normal[0], v.normal[1], v.normal[2]],
-        })
-        .collect();
+    if models.is_empty() {
+        return 0;
+    }
 
-    let indices: Vec<u32> = obj.indices;
+    // Convert to wasm96-core's `Vertex` and u32 indices by concatenating all models into one mesh.
+    // This preserves a single VAO/VBO/EBO per `key` as expected by the current renderer.
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    for model in models.iter() {
+        let mesh = &model.mesh;
+
+        // `tobj` mesh data is flat arrays.
+        if mesh.positions.len() % 3 != 0 {
+            return 0;
+        }
+        if !mesh.texcoords.is_empty() && mesh.texcoords.len() % 2 != 0 {
+            return 0;
+        }
+        if !mesh.normals.is_empty() && mesh.normals.len() % 3 != 0 {
+            return 0;
+        }
+
+        let base_vertex = vertices.len() as u32;
+        let vertex_count = mesh.positions.len() / 3;
+
+        for i in 0..vertex_count {
+            let px = mesh.positions[i * 3 + 0];
+            let py = mesh.positions[i * 3 + 1];
+            let pz = mesh.positions[i * 3 + 2];
+
+            let (u, v) = if mesh.texcoords.len() >= (i * 2 + 2) {
+                (mesh.texcoords[i * 2 + 0], mesh.texcoords[i * 2 + 1])
+            } else {
+                (0.0, 0.0)
+            };
+
+            let (nx, ny, nz) = if mesh.normals.len() >= (i * 3 + 3) {
+                (
+                    mesh.normals[i * 3 + 0],
+                    mesh.normals[i * 3 + 1],
+                    mesh.normals[i * 3 + 2],
+                )
+            } else {
+                (0.0, 0.0, 1.0)
+            };
+
+            vertices.push(Vertex {
+                position: [px, py, pz],
+                uv: [u, v],
+                normal: [nx, ny, nz],
+            });
+        }
+
+        for &idx in mesh.indices.iter() {
+            indices.push(base_vertex + (idx as u32));
+        }
+    }
 
     if vertices.is_empty() || indices.is_empty() {
         return 0;

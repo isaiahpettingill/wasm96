@@ -190,6 +190,9 @@ pub mod host_imports {
     pub const GRAPHICS_MESH_SET_TEXTURE: &str = "wasm96_graphics_mesh_set_texture";
     pub const GRAPHICS_MESH_DRAW: &str = "wasm96_graphics_mesh_draw";
 
+    // Materials / textures (OBJ+MTL workflows)
+    pub const GRAPHICS_MTL_REGISTER_TEXTURE: &str = "wasm96_graphics_mtl_register_texture";
+
     // Fonts (keyed)
     pub const GRAPHICS_FONT_REGISTER_TTF: &str = "wasm96_graphics_font_register_ttf";
     pub const GRAPHICS_FONT_REGISTER_BDF: &str = "wasm96_graphics_font_register_bdf";

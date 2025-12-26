@@ -64,13 +64,6 @@ run-wat-guest:
     cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
     just run ./example/wat-guest/wat-guest.wasm
 
-run-go-tetris:
-    # Note: Requires TinyGo for proper WebAssembly host imports
-    # Standard Go WebAssembly is browser-oriented and doesn't support direct host imports
-    # Uses Go 1.24 from /tmp/go/bin for TinyGo compatibility
-    cd example/go-guest-tetris && PATH=/tmp/go/bin:$PATH tinygo build -o go-guest-tetris.wasm -target wasm -scheduler none
-    just run ./example/go-guest-tetris/go-guest-tetris.wasm
-
 push-v-sdk version:
     git add ./wasm96-v-sdk/v.mod || true
     git commit -m "release: version {{ version }}" || true

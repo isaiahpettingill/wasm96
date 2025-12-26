@@ -11,6 +11,36 @@ Wasmtime configuration is set up to enable a broad set of WebAssembly feature fl
 cargo build --release --package wasm96-core
 ```
 
+## Materials (MTL) + textures (PNG/JPEG)
+The core supports an OBJ-style workflow where you can load a `.mtl` material file and register its referenced diffuse textures (`map_Kd`) as keyed images.
+
+This is designed for environments where you only have ROM bytes (no filesystem): the guest provides:
+- the `.mtl` bytes
+- a texture filename string (exactly as it appears in `map_Kd`)
+- the encoded texture bytes (`.png`, `.jpg`, `.jpeg`)
+
+Then the host will decode and register the texture under a keyed image id so it can be used for:
+- 2D draw calls (`png_draw_key` / `jpeg_draw_key`)
+- 3D mesh texturing (`mesh_set_texture`)
+
+### Host import: `wasm96_graphics_mtl_register_texture`
+Signature (conceptual):
+- `texture_key: u64`
+- `mtl_ptr: u32, mtl_len: u32`
+- `tex_filename_ptr: u32, tex_filename_len: u32`
+- `tex_ptr: u32, tex_len: u32`
+- returns `u32` (1 = registered, 0 = not registered / failed)
+
+Behavior:
+- Parses the `.mtl` and extracts `map_Kd` entries (diffuse maps).
+- If `tex_filename` matches one of those `map_Kd` entries, the host decodes `tex_bytes` based on the filename extension and registers the decoded image to `texture_key`.
+
+Notes:
+- Only `map_Kd` is considered (diffuse/albedo).
+- Texture formats supported here: PNG, JPEG (`.jpg`/`.jpeg`).
+- The `tex_filename` must match exactly (including relative paths if present in the `.mtl`).
+
+
 The core library will be at `target/release/libwasm96_core.so` (or equivalent for your platform).
 
 ### Writing a Guest
@@ -115,9 +145,13 @@ JPEG is treated as **RGB** (opaque).
     - `graphics::mesh_create_stl("part", stl_bytes)`
 - Bind a texture to a mesh (keyed image):
   - `graphics::mesh_set_texture("model", "model/tex")`
-  - Register the image first using either:
-    - `graphics::png_register("model/tex", png_bytes)` (RGBA; alpha respected)
-    - `graphics::jpeg_register("model/tex", jpeg_bytes)` (RGB; opaque)
+  - Register the image first using one of:
+    - Direct register:
+      - `graphics::png_register("model/tex", png_bytes)` (RGBA; alpha respected)
+      - `graphics::jpeg_register("model/tex", jpeg_bytes)` (RGB; opaque)
+    - Or, via MTL + referenced filename (`map_Kd`):
+      - `graphics::mtl_register_texture("model/tex", mtl_bytes, "albedo.png", albedo_png_bytes)`
+        - This only registers if `"albedo.png"` appears in the `.mtl` as a `map_Kd` entry.
 - Draw meshes:
   - `graphics::mesh_draw("cube", pos, rot, scale)`
 

@@ -78,6 +78,21 @@ pub mod sys {
         #[link_name = "wasm96_graphics_image_jpeg"]
         pub fn graphics_image_jpeg(x: i32, y: i32, ptr: u32, len: u32);
 
+        // Materials / textures (OBJ+MTL workflows)
+        //
+        // Given an `.mtl` file and one encoded texture blob (PNG/JPEG) + its filename, register the
+        // decoded texture under `texture_key` if the filename appears as a `map_Kd` entry.
+        #[link_name = "wasm96_graphics_mtl_register_texture"]
+        pub fn graphics_mtl_register_texture(
+            texture_key: u64,
+            mtl_ptr: u32,
+            mtl_len: u32,
+            tex_filename_ptr: u32,
+            tex_filename_len: u32,
+            tex_ptr: u32,
+            tex_len: u32,
+        ) -> u32;
+
         // --- Keyed resources (hashed keys) ---
         // SVG
         #[link_name = "wasm96_graphics_svg_register"]
@@ -440,7 +455,7 @@ pub mod graphics {
         }
     }
 
-    pub fn mesh_create_obj(key: &str, obj_data: &str) -> bool {
+    pub fn mesh_create_obj(key: &str, obj_data: &[u8]) -> bool {
         let k = hash_key(key);
         unsafe { sys::graphics_mesh_create_obj(k, obj_data.as_ptr(), obj_data.len()) != 0 }
     }
@@ -505,6 +520,35 @@ pub mod graphics {
                 hash_key(key),
                 png_bytes.as_ptr() as u32,
                 png_bytes.len() as u32,
+            ) != 0
+        }
+    }
+
+    /// Register an encoded texture referenced by an `.mtl` file (`map_Kd`) under `texture_key`.
+    ///
+    /// Usage pattern (guest-side):
+    /// - You already have the `.mtl` bytes (`mtl_bytes`)
+    /// - For each texture file referenced by `map_Kd`, call this passing:
+    ///   - `texture_key`: the key you want to register the decoded image under
+    ///   - `tex_filename`: the *exact* filename string as used in `map_Kd`
+    ///   - `tex_bytes`: the encoded PNG/JPEG bytes for that filename
+    ///
+    /// Returns `true` if it registered (filename matched + decode succeeded), else `false`.
+    pub fn mtl_register_texture(
+        texture_key: &str,
+        mtl_bytes: &[u8],
+        tex_filename: &str,
+        tex_bytes: &[u8],
+    ) -> bool {
+        unsafe {
+            sys::graphics_mtl_register_texture(
+                hash_key(texture_key),
+                mtl_bytes.as_ptr() as u32,
+                mtl_bytes.len() as u32,
+                tex_filename.as_ptr() as u32,
+                tex_filename.len() as u32,
+                tex_bytes.as_ptr() as u32,
+                tex_bytes.len() as u32,
             ) != 0
         }
     }

@@ -1,15 +1,12 @@
-# wasm96 Zig guest 3D example (rolling sphere game)
-
-## 3D texturing validation
-
-This guest also binds a **ground texture** (PNG preferred, JPEG fallback) to the ground plane using the keyed-image APIs (`pngRegister` / `jpegRegister`) plus `meshSetTexture(...)` so you can verify that **3D UV texturing** is working end-to-end.
+# wasm96 Zig guest 3D example (grid + rolling sphere + bird props)
 
 This example is a **Zig guest** WebAssembly module intended to run inside the `wasm96` libretro core.
 
-Instead of a static cube demo, it’s a small 3D “rolling sphere on a plane” game loop:
+It’s a small 3D sandbox:
 
-- You control a **sphere** that accelerates and rolls around on a **flat plane**.
-- The scene uses the **models and textures included in this directory** (e.g. the OBJ + MTL + `Textures/`).
+- You control a **sphere** that accelerates and rolls around on a **flat ground**.
+- The ground is a **procedural grid** (major/minor lines + highlighted axes) so you can immediately judge scale, movement, and camera.
+- Two lightweight **bird OBJ** models are loaded and rendered as props near the origin.
 
 It exports the required entrypoints:
 
@@ -39,13 +36,12 @@ zig-out/bin/zig-guest-3d.wasm
 
 ## Controls (joypad)
 
-- D-Pad: rotate camera pitch
-  - Up/Down: pitch
-- L1/R1: yaw (rotate camera left/right)
+- D-Pad Up/Down: camera pitch
+- L1/R1: camera yaw (rotate left/right)
 - A: accelerate forward (relative to camera yaw)
 - B: brake
-- Start: reset
 - Y: jump
+- Start: reset
 
 Notes:
 - Controls are implemented via `wasm96.input.isButtonDown(...)` (joypad), not keyboard.
@@ -54,13 +50,15 @@ Notes:
 
 ## Assets
 
-This example includes an OBJ scene and associated materials/textures:
+Bird OBJ models (rendered as props):
 
-- `src/Castelia City.obj`
-- `src/Castelia City.mtl`
-- `src/Textures/` (diffuse textures referenced by the MTL)
+- `src/12248_Bird_v1_L2.obj`
+- `src/12249_Bird_v1_L2.obj`
 
-Keep these with the project when building/running so the guest can embed or reference them as intended.
+Notes:
+- These OBJ files reference an accompanying `.mtl`, which in turn references a diffuse texture (`*_diff.jpg`) via `map_Kd`/`map_Ka`.
+- The current example binds the diffuse textures manually (register JPEG bytes, then `meshSetTexture(mesh_key, image_key)`), rather than relying on automatic MTL parsing/loading.
+- If `meshCreateObj(...)` is stubbed/unsupported in your current core build, the birds won’t render (but you can still roll on the grid).
 
 ---
 

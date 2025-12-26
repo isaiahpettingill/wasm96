@@ -437,6 +437,32 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
         },
     )?;
 
+    // Materials / textures (OBJ+MTL workflows)
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_MTL_REGISTER_TEXTURE,
+        |mut caller: Caller<'_, ()>,
+         texture_key: u64,
+         mtl_ptr: u32,
+         mtl_len: u32,
+         tex_filename_ptr: u32,
+         tex_filename_len: u32,
+         tex_ptr: u32,
+         tex_len: u32|
+         -> u32 {
+            av::graphics_mtl_register_texture(
+                &mut caller,
+                texture_key,
+                mtl_ptr,
+                mtl_len,
+                tex_filename_ptr,
+                tex_filename_len,
+                tex_ptr,
+                tex_len,
+            )
+        },
+    )?;
+
     // --- Input ---
     linker.func_wrap(
         IMPORT_MODULE,
