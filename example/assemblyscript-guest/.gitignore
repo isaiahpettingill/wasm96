@@ -5,3 +5,4 @@
 *lock*
 *.d.ts
 *.wat
+node_modules
