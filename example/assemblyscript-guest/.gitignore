@@ -1,0 +1,6 @@
+*.js
+*.wasm
+*.debug.*
+*lock*
+*.d.ts
+*.wat

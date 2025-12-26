@@ -194,7 +194,10 @@ pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
 
     match core.load_game_from_bytes(data_slice) {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            eprintln!("(wasm96) Failed to load game content: {e:?}");
+            false
+        }
     }
 }
 

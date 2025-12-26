@@ -1,3 +1,0 @@
-build:
-    v -shared -enable-globals -gc none -o main.c main.v
-    zig cc -include wasm96.h -target wasm32-wasi -Wl,--allow-undefined main.c -o ./out/v-guest-2d.wasm

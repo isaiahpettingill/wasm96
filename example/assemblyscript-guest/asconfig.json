@@ -1,0 +1,26 @@
+{
+  "extends": "assemblyscript/std/assembly.json",
+  "targets": {
+    "release": {
+      "outFile": "flappy.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 2,
+      "converge": true,
+      "noAssert": true,
+      "use": "abort="
+    },
+    "debug": {
+      "outFile": "flappy.debug.wasm",
+      "optimizeLevel": 0,
+      "shrinkLevel": 0,
+      "sourceMap": true,
+      "debug": true,
+      "use": "abort="
+    }
+  },
+  "options": {
+    "bindings": "raw",
+    "runtime": "stub",
+    "exportRuntime": false
+  }
+}

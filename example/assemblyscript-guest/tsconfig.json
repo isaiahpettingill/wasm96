@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+
+    "strict": true,
+    "noEmit": true,
+
+    "lib": ["ES2020"],
+    "types": [],
+
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./*"]
+    },
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["main.as.ts"],
+  "exclude": ["node_modules", "build", "dist", "target"]
+}

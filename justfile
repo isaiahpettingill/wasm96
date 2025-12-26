@@ -72,6 +72,10 @@ run-wat-guest:
     cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
     just run ./example/wat-guest/wat-guest.wasm
 
+run-assemblyscript-flappy:
+    cd example/assemblyscript-guest && just build
+    just run ./example/assemblyscript-guest/flappy.wasm
+
 push-v-sdk version:
     git add ./wasm96-v-sdk/v.mod || true
     git commit -m "release: version {{ version }}" || true

@@ -1,5 +1,8 @@
 # wasm96-v-sdk
 
+> [!WARNING]
+> This is broken and will not work with V's current wasm support
+
 A V SDK for building WebAssembly applications that run under the [wasm96](https://github.com/isaiahpettingill/wasm96) libretro core.
 
 ## Overview

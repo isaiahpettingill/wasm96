@@ -1,0 +1,17 @@
+{
+  "name": "wasm96-assemblyscript-guest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AssemblyScript guest module for wasm96 (manual ABI imports) - Generated Flappy example",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "build": "asc main.as.ts --target release --optimize --noAssert --exportRuntime --runtime stub --use abort= -o flappy.wasm",
+    "build:debug": "asc main.as.ts --target debug --exportRuntime --runtime stub --use abort= -o flappy.debug.wasm",
+    "clean": "rm -f flappy.wasm flappy.debug.wasm",
+    "check": "npm run build:debug"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.28.7"
+  }
+}

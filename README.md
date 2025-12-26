@@ -7,6 +7,28 @@ The core runs guest modules using **Wasmtime**.
 
 Wasmtime configuration is set up to enable a broad set of WebAssembly feature flags (in both Cargo features and `wasmtime::Config`) for maximum guest compatibility.
 
+## Example guests
+
+### AssemblyScript guest (Generated Flappy; manual ABI imports)
+This repository includes an AssemblyScript guest that manually imports the wasm96 ABI functions (no SDK wrapper):
+
+- Source: `example/assemblyscript-guest/main.as.ts`
+- Build output: `example/assemblyscript-guest/flappy.wasm`
+
+Build (from repo root):
+
+```sh
+cd example/assemblyscript-guest
+npm install
+npm run build
+```
+
+Run (from repo root, requires RetroArch + core build tooling set up):
+
+```sh
+just run-assemblyscript-flappy
+```
+
 ### Text rendering (fonts)
 Text rendering uses **keyed fonts** (the core ABI takes a `u64 font_key`; SDKs typically hash a string key into that `u64`).
 

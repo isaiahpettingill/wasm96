@@ -31,6 +31,28 @@ pub struct Wasm96Core {
 }
 
 impl Wasm96Core {
+    fn instantiate_with_details(&mut self) -> Result<(), anyhow::Error> {
+        self.ensure_runtime()
+            .map_err(|_| anyhow::anyhow!("Failed to initialize runtime"))?;
+
+        let rt = self
+            .rt
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Runtime missing after init"))?;
+        let module = self
+            .module
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Guest module missing (compile step did not set it)"))?;
+
+        let (instance, entrypoints) = rt
+            .instantiate(module)
+            .map_err(|e| anyhow::anyhow!("Wasmtime instantiate failed: {e:?}"))?;
+
+        self.instance = Some(instance);
+        self.entrypoints = Some(entrypoints);
+        Ok(())
+    }
+
     fn ensure_runtime(&mut self) -> Result<(), ()> {
         if self.rt.is_some() {
             return Ok(());
@@ -39,18 +61,6 @@ impl Wasm96Core {
         let mut rt = runtime::WasmtimeRuntime::new().map_err(|_| ())?;
         rt.define_imports().map_err(|_| ())?;
         self.rt = Some(rt);
-        Ok(())
-    }
-
-    fn instantiate(&mut self) -> Result<(), ()> {
-        self.ensure_runtime()?;
-        let rt = self.rt.as_mut().ok_or(())?;
-        let module = self.module.as_ref().ok_or(())?;
-
-        let (instance, entrypoints) = rt.instantiate(module).map_err(|_| ())?;
-        self.instance = Some(instance);
-        self.entrypoints = Some(entrypoints);
-
         Ok(())
     }
 
@@ -115,11 +125,11 @@ impl Wasm96Core {
 
         self.module = Some(module);
 
-        // Instantiate module + resolve entrypoints/memory.
-        if self.instantiate().is_err() {
+        // Instantiate module + resolve entrypoints/memory (with detailed errors).
+        if let Err(e) = self.instantiate_with_details() {
             state::clear_on_unload();
             self.clear_guest();
-            return Err(anyhow::anyhow!("Failed to instantiate module"));
+            return Err(anyhow::anyhow!("Failed to instantiate module: {e:?}"));
         }
 
         // Call setup

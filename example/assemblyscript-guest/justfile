@@ -1,0 +1,24 @@
+# AssemblyScript guest (wasm96) - Generated Flappy
+#
+# Produces:
+# - flappy.wasm (release)
+# - flappy.debug.wasm (debug)
+#
+# Requires: node + npm
+
+default: build
+
+install:
+    npm install
+
+build: install
+    npm run build
+
+build-debug: install
+    npm run build:debug
+
+check: install
+    npm run check
+
+clean:
+    npm run clean
