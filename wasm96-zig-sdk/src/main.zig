@@ -57,6 +57,18 @@ pub const sys = struct {
     extern fn wasm96_graphics_mesh_create_stl(key: u64, ptr: [*]const u8, len: usize) u32;
     extern fn wasm96_graphics_mesh_draw(key: u64, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32) void;
     extern fn wasm96_graphics_mesh_set_texture(mesh_key: u64, image_key: u64) u32;
+
+    // Materials / textures (OBJ+MTL workflows)
+    extern fn wasm96_graphics_mtl_register_texture(
+        texture_key: u64,
+        mtl_ptr: u32,
+        mtl_len: u32,
+        tex_filename_ptr: u32,
+        tex_filename_len: u32,
+        tex_ptr: u32,
+        tex_len: u32,
+    ) u32;
+
     extern fn wasm96_graphics_svg_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_svg_draw_key(key: u64, x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_svg_unregister(key: u64) void;
@@ -262,6 +274,21 @@ pub const graphics = struct {
     }
 
     /// Register an SVG resource under a string key.
+    /// Register an encoded texture referenced by an `.mtl` file (`map_Kd`) under `texture_key`.
+    ///
+    /// Returns `true` if it registered (filename matched + decode succeeded), else `false`.
+    pub fn mtlRegisterTexture(textureKey: []const u8, mtlBytes: []const u8, texFilename: []const u8, texBytes: []const u8) bool {
+        return sys.wasm96_graphics_mtl_register_texture(
+            hashKey(textureKey),
+            @as(u32, @intCast(@intFromPtr(mtlBytes.ptr))),
+            @as(u32, @intCast(mtlBytes.len)),
+            @as(u32, @intCast(@intFromPtr(texFilename.ptr))),
+            @as(u32, @intCast(texFilename.len)),
+            @as(u32, @intCast(@intFromPtr(texBytes.ptr))),
+            @as(u32, @intCast(texBytes.len)),
+        ) != 0;
+    }
+
     pub fn svgRegister(key: []const u8, data: []const u8) bool {
         return sys.wasm96_graphics_svg_register(hashKey(key), data.ptr, data.len) != 0;
     }

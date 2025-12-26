@@ -1,6 +1,9 @@
 // Wasm96 V SDK
 module wasm96
 
+// NOTE: This SDK aims to match the wasm96-core host import ABI.
+// Update wrappers here when new core imports are added.
+
 // Joypad button ids.
 pub enum Button as u32 {
 	b = 0
@@ -47,6 +50,13 @@ fn C.wasm96_graphics_bezier_quadratic(x1 int, y1 int, cx int, cy int, x2 int, y2
 fn C.wasm96_graphics_bezier_cubic(x1 int, y1 int, cx1 int, cy1 int, cx2 int, cy2 int, x2 int, y2 int, segments u32)
 fn C.wasm96_graphics_pill(x int, y int, w u32, h u32)
 fn C.wasm96_graphics_pill_outline(x int, y int, w u32, h u32)
+
+// Materials / textures (OBJ+MTL workflows)
+// Given an `.mtl` file + one encoded texture blob (PNG/JPEG) + its filename, the host will
+// decode and register the texture under `texture_key` *iff* the filename appears as a `map_Kd`
+// entry in the provided `.mtl`. Returns 1 on success, 0 otherwise.
+fn C.wasm96_graphics_mtl_register_texture(texture_key u64, mtl_ptr &u8, mtl_len usize, tex_filename_ptr &u8, tex_filename_len usize, tex_ptr &u8, tex_len usize) u32
+
 fn C.wasm96_graphics_svg_register(key u64, data_ptr &u8, data_len usize) u32
 fn C.wasm96_graphics_svg_draw_key(key u64, x int, y int, w u32, h u32)
 fn C.wasm96_graphics_svg_unregister(key u64)
@@ -187,6 +197,20 @@ pub fn graphics_pill(x int, y int, w u32, h u32) {
 // Draw a pill outline.
 pub fn graphics_pill_outline(x int, y int, w u32, h u32) {
 	C.wasm96_graphics_pill_outline(x, y, w, h)
+}
+
+// Register an encoded texture referenced by an `.mtl` file (`map_Kd`) under `texture_key`.
+//
+// Usage pattern (guest-side):
+// - You already have the `.mtl` bytes (`mtl_bytes`)
+// - For each diffuse texture referenced by `map_Kd`, call this passing:
+//   - `texture_key`: the string key you want to register the decoded image under
+//   - `tex_filename`: the *exact* filename string as used in `map_Kd`
+//   - `tex_bytes`: the encoded PNG/JPEG bytes for that filename
+//
+// Returns `true` if it registered (filename matched + decode succeeded), else `false`.
+pub fn graphics_mtl_register_texture(texture_key string, mtl_ptr &u8, mtl_len usize, tex_filename string, tex_bytes_ptr &u8, tex_bytes_len usize) bool {
+	return C.wasm96_graphics_mtl_register_texture(hash_key(texture_key), mtl_ptr, mtl_len, &u8(tex_filename.str), usize(tex_filename.len), tex_bytes_ptr, tex_bytes_len) != 0
 }
 
 // Register an SVG resource under a string key.

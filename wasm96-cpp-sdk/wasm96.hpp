@@ -119,6 +119,20 @@ extern uint32_t wasm96_graphics_mesh_create_stl(uint64_t key, const uint8_t* ptr
 extern void wasm96_graphics_mesh_draw(uint64_t key, float x, float y, float z, float rx, float ry, float rz, float sx, float sy, float sz) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_draw");
 extern uint32_t wasm96_graphics_mesh_set_texture(uint64_t mesh_key, uint64_t image_key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_set_texture");
 
+// Materials / textures (OBJ+MTL workflows)
+// Given an `.mtl` file bytes + one encoded texture blob (PNG/JPEG) + its filename,
+// the host will decode and register the texture under `texture_key` *iff* the filename
+// appears as a `map_Kd` entry in the provided `.mtl`. Returns 1 on success, 0 otherwise.
+extern uint32_t wasm96_graphics_mtl_register_texture(
+    uint64_t texture_key,
+    const uint8_t* mtl_ptr,
+    uint32_t mtl_len,
+    const uint8_t* tex_filename_ptr,
+    uint32_t tex_filename_len,
+    const uint8_t* tex_ptr,
+    uint32_t tex_len
+) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mtl_register_texture");
+
 extern uint32_t wasm96_graphics_svg_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_register");
 extern void wasm96_graphics_svg_draw_key(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_draw_key");
 extern void wasm96_graphics_svg_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_unregister");
@@ -214,6 +228,28 @@ public:
     static bool meshCreateStl(const char* key, const uint8_t* data, uint32_t len) { return wasm96_graphics_mesh_create_stl(wasm96_hash_key(key), data, len) != 0; }
     static void meshDraw(const char* key, float x, float y, float z, float rx, float ry, float rz, float sx, float sy, float sz) { wasm96_graphics_mesh_draw(wasm96_hash_key(key), x, y, z, rx, ry, rz, sx, sy, sz); }
     static bool meshSetTexture(const char* mesh_key, const char* image_key) { return wasm96_graphics_mesh_set_texture(wasm96_hash_key(mesh_key), wasm96_hash_key(image_key)) != 0; }
+
+    // Register an encoded texture referenced by an `.mtl` file (`map_Kd`) under `texture_key`.
+    //
+    // Returns `true` if it registered (filename matched + decode succeeded), else `false`.
+    static bool mtlRegisterTexture(
+        const char* texture_key,
+        const uint8_t* mtl_bytes,
+        uint32_t mtl_len,
+        const char* tex_filename,
+        const uint8_t* tex_bytes,
+        uint32_t tex_len
+    ) {
+        return wasm96_graphics_mtl_register_texture(
+            wasm96_hash_key(texture_key),
+            mtl_bytes,
+            mtl_len,
+            (const uint8_t*)tex_filename,
+            wasm96_strlen_(tex_filename),
+            tex_bytes,
+            tex_len
+        ) != 0;
+    }
 
     static bool svgRegister(const char* key, const uint8_t* data, uint32_t len) { return wasm96_graphics_svg_register(wasm96_hash_key(key), data, len) != 0; }
     static void svgDrawKey(const char* key, int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_svg_draw_key(wasm96_hash_key(key), x, y, w, h); }

@@ -1,6 +1,47 @@
 // Needed for `alloc::` in this crate.
 extern crate alloc;
 
+// -------------------------------------------------------------------------------------------------
+// Fonts & text (guest-facing behavior + ABI contract)
+//
+// This module implements the host-side of wasm96's immediate-mode graphics API. Guests call wasm
+// imports such as `wasm96_graphics_text_key` and `wasm96_graphics_text_measure_key` to draw or measure
+// text.
+//
+// Key design: **fonts are keyed by u64**
+// - The guest never receives a numeric "font id" handle.
+// - Instead, fonts are registered and referenced by an arbitrary `u64` key supplied by the guest.
+// - In practice, SDKs hash string keys (e.g. "ui", "title", "debug") to `u64` on the guest side.
+//
+// Supported font sources:
+// - TTF/OTF fonts registered via `wasm96_graphics_font_register_ttf`
+// - BDF fonts registered via `wasm96_graphics_font_register_bdf`
+// - Built-in Spleen bitmap fonts selected via `wasm96_graphics_font_register_spleen`
+//
+// IMPORTANT: fallback behavior
+// - `wasm96_graphics_text_key` will fall back to built-in Spleen at size 16 if the provided `font_key`
+//   has not been registered.
+// - `wasm96_graphics_text_measure_key` uses the exact same fallback to keep layout stable between
+//   measurement and rendering.
+//
+// This means text can "just work" without explicit registration, but stable UI metrics should register
+// fonts in `setup()`.
+//
+// Memory model / safety notes for guest pointers:
+// - `*_register_*` functions read the font bytes from guest memory immediately and clone/parse them on
+//   the host. The guest-provided buffer only needs to remain valid for the duration of the call.
+// - `*_text_*` functions read the UTF-8 text bytes from guest memory immediately during the call.
+//
+// UTF-8 expectations:
+// - Text pointers provided by the guest are expected to be valid UTF-8. Invalid data will result in a
+//   no-op / zero-size behavior depending on the code path (see call sites).
+//
+// Performance notes:
+// - Register fonts once (typically in `setup()`), not per-frame.
+// - Drawing many small text calls is slower than drawing fewer larger strings.
+//
+// -------------------------------------------------------------------------------------------------
+
 use crate::state::global;
 use wasmtime::Caller;
 
@@ -1322,7 +1363,22 @@ pub fn graphics_gif_unregister(key: u64) {
     }
 }
 
-/// Upload TTF font.
+/// Upload a TTF/OTF font from guest memory and return a host-side font id.
+///
+/// This is a **host-internal** helper used by `graphics_font_register_ttf`.
+///
+/// Guest ABI (callers):
+/// - Guests call `wasm96_graphics_font_register_ttf(key, data_ptr, data_len)`.
+/// - The host reads `data_ptr..data_ptr+data_len` from the guest's linear memory and attempts to
+///   parse the font.
+///
+/// Returns:
+/// - `0` on failure (invalid pointer/length, invalid font bytes, parse failure)
+/// - a non-zero font id on success (stored in the host resource table)
+///
+/// Notes:
+/// - The host stores the parsed `Font` in `RESOURCES.fonts` under the returned id.
+/// - The guest never sees this id; guests use the original `key` (u64) when drawing/measuring text.
 pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
     let data = match read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
@@ -1366,7 +1422,24 @@ pub fn graphics_font_upload_bdf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
     id
 }
 
-/// Register TTF/OTF font under a string key.
+/// Register a TTF/OTF font under a key.
+///
+/// Guest ABI:
+/// - `key`: arbitrary u64 selected by the guest (often a hashed string).
+/// - `data_ptr/data_len`: encoded TTF/OTF bytes in guest memory.
+///
+/// Returns:
+/// - `1` on success
+/// - `0` on failure
+///
+/// What "success" means:
+/// - The host successfully parsed the font bytes and stored a `FontResource::Ttf` in the host
+///   resource table.
+/// - The `key` now maps to that font resource until `graphics_font_unregister(key)` is called.
+///
+/// Recommended usage:
+/// - Register fonts once during guest `setup()`.
+/// - Reuse the same key each frame when rendering or measuring.
 pub fn graphics_font_register_ttf(
     env: &mut Caller<'_, ()>,
     key: u64,
@@ -1383,7 +1456,27 @@ pub fn graphics_font_register_ttf(
     1
 }
 
-/// Register BDF font under a string key.
+/// Register a BDF bitmap font under a key.
+///
+/// Guest ABI:
+/// - `key`: arbitrary u64 selected by the guest (often a hashed string).
+/// - `data_ptr/data_len`: BDF file bytes in guest memory (text-based format).
+///
+/// Returns:
+/// - `1` on success
+/// - `0` on failure
+///
+/// What "success" means:
+/// - The host successfully parsed the BDF, extracted a glyph bitmap map, and stored it in the host
+///   resource table.
+/// - The key now maps to that host font resource until `graphics_font_unregister(key)` is called.
+///
+/// When to use BDF:
+/// - Pixel-art UIs, debug overlays, and deterministic bitmap metrics.
+///
+/// Caveats:
+/// - Current parser is intentionally minimal and expects a relatively well-formed BDF.
+/// - Missing glyphs will simply not render (per glyph lookup).
 pub fn graphics_font_register_bdf(
     env: &mut Caller<'_, ()>,
     key: u64,
@@ -1400,7 +1493,26 @@ pub fn graphics_font_register_bdf(
     1
 }
 
-/// Register built-in Spleen font under a string key.
+/// Register a built-in Spleen bitmap font under a key.
+///
+/// The Spleen family is bundled with the host as BDF assets. This function selects one of the
+/// supported Spleen sizes and associates it with `key`.
+///
+/// Guest ABI:
+/// - `key`: arbitrary u64 selected by the guest (often a hashed string).
+/// - `size`: requested pixel size. Supported sizes are currently:
+///   - 8, 16, 24, 32, 64
+///
+/// Returns:
+/// - `1` on success
+/// - `0` if `size` is unsupported or the built-in BDF could not be parsed.
+///
+/// Why register Spleen if there is a fallback?
+/// - The host fallback (when `font_key` is unknown) uses Spleen size 16 only.
+/// - Registering Spleen under your own key lets you choose sizes and ensures stable layout.
+///
+/// See also:
+/// - `graphics_text_key` and `graphics_text_measure_key` fallback to Spleen size 16 when missing.
 pub fn graphics_font_register_spleen(key: u64, size: u32) -> u32 {
     let id = graphics_font_use_spleen(size);
     if id == 0 {
@@ -1412,7 +1524,18 @@ pub fn graphics_font_register_spleen(key: u64, size: u32) -> u32 {
     1
 }
 
-/// Unregister keyed font.
+/// Unregister a keyed font.
+///
+/// Guest ABI:
+/// - `key`: the u64 key previously used to register a font.
+///
+/// Behavior:
+/// - Removes the key -> font-id mapping from `RESOURCES.keyed_fonts`.
+/// - Drops the underlying font resource from `RESOURCES.fonts` (if present).
+///
+/// After unregistering:
+/// - Calls to `graphics_text_key` / `graphics_text_measure_key` using this key will again behave as
+///   "missing font key" and therefore use the fallback Spleen size 16.
 pub fn graphics_font_unregister(key: u64) {
     let id = {
         let mut res = RESOURCES.lock().unwrap();
@@ -1425,7 +1548,22 @@ pub fn graphics_font_unregister(key: u64) {
     }
 }
 
-/// Draw text using a keyed font.
+/// Draw UTF-8 text using a keyed font at the given screen position.
+///
+/// Guest ABI:
+/// - `x`, `y`: top-left origin in screen coordinates.
+/// - `font_key`: u64 key of a registered font.
+/// - `text_ptr/text_len`: UTF-8 bytes in guest memory.
+///
+/// Fallback behavior:
+/// - If `font_key` is not registered, the host falls back to built-in Spleen size 16.
+///   This makes text work out-of-the-box even if the guest never registered a font.
+///
+/// Notes:
+/// - The host reads the string bytes from guest memory immediately during this call.
+/// - If the host cannot access guest memory or cannot resolve a font id (including fallback),
+///   this function becomes a no-op.
+/// - Rendering is alpha-blended in the host (TTF/OTF smoothing + proper blending are handled by host).
 pub fn graphics_text_key(
     x: i32,
     y: i32,
@@ -1454,7 +1592,25 @@ pub fn graphics_text_key(
     graphics_text(x, y, font_id, env, text_ptr, text_len);
 }
 
-/// Measure text using a keyed font.
+/// Measure UTF-8 text using a keyed font.
+///
+/// This is intended for layout (centering, right-align, UI sizing).
+///
+/// Guest ABI:
+/// - `font_key`: u64 key of a registered font.
+/// - `text_ptr/text_len`: UTF-8 bytes in guest memory.
+///
+/// Return value:
+/// - Packed `u64`: `(width << 32) | height`, where `width` and `height` are pixel dimensions.
+/// - Returns `0` if measurement cannot be performed (e.g. memory access failure or no font even
+///   after fallback).
+///
+/// Fallback behavior:
+/// - If `font_key` is not registered, the host measures using the same fallback as drawing:
+///   built-in Spleen size 16. This keeps measured size consistent with `graphics_text_key`.
+///
+/// Notes:
+/// - Like draw, measurement reads the string bytes immediately from guest memory.
 pub fn graphics_text_measure_key(
     env: &mut Caller<'_, ()>,
     font_key: u64,
@@ -1548,7 +1704,22 @@ mod tests {
     }
 }
 
-/// Use Spleen font.
+/// Use (load) a built-in Spleen font at the given size and return a host-side font id.
+///
+/// This is a **host-internal** helper used for:
+/// - explicit registration: `graphics_font_register_spleen(key, size)`
+/// - fallback behavior: `graphics_text_key` and `graphics_text_measure_key` (size 16)
+///
+/// Supported sizes:
+/// - 8, 16, 24, 32, 64
+///
+/// Returns:
+/// - `0` if the size is unsupported or parsing fails
+/// - otherwise, a host font id inserted into `RESOURCES.fonts` as a `FontResource::Bdf`
+///
+/// Note:
+/// - The returned id is not stable across runs and is not exposed to guests. Guests should only
+///   rely on their chosen `font_key` values.
 pub fn graphics_font_use_spleen(size: u32) -> u32 {
     let data = match size {
         8 => super::resources::SPLEEN_5X8,

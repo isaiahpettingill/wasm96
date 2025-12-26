@@ -350,6 +350,8 @@ The core supports decoding **encoded PNG bytes** on the host. Guests can draw PN
 ### SDK Parity
 The Rust, Zig, and Go SDKs now implement the full set of core features, including all drawing primitives, audio playback, input handling, and 3D graphics.
 
+In addition, the SDKs now expose OBJ+MTL workflows via `wasm96_graphics_mtl_register_texture`, which lets guests register encoded textures (PNG/JPEG) referenced by an `.mtl` file (`map_Kd`) under a keyed texture id for use with 3D meshes.
+
 ### Triangle rasterization (host/core)
 Filled triangles are rasterized using a barycentric (edge-function) fill in the core. The implementation is winding-invariant (vertex order does not change filled results), deterministic, and clips to the framebuffer bounds.
 

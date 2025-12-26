@@ -10,6 +10,83 @@
 //! - Guest exports `setup`, `update`, and `draw`.
 //!
 //! This file intentionally contains **no WIT** and **no codegen**.
+//!
+//! # Fonts & text: how it works
+//!
+//! wasm96 provides a **keyed font** model:
+//! - You register a font under a `u64` key (the SDK hashes `&str` keys for you).
+//! - Later you draw or measure text by referencing the same key.
+//!
+//! In the Rust SDK:
+//! - Registration lives in [`graphics::font_register_ttf`], [`graphics::font_register_bdf`],
+//!   and [`graphics::font_register_spleen`].
+//! - Drawing & measuring live in [`graphics::text_key`] and [`graphics::text_measure_key`].
+//!
+//! ## Fallback behavior (important)
+//!
+//! The host (wasm96-core) implements a **fallback** if you try to measure/draw text using a
+//! `font_key` that was never registered:
+//! - `graphics::text_key(...)` falls back to the built-in **Spleen** font at **size 16**.
+//! - `graphics::text_measure_key(...)` uses the same fallback (Spleen size 16).
+//!
+//! This means text “just works” out-of-the-box, but you should still register fonts when you
+//! care about style, metric stability, or performance.
+//!
+//! ## Which font format should you use?
+//!
+//! - **Spleen (built-in, BDF)** via [`graphics::font_register_spleen`]
+//!   - Great default for pixel UIs / debug text.
+//!   - Supported sizes: **8, 16, 24, 32, 64** (other sizes currently fail and return `false`).
+//! - **BDF (custom)** via [`graphics::font_register_bdf`]
+//!   - Best for pixel-perfect fonts you control.
+//!   - Host parses the BDF, builds a glyph map, and renders using the parsed bitmaps.
+//! - **TTF/OTF (custom)** via [`graphics::font_register_ttf`]
+//!   - Best for scalable fonts.
+//!   - Host uses font rasterization and draws glyphs as alpha-blended bitmaps.
+//!
+//! ## Recommended usage pattern
+//!
+//! 1. Pick a stable string key for each font you use (e.g. `"ui"`, `"title"`, `"debug"`).
+//! 2. Register fonts during `setup()` (once).
+//! 3. Use `text_measure_key` for layout (e.g. centering).
+//! 4. Use `text_key` to draw. Reuse keys; do not re-register each frame.
+//!
+//! Example (built-in Spleen):
+//!
+//! ```no_run
+//! use wasm96_sdk::graphics;
+//!
+//! #[no_mangle]
+//! pub extern "C" fn setup() {
+//!     graphics::set_size(320, 240);
+//!     // Register built-in Spleen under a key you control.
+//!     graphics::font_register_spleen("ui", 16);
+//! }
+//!
+//! #[no_mangle]
+//! pub extern "C" fn draw() {
+//!     graphics::background(0, 0, 0);
+//!     graphics::set_color(255, 255, 255, 255);
+//!
+//!     let size = graphics::text_measure_key("ui", "Hello wasm96");
+//!     let x = (320i32 - size.width as i32) / 2;
+//!     let y = 20;
+//!     graphics::text_key(x, y, "ui", "Hello wasm96");
+//! }
+//! ```
+//!
+//! ## Lifetimes and safety notes
+//!
+//! - `text_key` and `text_measure_key` pass pointers into guest memory to the host.
+//!   The host reads the bytes immediately during the call, so the `&str` only needs to remain
+//!   valid for the duration of the function call.
+//! - `font_register_*` similarly passes pointers to font data; the host copies/decodes immediately.
+//!
+//! ## Unregistering fonts
+//!
+//! If you need to reclaim host-side font resources (rare for most games), call
+//! [`graphics::font_unregister`]. The key will no longer map to a font. Subsequent text usage
+//! with that key will again hit the host fallback (Spleen size 16).
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -133,6 +210,18 @@ pub mod sys {
         pub fn graphics_jpeg_unregister(key: u64);
 
         // Fonts + text (keyed by string)
+        //
+        // The host maintains a map of `u64 font_key -> font resource`.
+        // Keys are arbitrary. The Rust SDK hashes `&str` keys with FNV-1a to a `u64`.
+        //
+        // Registration functions return 1 on success, 0 on failure.
+        //
+        // IMPORTANT HOST BEHAVIOR:
+        // - If you call `graphics_text_key` / `graphics_text_measure_key` with a font_key that has
+        //   never been registered, the host falls back to built-in Spleen at size 16.
+        //
+        // This makes text work out-of-the-box, but for stable metrics you should explicitly
+        // register a font under a deterministic key during `setup()`.
         #[link_name = "wasm96_graphics_font_register_ttf"]
         pub fn graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32;
         #[link_name = "wasm96_graphics_font_register_bdf"]
@@ -142,9 +231,15 @@ pub mod sys {
         #[link_name = "wasm96_graphics_font_unregister"]
         pub fn graphics_font_unregister(key: u64);
 
+        // Draw text with a keyed font.
+        // - `text_ptr/text_len` are UTF-8 bytes in guest memory (host expects valid UTF-8).
+        // - If `font_key` is unknown, host falls back to Spleen size 16.
         #[link_name = "wasm96_graphics_text_key"]
         pub fn graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: u32, text_len: u32);
 
+        // Measure text with a keyed font.
+        // - Returns a packed u64: (width<<32) | height.
+        // - If `font_key` is unknown, host falls back to Spleen size 16.
         #[link_name = "wasm96_graphics_text_measure_key"]
         pub fn graphics_text_measure_key(font_key: u64, text_ptr: u32, text_len: u32) -> u64;
 
@@ -595,9 +690,22 @@ pub mod graphics {
         unsafe { sys::graphics_jpeg_unregister(hash_key(key)) }
     }
 
-    /// Register a TTF font under a string key.
+    /// Register a TTF/OTF font under a string key.
     ///
-    /// Returns `true` if successful.
+    /// ## What the host does
+    /// - The host reads the encoded font bytes immediately during this call.
+    /// - It attempts to parse them as a TTF/OTF via its font rasterizer.
+    /// - On success it stores the font in a host-side table and associates it with `hash_key(key)`.
+    ///
+    /// ## When to call this
+    /// Prefer calling during `setup()` (once), *not per-frame*.
+    ///
+    /// ## Return value
+    /// Returns `true` if the host successfully parsed and registered the font.
+    ///
+    /// ## Notes
+    /// - If you never register a font for a key, `text_key`/`text_measure_key` will still work due
+    ///   to host fallback (Spleen size 16), but metrics/appearance may differ from what you expect.
     pub fn font_register_ttf(key: &str, data: &[u8]) -> bool {
         unsafe {
             sys::graphics_font_register_ttf(hash_key(key), data.as_ptr() as u32, data.len() as u32)
@@ -605,9 +713,19 @@ pub mod graphics {
         }
     }
 
-    /// Register a BDF font under a string key.
+    /// Register a BDF bitmap font under a string key.
     ///
-    /// Returns `true` if successful.
+    /// ## What the host does
+    /// - The host reads `data` immediately and parses the BDF text.
+    /// - It extracts the font bounding box (pixel width/height) and glyph bitmaps.
+    /// - On success, the parsed font is stored and associated with `hash_key(key)`.
+    ///
+    /// ## When to use BDF
+    /// Use BDF for crisp pixel fonts, debug overlays, and UIs where you want deterministic
+    /// bitmap metrics and a retro look.
+    ///
+    /// ## Return value
+    /// Returns `true` if parsing succeeded and the font was registered.
     pub fn font_register_bdf(key: &str, data: &[u8]) -> bool {
         unsafe {
             sys::graphics_font_register_bdf(hash_key(key), data.as_ptr() as u32, data.len() as u32)
@@ -617,17 +735,51 @@ pub mod graphics {
 
     /// Register the built-in Spleen font under a string key.
     ///
+    /// Spleen is a bitmap font family bundled with the host (wasm96-core).
+    /// This function associates a chosen Spleen size with your `key`, so you can refer to it
+    /// via `text_key`/`text_measure_key`.
+    ///
+    /// ## Supported sizes
+    /// The host currently supports: **8, 16, 24, 32, 64**.
+    /// Other sizes return `false`.
+    ///
+    /// ## Why register Spleen if there is already a fallback?
+    /// The host fallback is Spleen size 16 **only when the key is missing**.
+    /// If you want a different size (or want to be explicit for layout stability),
+    /// register it under your own key.
+    ///
     /// Returns `true` if successful.
     pub fn font_register_spleen(key: &str, size: u32) -> bool {
         unsafe { sys::graphics_font_register_spleen(hash_key(key), size) != 0 }
     }
 
-    /// Unregister a font.
+    /// Unregister a font by key.
+    ///
+    /// After unregistering:
+    /// - The mapping from `hash_key(key)` to the font resource is removed on the host.
+    /// - Future calls to `text_key`/`text_measure_key` using this key will use the host fallback
+    ///   (Spleen size 16) unless you register another font under the same key.
+    ///
+    /// This is mainly useful for apps that dynamically load/unload large fonts and want to
+    /// reclaim host-side memory.
     pub fn font_unregister(key: &str) {
         unsafe { sys::graphics_font_unregister(hash_key(key)) }
     }
 
-    /// Draw text using a registered font.
+    /// Draw text using a keyed font.
+    ///
+    /// ## Parameters
+    /// - `x`, `y`: top-left origin where the text will be drawn in screen coordinates.
+    /// - `font_key`: the font key you previously registered (or any string; see fallback).
+    /// - `text`: UTF-8 text to draw.
+    ///
+    /// ## Fallback
+    /// If `font_key` is not registered, the host will draw using built-in Spleen size 16.
+    ///
+    /// ## Performance tips
+    /// - Keep `text` reasonably small per call; prefer drawing fewer, longer strings vs many
+    ///   single-character calls.
+    /// - Register fonts once in `setup()`; do not register fonts in `draw()`.
     pub fn text_key(x: i32, y: i32, font_key: &str, text: &str) {
         unsafe {
             sys::graphics_text_key(
@@ -640,7 +792,26 @@ pub mod graphics {
         }
     }
 
-    /// Measure text using a registered font.
+    /// Measure text using a keyed font.
+    ///
+    /// This is intended for UI/layout work (centering, right-aligning, wrapping decisions).
+    ///
+    /// ## Return value
+    /// Returns a [`TextSize`] where:
+    /// - `width` is the pixel width of the rendered text
+    /// - `height` is the pixel height of the rendered text
+    ///
+    /// Internally, the host returns a packed `u64`:
+    /// `(width << 32) | height`.
+    ///
+    /// ## Fallback
+    /// If `font_key` is not registered, the host measures with Spleen size 16, matching
+    /// the draw fallback behavior of [`text_key`].
+    ///
+    /// ## Caveats
+    /// - The host expects `text` to be valid UTF-8.
+    /// - Metrics are defined by host-side font implementation; if you change fonts or sizes,
+    ///   your layout can change accordingly.
     pub fn text_measure_key(font_key: &str, text: &str) -> TextSize {
         let packed = unsafe {
             sys::graphics_text_measure_key(
@@ -649,9 +820,10 @@ pub mod graphics {
                 text.len() as u32,
             )
         };
+
         TextSize {
             width: (packed >> 32) as u32,
-            height: packed as u32,
+            height: (packed & 0xFFFF_FFFF) as u32,
         }
     }
 }
