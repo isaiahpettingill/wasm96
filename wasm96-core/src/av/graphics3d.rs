@@ -287,7 +287,7 @@ fn create_program(vs_src: &str, fs_src: &str) -> u32 {
                 program,
                 len,
                 std::ptr::null_mut(),
-                buffer.as_mut_ptr() as *mut i8,
+                buffer.as_mut_ptr() as *mut _,
             );
             eprintln!("Program link error: {}", String::from_utf8_lossy(&buffer));
         }
@@ -317,7 +317,7 @@ fn compile_shader(type_: u32, src: &str) -> u32 {
                 shader,
                 len,
                 std::ptr::null_mut(),
-                buffer.as_mut_ptr() as *mut i8,
+                buffer.as_mut_ptr() as *mut _,
             );
             eprintln!("Shader compile error: {}", String::from_utf8_lossy(&buffer));
         }
