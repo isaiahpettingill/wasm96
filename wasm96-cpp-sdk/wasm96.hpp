@@ -49,6 +49,11 @@ typedef signed short int16_t;
   #define WASM96_WASM_IMPORT(module, name)
 #endif
 
+// wasm96-core currently defines host imports under module name "env".
+#ifndef WASM96_WASM_IMPORT_MODULE
+  #define WASM96_WASM_IMPORT_MODULE "env"
+#endif
+
 static inline uint32_t wasm96_strlen_(const char* s) {
     uint32_t n = 0;
     if (!s) return 0;
@@ -85,83 +90,83 @@ typedef struct {
 } wasm96_text_size_t;
 
 // Low-level raw ABI imports.
-extern void wasm96_graphics_set_size(uint32_t width, uint32_t height) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_set_size");
-extern void wasm96_graphics_set_color(uint32_t r, uint32_t g, uint32_t b, uint32_t a) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_set_color");
-extern void wasm96_graphics_background(uint32_t r, uint32_t g, uint32_t b) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_background");
-extern void wasm96_graphics_point(int32_t x, int32_t y) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_point");
-extern void wasm96_graphics_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_line");
-extern void wasm96_graphics_rect(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_rect");
-extern void wasm96_graphics_rect_outline(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_rect_outline");
-extern void wasm96_graphics_circle(int32_t x, int32_t y, uint32_t r) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_circle");
-extern void wasm96_graphics_circle_outline(int32_t x, int32_t y, uint32_t r) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_circle_outline");
-extern void wasm96_graphics_image(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_image");
-extern void wasm96_graphics_image_png(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_image_png");
-extern void wasm96_graphics_image_jpeg(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_image_jpeg");
-extern void wasm96_graphics_triangle(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_triangle");
-extern void wasm96_graphics_triangle_outline(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_triangle_outline");
-extern void wasm96_graphics_bezier_quadratic(int32_t x1, int32_t y1, int32_t cx, int32_t cy, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_bezier_quadratic");
-extern void wasm96_graphics_bezier_cubic(int32_t x1, int32_t y1, int32_t cx1, int32_t cy1, int32_t cx2, int32_t cy2, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_bezier_cubic");
-extern void wasm96_graphics_pill(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_pill");
-extern void wasm96_graphics_pill_outline(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_pill_outline");
+extern void wasm96_graphics_set_size(uint32_t width, uint32_t height) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_size");
+extern void wasm96_graphics_set_color(uint32_t r, uint32_t g, uint32_t b, uint32_t a) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_color");
+extern void wasm96_graphics_background(uint32_t r, uint32_t g, uint32_t b) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_background");
+extern void wasm96_graphics_point(int32_t x, int32_t y) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_point");
+extern void wasm96_graphics_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_line");
+extern void wasm96_graphics_rect(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rect");
+extern void wasm96_graphics_rect_outline(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rect_outline");
+extern void wasm96_graphics_circle(int32_t x, int32_t y, uint32_t r) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_circle");
+extern void wasm96_graphics_circle_outline(int32_t x, int32_t y, uint32_t r) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_circle_outline");
+extern void wasm96_graphics_image(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image");
+extern void wasm96_graphics_image_png(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image_png");
+extern void wasm96_graphics_image_jpeg(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image_jpeg");
+extern void wasm96_graphics_triangle(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_triangle");
+extern void wasm96_graphics_triangle_outline(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_triangle_outline");
+extern void wasm96_graphics_bezier_quadratic(int32_t x1, int32_t y1, int32_t cx, int32_t cy, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_bezier_quadratic");
+extern void wasm96_graphics_bezier_cubic(int32_t x1, int32_t y1, int32_t cx1, int32_t cy1, int32_t cx2, int32_t cy2, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_bezier_cubic");
+extern void wasm96_graphics_pill(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_pill");
+extern void wasm96_graphics_pill_outline(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_pill_outline");
 
 // 3D Graphics
-extern void wasm96_graphics_set_3d(uint32_t enable) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_set_3d");
-extern void wasm96_graphics_camera_look_at(float eye_x, float eye_y, float eye_z, float target_x, float target_y, float target_z, float up_x, float up_y, float up_z) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_camera_look_at");
-extern void wasm96_graphics_camera_perspective(float fovy, float aspect, float near, float far) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_camera_perspective");
-extern uint32_t wasm96_graphics_mesh_create(uint64_t key, const float* v_ptr, uint32_t v_len, const uint32_t* i_ptr, uint32_t i_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_mesh_create");
-extern uint32_t wasm96_graphics_mesh_create_obj(uint64_t key, const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_mesh_create_obj");
-extern uint32_t wasm96_graphics_mesh_create_stl(uint64_t key, const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_mesh_create_stl");
-extern void wasm96_graphics_mesh_draw(uint64_t key, float x, float y, float z, float rx, float ry, float rz, float sx, float sy, float sz) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_mesh_draw");
-extern uint32_t wasm96_graphics_mesh_set_texture(uint64_t mesh_key, uint64_t image_key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_mesh_set_texture");
+extern void wasm96_graphics_set_3d(uint32_t enable) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_3d");
+extern void wasm96_graphics_camera_look_at(float eye_x, float eye_y, float eye_z, float target_x, float target_y, float target_z, float up_x, float up_y, float up_z) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_camera_look_at");
+extern void wasm96_graphics_camera_perspective(float fovy, float aspect, float near, float far) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_camera_perspective");
+extern uint32_t wasm96_graphics_mesh_create(uint64_t key, const float* v_ptr, uint32_t v_len, const uint32_t* i_ptr, uint32_t i_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_create");
+extern uint32_t wasm96_graphics_mesh_create_obj(uint64_t key, const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_create_obj");
+extern uint32_t wasm96_graphics_mesh_create_stl(uint64_t key, const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_create_stl");
+extern void wasm96_graphics_mesh_draw(uint64_t key, float x, float y, float z, float rx, float ry, float rz, float sx, float sy, float sz) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_draw");
+extern uint32_t wasm96_graphics_mesh_set_texture(uint64_t mesh_key, uint64_t image_key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_mesh_set_texture");
 
-extern uint32_t wasm96_graphics_svg_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_svg_register");
-extern void wasm96_graphics_svg_draw_key(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_svg_draw_key");
-extern void wasm96_graphics_svg_unregister(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_svg_unregister");
+extern uint32_t wasm96_graphics_svg_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_register");
+extern void wasm96_graphics_svg_draw_key(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_draw_key");
+extern void wasm96_graphics_svg_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_svg_unregister");
 
-extern uint32_t wasm96_graphics_gif_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_gif_register");
-extern void wasm96_graphics_gif_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_gif_draw_key");
-extern void wasm96_graphics_gif_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_gif_draw_key_scaled");
-extern void wasm96_graphics_gif_unregister(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_gif_unregister");
+extern uint32_t wasm96_graphics_gif_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_gif_register");
+extern void wasm96_graphics_gif_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_gif_draw_key");
+extern void wasm96_graphics_gif_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_gif_draw_key_scaled");
+extern void wasm96_graphics_gif_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_gif_unregister");
 
-extern uint32_t wasm96_graphics_png_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_png_register");
-extern void wasm96_graphics_png_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_png_draw_key");
-extern void wasm96_graphics_png_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_png_draw_key_scaled");
-extern void wasm96_graphics_png_unregister(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_png_unregister");
+extern uint32_t wasm96_graphics_png_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_png_register");
+extern void wasm96_graphics_png_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_png_draw_key");
+extern void wasm96_graphics_png_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_png_draw_key_scaled");
+extern void wasm96_graphics_png_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_png_unregister");
 
-extern uint32_t wasm96_graphics_jpeg_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_jpeg_register");
-extern void wasm96_graphics_jpeg_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_jpeg_draw_key");
-extern void wasm96_graphics_jpeg_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_jpeg_draw_key_scaled");
-extern void wasm96_graphics_jpeg_unregister(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_jpeg_unregister");
+extern uint32_t wasm96_graphics_jpeg_register(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_jpeg_register");
+extern void wasm96_graphics_jpeg_draw_key(uint64_t key, int32_t x, int32_t y) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_jpeg_draw_key");
+extern void wasm96_graphics_jpeg_draw_key_scaled(uint64_t key, int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_jpeg_draw_key_scaled");
+extern void wasm96_graphics_jpeg_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_jpeg_unregister");
 
-extern uint32_t wasm96_graphics_font_register_ttf(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_font_register_ttf");
-extern uint32_t wasm96_graphics_font_register_bdf(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_font_register_bdf");
-extern uint32_t wasm96_graphics_font_register_spleen(uint64_t key, uint32_t size) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_font_register_spleen");
-extern void wasm96_graphics_font_unregister(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_font_unregister");
-extern void wasm96_graphics_text_key(int32_t x, int32_t y, uint64_t font_key, const uint8_t* text_ptr, uint32_t text_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_text_key");
-extern uint64_t wasm96_graphics_text_measure_key(uint64_t font_key, const uint8_t* text_ptr, uint32_t text_len) WASM96_WASM_IMPORT("wasm96", "wasm96_graphics_text_measure_key");
+extern uint32_t wasm96_graphics_font_register_ttf(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_font_register_ttf");
+extern uint32_t wasm96_graphics_font_register_bdf(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_font_register_bdf");
+extern uint32_t wasm96_graphics_font_register_spleen(uint64_t key, uint32_t size) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_font_register_spleen");
+extern void wasm96_graphics_font_unregister(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_font_unregister");
+extern void wasm96_graphics_text_key(int32_t x, int32_t y, uint64_t font_key, const uint8_t* text_ptr, uint32_t text_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_text_key");
+extern uint64_t wasm96_graphics_text_measure_key(uint64_t font_key, const uint8_t* text_ptr, uint32_t text_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_text_measure_key");
 
 // Input
-extern uint32_t wasm96_input_is_button_down(uint32_t port, uint32_t btn) WASM96_WASM_IMPORT("wasm96", "wasm96_input_is_button_down");
-extern uint32_t wasm96_input_is_key_down(uint32_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_input_is_key_down");
-extern int32_t wasm96_input_get_mouse_x(void) WASM96_WASM_IMPORT("wasm96", "wasm96_input_get_mouse_x");
-extern int32_t wasm96_input_get_mouse_y(void) WASM96_WASM_IMPORT("wasm96", "wasm96_input_get_mouse_y");
-extern uint32_t wasm96_input_is_mouse_down(uint32_t btn) WASM96_WASM_IMPORT("wasm96", "wasm96_input_is_mouse_down");
+extern uint32_t wasm96_input_is_button_down(uint32_t port, uint32_t btn) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_is_button_down");
+extern uint32_t wasm96_input_is_key_down(uint32_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_is_key_down");
+extern int32_t wasm96_input_get_mouse_x(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_get_mouse_x");
+extern int32_t wasm96_input_get_mouse_y(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_get_mouse_y");
+extern uint32_t wasm96_input_is_mouse_down(uint32_t btn) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_is_mouse_down");
 
 // Audio
-extern uint32_t wasm96_audio_init(uint32_t sample_rate) WASM96_WASM_IMPORT("wasm96", "wasm96_audio_init");
-extern void wasm96_audio_push_samples(const int16_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_audio_push_samples");
-extern void wasm96_audio_play_wav(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_audio_play_wav");
-extern void wasm96_audio_play_qoa(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_audio_play_qoa");
-extern void wasm96_audio_play_xm(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_audio_play_xm");
+extern uint32_t wasm96_audio_init(uint32_t sample_rate) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_audio_init");
+extern void wasm96_audio_push_samples(const int16_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_audio_push_samples");
+extern void wasm96_audio_play_wav(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_audio_play_wav");
+extern void wasm96_audio_play_qoa(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_audio_play_qoa");
+extern void wasm96_audio_play_xm(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_audio_play_xm");
 
 // Storage
-extern void wasm96_storage_save(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT("wasm96", "wasm96_storage_save");
-extern uint64_t wasm96_storage_load(uint64_t key) WASM96_WASM_IMPORT("wasm96", "wasm96_storage_load");
-extern void wasm96_storage_free(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_storage_free");
+extern void wasm96_storage_save(uint64_t key, const uint8_t* data_ptr, uint32_t data_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_storage_save");
+extern uint64_t wasm96_storage_load(uint64_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_storage_load");
+extern void wasm96_storage_free(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_storage_free");
 
 // System
-extern void wasm96_system_log(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("wasm96", "wasm96_system_log");
-extern uint64_t wasm96_system_millis(void) WASM96_WASM_IMPORT("wasm96", "wasm96_system_millis");
+extern void wasm96_system_log(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_log");
+extern uint64_t wasm96_system_millis(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_millis");
 
 } // extern "C"
 
