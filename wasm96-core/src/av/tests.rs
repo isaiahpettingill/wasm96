@@ -222,7 +222,6 @@ mod tests {
                 loop_enabled: false,
                 pcm_stereo,
                 position_frames: 0,
-                sample_rate,
             });
 
             // Mix exactly 1 frame from the channel (mirrors the logic in `audio_drain_host`,

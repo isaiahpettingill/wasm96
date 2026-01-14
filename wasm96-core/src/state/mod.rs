@@ -7,6 +7,10 @@
 //! - Host owns the framebuffer and handles all rendering commands.
 //! - Guest issues commands (draw rect, line, etc.) which modify the host framebuffer.
 //! - Host presents the framebuffer to libretro at the end of the frame.
+//!
+//! NOTE: Video pitch may be padded (row stride larger than visible width) on some
+//! targets/drivers for compatibility/performance. Keep `width/height` as the visible
+//! area and use `pitch_bytes` (or `stride_pixels`) for row stepping.
 
 use libretro_sys::{AudioSampleBatchFn, AudioSampleFn, InputPollFn, InputStateFn, VideoRefreshFn};
 use std::collections::HashMap;
@@ -45,10 +49,6 @@ pub struct AudioChannel {
     /// Current playback position in *frames* (not i16 samples).
     /// One frame = 2 i16 samples (L, R).
     pub position_frames: usize,
-
-    /// Source sample rate for this channel's PCM.
-    #[allow(dead_code)]
-    pub sample_rate: u32,
 }
 
 impl Default for AudioChannel {
@@ -60,7 +60,6 @@ impl Default for AudioChannel {
             loop_enabled: false,
             pcm_stereo: Vec::new(),
             position_frames: 0,
-            sample_rate: 44100,
         }
     }
 }
@@ -112,26 +111,54 @@ pub fn global() -> &'static Mutex<GlobalState> {
 /// Host-owned framebuffer state for immediate mode drawing.
 #[derive(Debug)]
 pub struct VideoState {
+    /// Visible width (in pixels).
     pub width: u32,
+    /// Visible height (in pixels).
     pub height: u32,
 
+    /// Row stride in pixels (may be >= `width`).
+    ///
+    /// This allows us to align/pad rows for frontends/drivers (e.g. some ARM GPUs)
+    /// while keeping the visible geometry unchanged.
+    pub stride_pixels: u32,
+
+    /// Cached pitch in bytes for XRGB8888 output.
+    ///
+    /// NOTE: XRGB8888 is 4 bytes/pixel, so `pitch_bytes = stride_pixels * 4`.
+    pub pitch_bytes: usize,
+
     /// Framebuffer pixels (XRGB8888).
-    /// Size is width * height.
+    ///
+    /// Size is `stride_pixels * height` (NOT `width * height` when padded).
     /// Stored as `u32` for easy pixel manipulation.
     /// Format: 0x00RRGGBB (little endian in memory: BB GG RR 00).
     pub framebuffer: Vec<u32>,
 
     /// Current drawing color (packed 0x00RRGGBB for XRGB8888).
     pub draw_color: u32,
+
+    /// Tracks whether geometry was last communicated to libretro for the current size.
+    ///
+    /// This is used so higher layers can request `RETRO_ENVIRONMENT_SET_GEOMETRY`
+    /// only on changes.
+    pub geometry_dirty: bool,
 }
 
 impl Default for VideoState {
     fn default() -> Self {
+        let width = 320u32;
+        let height = 240u32;
+        let stride_pixels = width;
+        let pitch_bytes = (stride_pixels as usize) * 4;
+
         Self {
-            width: 320, // Default size until set_size is called
-            height: 240,
-            framebuffer: vec![0; 320 * 240],
+            width,  // Default size until set_size is called
+            height,
+            stride_pixels,
+            pitch_bytes,
+            framebuffer: vec![0; (stride_pixels * height) as usize],
             draw_color: 0x00FFFFFF, // Default white
+            geometry_dirty: true,
         }
     }
 }

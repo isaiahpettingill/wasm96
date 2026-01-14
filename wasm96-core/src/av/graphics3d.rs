@@ -36,10 +36,6 @@ pub struct Vertex {
 
 pub struct Mesh {
     pub vao: u32,
-    #[allow(dead_code)]
-    pub vbo: u32,
-    #[allow(dead_code)]
-    pub ebo: u32,
     pub index_count: i32,
 
     /// Optional bound texture for this mesh (keyed image id).
@@ -65,13 +61,15 @@ struct GlState {
 
     // Overlay Shader (2D)
     program_overlay: u32,
-    #[allow(dead_code)]
-    uniform_tex: i32,
 
     // Overlay Resources
     overlay_vao: u32, // Empty VAO for attribute-less rendering
     overlay_texture: u32,
     overlay_texture_size: (u32, u32),
+
+    // Cached upload buffer for overlay RGBA repack (width*height*4 bytes).
+    // Reused across frames to avoid per-frame allocations.
+    overlay_upload_rgba: Vec<u8>,
 
     output_fbo: u32,
 }
@@ -89,9 +87,62 @@ lazy_static::lazy_static! {
 }
 static GL_STATE: OnceLock<Mutex<GlState>> = OnceLock::new();
 
+// --- Helpers ---
+
+/// Uploads a 2D texture with RGBA8 internalformat, falling back to unsized RGBA if the driver rejects RGBA8.
+/// This improves GLES compatibility.
+unsafe fn tex_image_2d_rgba_fallback(
+    target: u32,
+    level: i32,
+    width: i32,
+    height: i32,
+    format: u32,
+    type_: u32,
+    pixels: *const c_void,
+) {
+    unsafe {
+        gl::TexImage2D(
+            target,
+            level,
+            gl::RGBA8 as i32,
+            width,
+            height,
+            0,
+            format,
+            type_,
+            pixels,
+        );
+    }
+
+    let err = unsafe { gl::GetError() };
+    if err != gl::NO_ERROR {
+        unsafe {
+            gl::TexImage2D(
+                target,
+                level,
+                gl::RGBA as i32,
+                width,
+                height,
+                0,
+                format,
+                type_,
+                pixels,
+            );
+        }
+    }
+}
+
+fn check_gl_error(label: &str) {
+    let mut err = unsafe { gl::GetError() };
+    while err != gl::NO_ERROR {
+        eprintln!("GL Error at {}: 0x{:X}", label, err);
+        err = unsafe { gl::GetError() };
+    }
+}
+
 // --- Shaders ---
 
-const VS_3D_SRC: &str = r#"
+const VS_3D_SRC_GL: &str = r#"
 #version 330 core
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec2 uv;
@@ -110,7 +161,7 @@ void main() {
 }
 "#;
 
-const FS_3D_SRC: &str = r#"
+const FS_3D_SRC_GL: &str = r#"
 #version 330 core
 in vec3 v_normal;
 in vec2 v_uv;
@@ -139,11 +190,74 @@ void main() {
 }
 "#;
 
-const VS_OVERLAY_SRC: &str = r#"
+// GLES3 (GLSL ES 3.0):
+const VS_3D_SRC_GLES: &str = r#"
+#version 300 es
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 uv;
+layout(location = 2) in vec3 normal;
+
+uniform mat4 mvp;
+uniform mat4 normal_mat;
+
+out vec3 v_normal;
+out vec2 v_uv;
+
+void main() {
+    gl_Position = mvp * vec4(position, 1.0);
+    v_normal = mat3(normal_mat) * normal;
+    v_uv = uv;
+}
+"#;
+
+const FS_3D_SRC_GLES: &str = r#"
+#version 300 es
+precision mediump float;
+
+in vec3 v_normal;
+in vec2 v_uv;
+
+uniform vec3 color;
+uniform sampler2D tex;
+uniform int use_tex;
+
+out vec4 FragColor;
+
+void main() {
+    // Simple directional lighting
+    vec3 light_dir = normalize(vec3(0.5, 1.0, 0.5));
+    float diff = max(dot(normalize(v_normal), light_dir), 0.2);
+
+    vec3 base = color;
+    float alpha = 1.0;
+
+    if (use_tex != 0) {
+        vec4 t = texture(tex, v_uv);
+        base = t.rgb;
+        alpha = t.a;
+    }
+
+    FragColor = vec4(base * diff, alpha);
+}
+"#;
+
+#[inline]
+fn shader_sources_3d() -> (&'static str, &'static str) {
+    if cfg!(target_arch = "aarch64") {
+        (VS_3D_SRC_GLES, FS_3D_SRC_GLES)
+    } else {
+        (VS_3D_SRC_GL, FS_3D_SRC_GL)
+    }
+}
+
+// --- Overlay shader variants ---
+//
+// Desktop (GL core):
+const VS_OVERLAY_SRC_GL: &str = r#"
 #version 330 core
 // Fullscreen triangle strip generated in shader
 const vec2 verts[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
-const vec2 uvs[4] = vec2[](vec2(0,1), vec2(1,1), vec2(0,0), vec2(1,0));
+const vec2 uvs[4] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(1,1));
 
 out vec2 v_uv;
 
@@ -153,7 +267,7 @@ void main() {
 }
 "#;
 
-const FS_OVERLAY_SRC: &str = r#"
+const FS_OVERLAY_SRC_GL: &str = r#"
 #version 330 core
 in vec2 v_uv;
 uniform sampler2D tex;
@@ -168,6 +282,47 @@ void main() {
 }
 "#;
 
+// Raspberry Pi / GLES3 (GLSL ES 3.0):
+const VS_OVERLAY_SRC_GLES: &str = r#"
+#version 300 es
+// Fullscreen triangle strip generated in shader (gl_VertexID is available in ES 3.0)
+const vec2 verts[4] = vec2[](vec2(-1.0,-1.0), vec2(1.0,-1.0), vec2(-1.0,1.0), vec2(1.0,1.0));
+const vec2 uvs[4] = vec2[](vec2(0.0,0.0), vec2(1.0,0.0), vec2(0.0,1.0), vec2(1.0,1.0));
+
+out vec2 v_uv;
+
+void main() {
+    gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);
+    v_uv = uvs[gl_VertexID];
+}
+"#;
+
+const FS_OVERLAY_SRC_GLES: &str = r#"
+#version 300 es
+precision mediump float;
+
+in vec2 v_uv;
+uniform sampler2D tex;
+out vec4 FragColor;
+
+void main() {
+    vec4 c = texture(tex, v_uv);
+    // Assume texture is BGRA (uploaded from XRGB/ARGB host buffer).
+    // If alpha is 0, discard to show 3D scene behind.
+    if (c.a == 0.0) discard;
+    FragColor = c;
+}
+"#;
+
+#[inline]
+fn overlay_shader_sources() -> (&'static str, &'static str) {
+    if cfg!(target_arch = "aarch64") {
+        (VS_OVERLAY_SRC_GLES, FS_OVERLAY_SRC_GLES)
+    } else {
+        (VS_OVERLAY_SRC_GL, FS_OVERLAY_SRC_GL)
+    }
+}
+
 // --- Initialization ---
 
 pub fn init_gl_context<F>(loader: F)
@@ -181,9 +336,11 @@ where
     MESH_STORE.lock().unwrap().clear();
 
     // Initialize GL state
-    let program_3d = create_program(VS_3D_SRC, FS_3D_SRC);
+    let (vs_3d, fs_3d) = shader_sources_3d();
+    let program_3d = create_program(vs_3d, fs_3d);
     check_gl_error("create_program 3d");
-    let program_overlay = create_program(VS_OVERLAY_SRC, FS_OVERLAY_SRC);
+    let (vs_overlay, fs_overlay) = overlay_shader_sources();
+    let program_overlay = create_program(vs_overlay, fs_overlay);
     check_gl_error("create_program overlay");
 
     let uniform_mvp = unsafe {
@@ -207,10 +364,6 @@ where
         gl::GetUniformLocation(program_3d, name.as_ptr())
     };
 
-    let uniform_tex = unsafe {
-        let name = CString::new("tex").unwrap();
-        gl::GetUniformLocation(program_overlay, name.as_ptr())
-    };
     check_gl_error("get uniforms");
 
     let mut overlay_vao = 0;
@@ -236,10 +389,12 @@ where
         uniform_tex3d,
         uniform_use_tex,
         program_overlay,
-        uniform_tex,
         overlay_vao,
         overlay_texture,
         overlay_texture_size: (0, 0),
+
+        overlay_upload_rgba: Vec::new(),
+
         output_fbo: 0,
     };
 
@@ -254,16 +409,6 @@ where
     }
 
     check_gl_error("init_gl_context");
-}
-
-fn check_gl_error(label: &str) {
-    unsafe {
-        let mut err = gl::GetError();
-        while err != gl::NO_ERROR {
-            eprintln!("GL Error at {}: 0x{:X}", label, err);
-            err = gl::GetError();
-        }
-    }
 }
 
 fn create_program(vs_src: &str, fs_src: &str) -> u32 {
@@ -469,8 +614,6 @@ pub fn graphics_mesh_create(
         key,
         Mesh {
             vao,
-            vbo,
-            ebo,
             index_count: i_len as i32,
             texture_key: None,
         },
@@ -689,8 +832,6 @@ pub fn graphics_mesh_create_obj(
         key,
         Mesh {
             vao,
-            vbo,
-            ebo,
             index_count: indices.len() as i32,
             texture_key: None,
         },
@@ -831,13 +972,11 @@ pub fn graphics_mesh_draw(
                 // Ensure tightly packed RGBA upload.
                 gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
 
-                gl::TexImage2D(
+                tex_image_2d_rgba_fallback(
                     gl::TEXTURE_2D,
                     0,
-                    gl::RGBA8 as i32,
                     img.width as i32,
                     img.height as i32,
-                    0,
                     gl::RGBA,
                     gl::UNSIGNED_BYTE,
                     img.rgba.as_ptr() as *const c_void,
@@ -913,13 +1052,6 @@ pub fn graphics_mesh_draw(
     }
 }
 
-#[allow(dead_code)]
-pub fn clear_depth() {
-    unsafe {
-        gl::Clear(gl::DEPTH_BUFFER_BIT);
-    }
-}
-
 pub fn prepare_frame(fbo: usize) {
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {
@@ -948,11 +1080,12 @@ pub fn flush_to_host() -> bool {
     }
     let mut gl_state = gl_state_lock.unwrap().lock().unwrap();
 
-    let (width, height, fb, video_cb) = {
+    let (width, height, stride_pixels, fb, video_cb) = {
         let s = global().lock().unwrap();
         (
             s.video.width,
             s.video.height,
+            s.video.stride_pixels,
             s.video.framebuffer.clone(),
             s.video_refresh_cb,
         )
@@ -966,18 +1099,67 @@ pub fn flush_to_host() -> bool {
         // 1. Upload 2D framebuffer to texture
         gl::BindTexture(gl::TEXTURE_2D, gl_state.overlay_texture);
 
-        if gl_state.overlay_texture_size != (width, height) {
-            gl::TexImage2D(
+        // Upload the visible `width x height` region row-by-row to respect padded stride.
+        //
+        // `fb` is a `Vec<u32>` with size `stride_pixels * height`, where each row begins at:
+        //   row_start = y * stride_pixels
+        //
+        // For maximum GLES portability, we repack to RGBA8 and upload as GL_RGBA on all targets.
+        // (BGRA is not guaranteed on GLES without extensions.)
+        //
+        // PERF: reuse a cached `Vec<u8>` to avoid per-frame allocations.
+        //
+        // NOTE: This also fixes correctness when `stride_pixels != width` (padded rows).
+        let stride_pixels = stride_pixels as usize;
+        let width_usize = width as usize;
+        let height_usize = height as usize;
+
+        // Snapshot size before taking a mutable borrow of the upload buffer.
+        let overlay_tex_size = gl_state.overlay_texture_size;
+
+        let needed_len = width_usize * height_usize * 4;
+        if gl_state.overlay_upload_rgba.len() < needed_len {
+            gl_state.overlay_upload_rgba.resize(needed_len, 0);
+        }
+
+        // Repack as tightly-packed RGBA8 (no row padding) for upload.
+        let mut out_i = 0usize;
+        for y in 0..height_usize {
+            let row = &fb[(y * stride_pixels)..(y * stride_pixels + width_usize)];
+            for &px in row {
+                let a = ((px >> 24) & 0xFF) as u8;
+                let r = ((px >> 16) & 0xFF) as u8;
+                let g = ((px >> 8) & 0xFF) as u8;
+                let b = (px & 0xFF) as u8;
+
+                gl_state.overlay_upload_rgba[out_i] = r;
+                gl_state.overlay_upload_rgba[out_i + 1] = g;
+                gl_state.overlay_upload_rgba[out_i + 2] = b;
+                gl_state.overlay_upload_rgba[out_i + 3] = a;
+                out_i += 4;
+            }
+        }
+
+        // Use a raw pointer so we don't keep a borrow of `gl_state` across GL calls / state checks.
+        let rgba_ptr = gl_state.overlay_upload_rgba.as_ptr() as *const c_void;
+
+        // GLES compatibility hardening:
+        // Some GLES drivers are picky about `internalformat = RGBA8`. While ES 3.0 supports it,
+        // real-world stacks (especially older/embedded) can behave better with sized format
+        // fallbacks. We attempt RGBA8 first and fall back to unsized RGBA if allocation fails.
+        //
+        // NOTE: For performance, we only do the fallback check on (re)allocation.
+        if overlay_tex_size != (width, height) {
+            tex_image_2d_rgba_fallback(
                 gl::TEXTURE_2D,
                 0,
-                gl::RGBA8 as i32,
                 width as i32,
                 height as i32,
-                0,
-                gl::BGRA,
+                gl::RGBA,
                 gl::UNSIGNED_BYTE,
-                fb.as_ptr() as *const c_void,
+                rgba_ptr,
             );
+
             gl_state.overlay_texture_size = (width, height);
         } else {
             gl::TexSubImage2D(
@@ -987,9 +1169,9 @@ pub fn flush_to_host() -> bool {
                 0,
                 width as i32,
                 height as i32,
-                gl::BGRA,
+                gl::RGBA,
                 gl::UNSIGNED_BYTE,
-                fb.as_ptr() as *const c_void,
+                rgba_ptr,
             );
         }
 

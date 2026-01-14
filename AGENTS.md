@@ -4,3 +4,4 @@
 * Keep the rust and zig SDKs up to date
 * Keep examples up to date
 * Add new examples to justfile
+* Do not plan, just code.

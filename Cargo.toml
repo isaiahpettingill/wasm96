@@ -32,3 +32,10 @@ libretro-backend = { version = "0.2.1", default-features = false }
 # SDK dependencies (safe defaults for wasm32 targets; keep minimal)
 # `wee_alloc` is optional but commonly useful in wasm apps; app authors can opt-in.
 wee_alloc = "0.4.5"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3

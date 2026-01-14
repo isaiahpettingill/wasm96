@@ -42,6 +42,7 @@ extern crate alloc;
 //
 // -------------------------------------------------------------------------------------------------
 
+use crate::platform;
 use crate::state::global;
 use wasmtime::Caller;
 
@@ -164,9 +165,25 @@ pub fn graphics_set_size(width: u32, height: u32) {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
+
     s.video.width = width;
     s.video.height = height;
-    s.video.framebuffer.resize((width * height) as usize, 0);
+
+    // Allocate software framebuffer with optional row padding (for some ARM GPUs/frontends).
+    let stride_pixels = if platform::should_align_software_pitch() {
+        platform::padded_width_pixels(width)
+    } else {
+        width
+    };
+    s.video.stride_pixels = stride_pixels;
+    s.video.pitch_bytes = (stride_pixels as usize) * 4;
+
+    s.video.framebuffer
+        .resize((stride_pixels * height) as usize, 0);
+
+    // Mark geometry dirty so libretro side can emit SET_GEOMETRY on next opportunity.
+    s.video.geometry_dirty = true;
+
     // Clear to black on resize
     s.video.framebuffer.fill(0);
 }
@@ -217,7 +234,8 @@ pub fn graphics_point(x: i32, y: i32) {
     let h = s.video.height as i32;
 
     if x >= 0 && x < w && y >= 0 && y < h {
-        let idx = (y * w + x) as usize;
+        let stride = s.video.stride_pixels as i32;
+        let idx = (y * stride + x) as usize;
         s.video.framebuffer[idx] = s.video.draw_color;
     }
 }
@@ -230,6 +248,7 @@ pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
     };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
+    let stride = s.video.stride_pixels as i32;
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
@@ -241,7 +260,7 @@ pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
 
     loop {
         if x0 >= 0 && x0 < w && y0 >= 0 && y0 < h {
-            fb[(y0 * w + x0) as usize] = color;
+            fb[(y0 * stride + x0) as usize] = color;
         }
 
         if x0 == x1 && y0 == y1 {
@@ -275,7 +294,7 @@ pub fn graphics_rect(x: i32, y: i32, w: u32, h: u32) {
         return;
     }
 
-    let fb_w = s.video.width as usize;
+    let fb_w = s.video.stride_pixels as usize;
     let fb = &mut s.video.framebuffer;
 
     for curr_y in y_start..y_end {
@@ -305,6 +324,7 @@ pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
     };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
+    let stride = s.video.stride_pixels as i32;
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
@@ -321,7 +341,7 @@ pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
             let dx = x - cx;
             let dy = y - cy;
             if dx * dx + dy * dy <= r_sq {
-                fb[(y * w + x) as usize] = color;
+                fb[(y * stride + x) as usize] = color;
             }
         }
     }
@@ -336,6 +356,7 @@ pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
     };
     let w = s.video.width as i32;
     let h = s.video.height as i32;
+    let stride = s.video.stride_pixels as i32;
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
@@ -345,7 +366,7 @@ pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
 
     let mut plot = |x: i32, y: i32| {
         if x >= 0 && x < w && y >= 0 && y < h {
-            fb[(y * w + x) as usize] = color;
+            fb[(y * stride + x) as usize] = color;
         }
     };
 
@@ -1798,7 +1819,8 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
                             let gy = y + (i / metrics.width) as i32;
 
                             if gx >= 0 && gx < width && gy >= 0 && gy < height {
-                                let idx = (gy * width + gx) as usize;
+                                let stride = s.video.stride_pixels as i32;
+                                let idx = (gy * stride + gx) as usize;
                                 let bg = s.video.framebuffer[idx];
 
                                 // Alpha blend (gamma-correct approximation)
@@ -1908,7 +1930,7 @@ pub fn video_present_host() {
         return;
     }
 
-    let (video_cb, width, height, fb) = {
+    let (video_cb, width, height, pitch, fb) = {
         let s = match global().lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -1917,14 +1939,13 @@ pub fn video_present_host() {
             s.video_refresh_cb,
             s.video.width,
             s.video.height,
+            s.video.pitch_bytes,
             s.video.framebuffer.clone(),
         )
     };
 
     if let Some(cb) = video_cb {
         let data_ptr = fb.as_ptr() as *const std::ffi::c_void;
-        let pitch = (width * 4) as usize;
-
         unsafe {
             cb(data_ptr, width, height, pitch);
         }

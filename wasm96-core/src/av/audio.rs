@@ -69,7 +69,6 @@ pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     };
 
     let spec = reader.spec();
-    let sample_rate = spec.sample_rate;
 
     // Collect samples as i16, converting if necessary.
     let mut samples: Vec<i16> = Vec::new();
@@ -100,7 +99,6 @@ pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         loop_enabled: true,
         pcm_stereo,
         position_frames: 0,
-        sample_rate,
     };
 
     let mut s = match crate::state::global().lock() {
@@ -139,7 +137,6 @@ pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     };
 
     let channels = decoder.channels() as usize;
-    let sample_rate = decoder.sample_rate() as u32;
     let samples: Vec<i16> = if let Some(s) = decoder.decoded_samples() {
         s.into_iter().collect()
     } else {
@@ -165,7 +162,6 @@ pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         loop_enabled: true,
         pcm_stereo,
         position_frames: 0,
-        sample_rate,
     };
 
     let mut s = match crate::state::global().lock() {
@@ -244,7 +240,6 @@ pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
         loop_enabled: true,
         pcm_stereo,
         position_frames: 0,
-        sample_rate,
     };
 
     let mut s = match crate::state::global().lock() {

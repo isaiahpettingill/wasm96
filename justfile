@@ -93,7 +93,7 @@ core-dist-all version:
     just core-dist {{ version }} aarch64-unknown-linux-gnu
     just core-dist {{ version }} armv7-unknown-linux-gnueabihf
 
-run_command := if os_family() == "windows" { "/c/RetroArch/retroarch.exe -L ./target/release/wasm96_core.dll" } else { "retroarch -L ./target/release/libwasm96_core.so" }
+run_command := if os_family() == "windows" { "/c/RetroArch-Win64/retroarch.exe -L ./target/release/wasm96_core.dll" } else { "retroarch -L ./target/release/libwasm96_core.so" }
 
 run content-path: build-core
     RUST_BACKTRACE=1 {{ run_command }} {{ content-path }} --verbose

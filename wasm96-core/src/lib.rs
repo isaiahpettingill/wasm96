@@ -13,8 +13,10 @@
 mod abi;
 mod av;
 mod input;
+mod libretro_env;
 mod libretro_glue;
 mod loader;
+mod platform;
 mod runtime;
 mod state;
 
