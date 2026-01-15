@@ -65,8 +65,6 @@ build-core:
 #   just core-dist-all 0.1.2
 #
 
-core_so_triple := "target/{{ triple }}/release/libwasm96_core.so"
-
 core-cross-build triple:
     cross build -p wasm96-core --release --target {{ triple }}
 
@@ -124,11 +122,6 @@ run-rust-rapier:
 run-rust-osmosis:
     cargo build -p rust_guest_osmosis --release --target wasm32-unknown-unknown
     just run ./target/wasm32-unknown-unknown/release/rust_guest_osmosis.wasm
-
-# run-kotlin: Kotlin guest has compatibility issues with wasm96 core
-run-kotlin:
-    cd example/kotlin-guest && ./gradlew build
-    just run example/kotlin-guest/build/compileSync/wasmWasi/main/productionExecutable/optimized/kotlin-guest-wasm-wasi.wasm
 
 run-rust-text:
     cargo build -p rust_guest_text --release --target wasm32-unknown-unknown
