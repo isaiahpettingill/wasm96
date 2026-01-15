@@ -1,6 +1,6 @@
-#![no_std]
-
 extern crate alloc;
+
+use std::sync::Mutex;
 
 // Comprehensive wasm96 Rust guest showcase example.
 //
@@ -21,7 +21,7 @@ const PNG_DATA: &[u8] = include_bytes!("assets/ink.png");
 const TTF_DATA: &[u8] = include_bytes!("assets/UnifrakturMaguntia-Regular.ttf");
 const WAV_DATA: &[u8] = include_bytes!("assets/crickets.wav");
 
-static mut FRAME_COUNT: u32 = 0;
+static FRAME_COUNT: Mutex<u32> = Mutex::new(0);
 
 // Keyed resources: avoid numeric handles + global mutable IDs.
 // These keys must be stable and are used by the host as identifiers.
@@ -50,15 +50,15 @@ pub extern "C" fn setup() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn update() {
-    unsafe {
-        FRAME_COUNT += 1;
-    }
+    let mut fc = FRAME_COUNT.lock().unwrap();
+    *fc += 1;
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn draw() {
     // Clear background with gradient
-    let time = unsafe { FRAME_COUNT } as f32 * 0.01;
+    let fc = FRAME_COUNT.lock().unwrap();
+    let time = *fc as f32 * 0.01;
     let r = ((time.sin() + 1.0) * 127.5) as u8;
     let g = ((time.cos() + 1.0) * 127.5) as u8;
     let b = 100;

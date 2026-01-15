@@ -1,4 +1,6 @@
-static mut CUBE_ROT: f32 = 0.0;
+use std::sync::Mutex;
+
+static CUBE_ROT: Mutex<f32> = Mutex::new(0.0);
 
 #[unsafe(no_mangle)]
 pub extern "C" fn setup() {
@@ -49,8 +51,9 @@ pub extern "C" fn draw() {
     wasm96::graphics::background(30, 30, 30);
 
     // Update rotation
-    unsafe {
-        CUBE_ROT += 0.02;
+    {
+        let mut rot = CUBE_ROT.lock().unwrap();
+        *rot += 0.02;
     }
 
     // Setup camera
@@ -62,7 +65,7 @@ pub extern "C" fn draw() {
     );
 
     // Draw cube
-    let rot = unsafe { CUBE_ROT };
+    let rot = *CUBE_ROT.lock().unwrap();
     wasm96::graphics::mesh_draw(
         "cube",
         (0.0, 0.0, 0.0),       // Pos

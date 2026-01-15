@@ -1,5 +1,3 @@
-#![no_std]
-
 // Simple 2P co-op platformer example for wasm96 (Immediate Mode).
 //
 // Controls (both ports 0 and 1):
@@ -17,6 +15,7 @@
 //   and then writing it back. This avoids taking `&` or `&mut` references to
 //   `static mut` variables.
 
+use std::sync::Mutex;
 use wasm96_sdk::prelude::*;
 
 const W: i32 = 320;
@@ -125,7 +124,7 @@ impl State {
     }
 }
 
-static mut STATE: State = State::new();
+static STATE: Mutex<State> = Mutex::new(State::new());
 
 static PLATFORMS: [RectI; MAX_PLATFORMS] = [
     // floor
@@ -271,16 +270,15 @@ fn checkpoint_zone() -> RectI {
     RectI::new(620, 150, 40, 60)
 }
 
-fn try_update_checkpoint(mut s: State) -> State {
+fn try_update_checkpoint(s: &mut State) {
     let cz = checkpoint_zone();
     if intersects(s.p1.rect(), cz) || intersects(s.p2.rect(), cz) {
         s.checkpoint_x = 610;
         s.checkpoint_y = 150;
     }
-    s
 }
 
-fn try_win(mut s: State) -> State {
+fn try_win(s: &mut State) {
     let g = goal_zone();
     if matches!(s.game, GameState::Playing)
         && intersects(s.p1.rect(), g)
@@ -290,40 +288,33 @@ fn try_win(mut s: State) -> State {
             won_at_ms: system::millis(),
         };
     }
-    s
 }
 
-fn respawn_if_requested(mut s: State) -> State {
+fn respawn_if_requested(s: &mut State) {
     let wants_respawn = read_respawn(0) || read_respawn(1);
     if !wants_respawn {
-        return s;
+        return;
     }
 
     let cx = s.checkpoint_x;
     let cy = s.checkpoint_y;
 
-    let mut p1 = s.p1;
-    p1.x = cx;
-    p1.y = cy;
-    p1.vx = 0;
-    p1.vy = 0;
-    p1.on_ground = false;
+    s.p1.x = cx;
+    s.p1.y = cy;
+    s.p1.vx = 0;
+    s.p1.vy = 0;
+    s.p1.on_ground = false;
 
-    let mut p2 = s.p2;
-    p2.x = cx + 24;
-    p2.y = cy;
-    p2.vx = 0;
-    p2.vy = 0;
-    p2.on_ground = false;
+    s.p2.x = cx + 24;
+    s.p2.y = cy;
+    s.p2.vx = 0;
+    s.p2.vy = 0;
+    s.p2.on_ground = false;
 
-    s.p1 = p1;
-    s.p2 = p2;
     s.game = GameState::Playing;
-
-    s
 }
 
-fn separate_players(mut s: State) -> State {
+fn separate_players(s: &mut State) {
     // Simple co-op bump: prevent players from overlapping by separating on x-axis.
     let r1 = s.p1.rect();
     let r2 = s.p2.rect();
@@ -339,15 +330,13 @@ fn separate_players(mut s: State) -> State {
         s.p1 = resolve_world_bounds(s.p1);
         s.p2 = resolve_world_bounds(s.p2);
     }
-    s
 }
 
-fn update_camera(mut s: State) -> State {
+fn update_camera(s: &mut State) {
     let mid = midpoint_x(s.p1.x + PLAYER_W / 2, s.p2.x + PLAYER_W / 2);
     let target_cam = mid - (W / 2);
     let max_cam = world_bounds().right() - W;
     s.camera_x = clamp_i32(target_cam, 0, max_cam);
-    s
 }
 
 fn draw_world(camera_x: i32, checkpoint_x: i32, checkpoint_y: i32) {
@@ -399,17 +388,12 @@ pub extern "C" fn setup() {
     graphics::set_size(W as u32, H as u32);
     audio::init(44100);
 
-    unsafe {
-        STATE = State::new();
-    }
-
     system::log("wasm96: 2P co-op platformer example loaded");
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn update() {
-    // Work on a local copy to avoid references to `static mut`.
-    let mut s = unsafe { STATE };
+    let mut s = STATE.lock().unwrap();
 
     match s.game {
         GameState::Won { .. } => {
@@ -419,24 +403,20 @@ pub extern "C" fn update() {
             s.p2.vx = 0;
             s.p2.vy = 0;
 
-            s = respawn_if_requested(s);
+            respawn_if_requested(&mut *s);
         }
         GameState::Playing => {
             s.p1 = update_player(0, s.p1);
             s.p2 = update_player(1, s.p2);
 
-            s = separate_players(s);
-            s = try_update_checkpoint(s);
-            s = try_win(s);
-            s = respawn_if_requested(s);
+            separate_players(&mut *s);
+            try_update_checkpoint(&mut *s);
+            try_win(&mut *s);
+            respawn_if_requested(&mut *s);
         }
     }
 
-    s = update_camera(s);
-
-    unsafe {
-        STATE = s;
-    }
+    update_camera(&mut *s);
 
     // Libretro audio: push silence each frame.
     // 44100 Hz / 60 FPS = 735 samples per frame. Stereo => 1470 i16 samples.
@@ -446,8 +426,7 @@ pub extern "C" fn update() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn draw() {
-    // Read a copy of state (no references to `static mut`).
-    let s = unsafe { STATE };
+    let s = STATE.lock().unwrap();
 
     draw_world(s.camera_x, s.checkpoint_x, s.checkpoint_y);
 

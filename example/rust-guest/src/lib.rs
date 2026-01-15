@@ -1,5 +1,3 @@
-#![no_std]
-
 // Minimal wasm96 Rust guest example (Immediate Mode).
 //
 // This crate is meant to be compiled to `wasm32-unknown-unknown` and loaded by `wasm96-core`.
@@ -9,12 +7,22 @@
 // - `update()` once per frame.
 // - `draw()` once per frame.
 
+use std::sync::Mutex;
 use wasm96_sdk::prelude::*;
 
-static mut RECT_X: i32 = 10;
-static mut RECT_Y: i32 = 10;
-static mut VEL_X: i32 = 2;
-static mut VEL_Y: i32 = 2;
+struct GameState {
+    rect_x: i32,
+    rect_y: i32,
+    vel_x: i32,
+    vel_y: i32,
+}
+
+static GAME_STATE: Mutex<GameState> = Mutex::new(GameState {
+    rect_x: 10,
+    rect_y: 10,
+    vel_x: 2,
+    vel_y: 2,
+});
 
 // Keyed resources: the host identifies fonts by string keys.
 const FONT_KEY_SPLEEN_16: &str = "font/spleen/16";
@@ -35,15 +43,16 @@ pub extern "C" fn setup() {
 #[unsafe(no_mangle)]
 pub extern "C" fn update() {
     // Update game state
-    unsafe {
-        RECT_X += VEL_X;
-        RECT_Y += VEL_Y;
+    {
+        let mut state = GAME_STATE.lock().unwrap();
+        state.rect_x += state.vel_x;
+        state.rect_y += state.vel_y;
 
-        if RECT_X <= 0 || RECT_X >= 290 {
-            VEL_X = -VEL_X;
+        if state.rect_x <= 0 || state.rect_x >= 290 {
+            state.vel_x = -state.vel_x;
         }
-        if RECT_Y <= 0 || RECT_Y >= 210 {
-            VEL_Y = -VEL_Y;
+        if state.rect_y <= 0 || state.rect_y >= 210 {
+            state.vel_y = -state.vel_y;
         }
     }
 
@@ -60,12 +69,13 @@ pub extern "C" fn draw() {
 
     // 2. Draw moving rectangle
     graphics::set_color(255, 100, 100, 255);
-    unsafe {
-        graphics::rect(RECT_X, RECT_Y, 30, 30);
+    {
+        let state = GAME_STATE.lock().unwrap();
+        graphics::rect(state.rect_x, state.rect_y, 30, 30);
 
         // Draw outline
         graphics::set_color(255, 255, 255, 255);
-        graphics::rect_outline(RECT_X, RECT_Y, 30, 30);
+        graphics::rect_outline(state.rect_x, state.rect_y, 30, 30);
     }
 
     // 3. Draw circle at mouse position

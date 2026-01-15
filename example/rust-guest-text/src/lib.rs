@@ -1,5 +1,3 @@
-#![no_std]
-
 // Text rendering example for wasm96.
 //
 // This example demonstrates how to render text using different fonts,
@@ -7,6 +5,7 @@
 // (including Noto Color Emoji for full emoji support), special characters,
 // and a simple menu interface.
 
+use std::sync::Mutex;
 use wasm96_sdk::prelude::*;
 
 // Load TTF fonts from files
@@ -22,10 +21,20 @@ const FONT_SPLEEN_64: &str = "font/spleen/64";
 const FONT_NERD: &str = "font/ttf/3270-nerd";
 const FONT_NOTO_EMOJI: &str = "font/ttf/noto-emoji";
 
-static mut FRAME: u32 = 0;
-static mut MENU_SELECTION: u32 = 0;
-static mut LAST_UP_DOWN: bool = false;
-static mut LAST_DOWN_DOWN: bool = false;
+#[derive(Clone)]
+struct AppState {
+    frame: u32,
+    menu_selection: u32,
+    last_up_down: bool,
+    last_down_down: bool,
+}
+
+static APP_STATE: Mutex<AppState> = Mutex::new(AppState {
+    frame: 0,
+    menu_selection: 0,
+    last_up_down: false,
+    last_down_down: false,
+});
 
 #[unsafe(no_mangle)]
 pub extern "C" fn setup() {
@@ -47,26 +56,25 @@ pub extern "C" fn setup() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn update() {
-    unsafe {
-        FRAME += 1;
+    let mut state = APP_STATE.lock().unwrap();
+    state.frame += 1;
 
-        // Menu navigation with debouncing
-        let up_down = input::is_button_down(0, Button::Up);
-        let down_down = input::is_button_down(0, Button::Down);
+    // Menu navigation with debouncing
+    let up_down = input::is_button_down(0, Button::Up);
+    let down_down = input::is_button_down(0, Button::Down);
 
-        if up_down && !LAST_UP_DOWN {
-            if MENU_SELECTION > 0 {
-                MENU_SELECTION -= 1;
-            }
+    if up_down && !state.last_up_down {
+        if state.menu_selection > 0 {
+            state.menu_selection -= 1;
         }
-        if down_down && !LAST_DOWN_DOWN {
-            if MENU_SELECTION < 3 {
-                MENU_SELECTION += 1;
-            }
-        }
-        LAST_UP_DOWN = up_down;
-        LAST_DOWN_DOWN = down_down;
     }
+    if down_down && !state.last_down_down {
+        if state.menu_selection < 3 {
+            state.menu_selection += 1;
+        }
+    }
+    state.last_up_down = up_down;
+    state.last_down_down = down_down;
 }
 
 #[unsafe(no_mangle)]
@@ -87,7 +95,8 @@ pub extern "C" fn draw() {
     graphics::text_key(30, 210, FONT_SPLEEN_24, "4. Unicode Symbols");
 
     // Draw selection indicator
-    let selection = unsafe { MENU_SELECTION };
+    let state = APP_STATE.lock().unwrap();
+    let selection = state.menu_selection;
     let y_pos = 120 + (selection as i32 * 30);
     graphics::set_color(255, 255, 0, 255);
     graphics::text_key(15, y_pos, FONT_SPLEEN_24, ">");

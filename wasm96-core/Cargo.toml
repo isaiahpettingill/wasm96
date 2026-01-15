@@ -44,10 +44,3 @@ nom_stl = "0.2.2"
 
 [profile.dev]
 panic = "abort"
-
-[profile.release]
-panic = "abort"
-lto = true
-codegen-units = 1
-opt-level = 3
-strip = "symbols"
