@@ -133,6 +133,12 @@ unsafe fn tex_image_2d_rgba_fallback(
 }
 
 fn check_gl_error(label: &str) {
+    // Only check GL errors if GL context has been initialized
+    // Calling GL functions before gl::load_with() causes crashes on some platforms
+    if GL_STATE.get().is_none() {
+        return;
+    }
+
     let mut err = unsafe { gl::GetError() };
     while err != gl::NO_ERROR {
         eprintln!("GL Error at {}: 0x{:X}", label, err);
@@ -885,6 +891,11 @@ pub fn graphics_mesh_draw(
     }
     let gl_state = gl_state_lock.unwrap().lock().unwrap();
 
+    // Guard against invalid FBO (GL context not ready on Raspberry Pi)
+    if gl_state.output_fbo == 0 {
+        return;
+    }
+
     let state_3d = STATE_3D.lock().unwrap();
     if !state_3d.enabled {
         return;
@@ -923,21 +934,14 @@ pub fn graphics_mesh_draw(
             normal_mat.to_cols_array().as_ptr(),
         );
 
-        // Get color from global state or use default
-        // Previous implementation used a uniform color.
-        // We'll use white for now or get it from `VideoState`?
-        // `VideoState` has `draw_color`.
+        // Get color from global draw_color state
         let color_u32 = global().lock().unwrap().video.draw_color;
         let r = ((color_u32 >> 16) & 0xFF) as f32 / 255.0;
         let g = ((color_u32 >> 8) & 0xFF) as f32 / 255.0;
         let b = (color_u32 & 0xFF) as f32 / 255.0;
         gl::Uniform3f(gl_state.uniform_color, r, g, b);
 
-        // Texture binding:
-        // - PNG is treated as RGBA (alpha respected)
-        // - JPEG is treated as RGB but stored/uploaded as RGBA with A=255
-        //
-        // Keyed textures are uploaded lazily on demand from `RESOURCES.keyed_images`.
+        // Texture handling: if mesh has a texture key, upload it to GL
         let mut use_tex = 0i32;
         let mut texture_id = 0u32;
         let mut delete_texture_after_draw = false;
@@ -1029,10 +1033,7 @@ pub fn graphics_mesh_draw(
         gl::Uniform1i(gl_state.uniform_use_tex, use_tex);
         gl::Uniform1i(gl_state.uniform_tex3d, 0);
 
-        // NOTE:
-        // This uses per-draw texture creation (simple but not optimal). To avoid leaking GL texture
-        // IDs, we delete the texture after the draw call. A follow-up should cache GL texture ids
-        // per image key and delete them on unregister/context reset.
+        // Draw the mesh
         gl::BindVertexArray(mesh.vao);
         gl::DrawElements(
             gl::TRIANGLES,
@@ -1043,7 +1044,6 @@ pub fn graphics_mesh_draw(
         gl::BindVertexArray(0);
 
         if delete_texture_after_draw && texture_id != 0 {
-            // Ensure it is not bound when we delete it.
             gl::BindTexture(gl::TEXTURE_2D, 0);
             gl::DeleteTextures(1, &texture_id);
         }
@@ -1058,7 +1058,15 @@ pub fn prepare_frame(fbo: usize) {
         return;
     }
     let mut gl_state = gl_state_lock.unwrap().lock().unwrap();
+
+    // Guard against invalid FBO on Raspberry Pi/VideoCore
+    // Store the FBO even if 0, but skip GL calls if invalid
     gl_state.output_fbo = fbo as u32;
+
+    if fbo == 0 {
+        eprintln!("(wasm96) prepare_frame: FBO is 0, GL context may not be ready");
+        return;
+    }
 
     let (width, height) = {
         let s = global().lock().unwrap();
@@ -1079,6 +1087,11 @@ pub fn flush_to_host() -> bool {
         return false;
     }
     let mut gl_state = gl_state_lock.unwrap().lock().unwrap();
+
+    // Guard against invalid FBO (GL context not ready on Raspberry Pi)
+    if gl_state.output_fbo == 0 {
+        return false;
+    }
 
     let (width, height, stride_pixels, fb, video_cb) = {
         let s = global().lock().unwrap();
@@ -1205,13 +1218,9 @@ pub fn flush_to_host() -> bool {
     true
 }
 
-// Helper to clear the screen at the start of the frame (if needed)
-// This should be called by the core loop, but we don't have a hook there yet.
-// For now, we can rely on the fact that we draw 3D over whatever was there,
-// and if we want a clear, we should add `graphics_clear` API.
-// But `graphics_background` in 2D clears the 2D buffer.
-// We might want `graphics_clear_3d`?
-// I'll add a public function that the core *could* call if I modified `lib.rs`.
+/// Clears the GL framebuffer with the specified color.
+/// Called by `graphics_background()` when GL is available.
+/// Returns false if GL context is not initialized or FBO is invalid.
 pub fn clear_framebuffer(r: f32, g: f32, b: f32, a: f32) -> bool {
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {
@@ -1219,10 +1228,16 @@ pub fn clear_framebuffer(r: f32, g: f32, b: f32, a: f32) -> bool {
     }
     let gl_state = gl_state_lock.unwrap().lock().unwrap();
 
+    // Guard against invalid FBO (0 means GL context not ready on some platforms like Raspberry Pi)
+    if gl_state.output_fbo == 0 {
+        return false;
+    }
+
     unsafe {
         gl::BindFramebuffer(gl::FRAMEBUFFER, gl_state.output_fbo);
         gl::ClearColor(r, g, b, a);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
     }
+    check_gl_error("clear_framebuffer");
     true
 }

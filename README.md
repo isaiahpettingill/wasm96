@@ -456,6 +456,9 @@ Tip:
 
 ## Recent Fixes
 
+### Raspberry Pi GL Context Initialization Fix (host/core)
+Fixed crashes on Raspberry Pi 3 (Lakka/VideoCore GPU) where content would immediately close after loading, affecting both 2D and 3D games. The root cause was `check_gl_error()` calling `gl::GetError()` before GL function pointers were initialized via `gl::load_with()`. When `graphics::background()` was called during guest `setup()` (common in all games), it would call `clear_framebuffer()` which called `check_gl_error()`, triggering the crash. Fixed by making `check_gl_error()` check if `GL_STATE` is initialized before calling any GL functions. Additionally, all GL rendering functions (`clear_framebuffer`, `prepare_frame`, `flush_to_host`, `graphics_mesh_draw`) now check if `output_fbo == 0` and gracefully fall back to software rendering until the GL context is fully ready.
+
 ### Wasmtime Migration (host/core)
 The core has been migrated from Wasmer to Wasmtime (version 39.0.1) for broader WebAssembly feature support, including advanced WASI integration and better compatibility with various module types. Wasmtime's configuration enables a wide set of feature flags for maximum guest compatibility.
 

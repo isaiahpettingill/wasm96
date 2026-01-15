@@ -135,7 +135,10 @@ pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
     let mut g = glue().lock().unwrap();
     g.env_cb = cb;
 
-    eprintln!("(wasm96) platform profile: {}", platform::platform_profile_name());
+    eprintln!(
+        "(wasm96) platform profile: {}",
+        platform::platform_profile_name()
+    );
 
     // Apply platform-specific HW context request (OpenGL core vs GLES3).
     let req = platform::preferred_hw_context();
@@ -288,7 +291,9 @@ pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
     let data_slice = unsafe { std::slice::from_raw_parts(game.data as *const u8, game.size) };
 
     let mut g = glue().lock().unwrap();
-    let Some(core) = g.core.as_mut() else { return false };
+    let Some(core) = g.core.as_mut() else {
+        return false;
+    };
 
     match core.load_game_from_bytes(data_slice) {
         Ok(_) => true,

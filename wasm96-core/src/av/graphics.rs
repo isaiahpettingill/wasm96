@@ -178,7 +178,8 @@ pub fn graphics_set_size(width: u32, height: u32) {
     s.video.stride_pixels = stride_pixels;
     s.video.pitch_bytes = (stride_pixels as usize) * 4;
 
-    s.video.framebuffer
+    s.video
+        .framebuffer
         .resize((stride_pixels * height) as usize, 0);
 
     // Mark geometry dirty so libretro side can emit SET_GEOMETRY on next opportunity.
@@ -202,7 +203,7 @@ pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
 
 /// Clear the screen to a specific color.
 pub fn graphics_background(r: u32, g: u32, b: u32) {
-    // Clear GL framebuffer (color + depth)
+    // Try to clear GL framebuffer first (returns false if GL not available/ready)
     let gl_cleared = super::graphics3d::clear_framebuffer(
         r as f32 / 255.0,
         g as f32 / 255.0,
@@ -218,7 +219,7 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
         // Clear software framebuffer to transparent so it doesn't occlude the 3D scene
         s.video.framebuffer.fill(0x00000000);
     } else {
-        // Fallback for software rendering: clear to requested color
+        // Fallback: software-only rendering - clear to requested color
         let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
         s.video.framebuffer.fill(color);
     }
@@ -1925,7 +1926,7 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
 
 /// Present the framebuffer to libretro.
 pub fn video_present_host() {
-    // Flush any 3D content to the framebuffer before presenting
+    // Flush any 3D content to the framebuffer before presenting (returns true only if HW rendering succeeded)
     if super::graphics3d::flush_to_host() {
         return;
     }
