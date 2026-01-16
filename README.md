@@ -75,6 +75,24 @@ If a guest calls `wasm96_graphics_text_key(...)` or `wasm96_graphics_text_measur
 This fallback exists so guests can render text “out of the box” without explicit font registration. Guests that need a specific font/size should still register and use their own keyed font.
 
 # Build the libretro core
+
+## New Architecture (Recommended)
+
+Wasm96 has been decoupled into a platform-agnostic engine and platform-specific frontends. See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+```sh
+# Build the libretro core (new)
+cargo build --release --package wasm96-libretro
+
+# Output: target/release/libwasm96_libretro.so (Linux)
+#         target/release/libwasm96_libretro.dylib (macOS)
+#         target/release/wasm96_libretro.dll (Windows)
+```
+
+## Legacy (Deprecated)
+
+```sh
+# Build the monolithic core (deprecated, will be removed)
 cargo build --release --package wasm96-core
 ```
 
@@ -323,6 +341,40 @@ cd example/kotlin-guest && ./gradlew build
 *Note: The Kotlin example currently has compatibility issues with the wasm96 core and cannot be run.*
 
 ## Project Structure
+
+### New Architecture (Current)
+
+```
+wasm96/
+├── wasm96-engine/          # Platform-agnostic core engine
+│   ├── src/
+│   │   ├── abi/           # Guest/host ABI definitions
+│   │   ├── av/            # Audio/video (graphics, audio mixing)
+│   │   ├── input/         # Input handling (abstracted)
+│   │   ├── runtime/       # Wasmtime WASM runtime
+│   │   ├── loader/        # WASM/WAT module loading
+│   │   └── state/         # Global state management
+│   └── Cargo.toml
+├── wasm96-libretro/        # Libretro frontend wrapper
+│   ├── src/
+│   │   ├── libretro_glue.rs      # Libretro C API
+│   │   ├── libretro_callbacks.rs # Platform callbacks impl
+│   │   ├── libretro_env.rs       # Environment helpers
+│   │   └── platform.rs           # Platform configuration
+│   └── Cargo.toml
+├── wasm96-sdk/             # Rust SDK for guests
+├── example/                # Example guest applications
+└── ARCHITECTURE.md         # Architecture documentation
+```
+
+### Legacy Structure (Deprecated)
+
+```
+wasm96/
+├── wasm96-core/            # Monolithic libretro core (deprecated)
+```
+
+## Project Structure (Legacy)
 
 ```
 wasm96/

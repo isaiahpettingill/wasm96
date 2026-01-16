@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
+  "wasm96-engine",
+  "wasm96-libretro",
   "wasm96-core",
   "wasm96-sdk",
   "example/rust-guest",
@@ -12,8 +14,8 @@ members = [
   "example/rust-guest-rapier",
 ]
 
-# Optional: allows `cargo build` at the workspace root to default to building the core.
-default-members = ["wasm96-core"]
+# Optional: allows `cargo build` at the workspace root to default to building the libretro core.
+default-members = ["wasm96-libretro"]
 
 [workspace.package]
 version = "0.1.2"

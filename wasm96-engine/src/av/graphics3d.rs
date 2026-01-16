@@ -263,7 +263,7 @@ const VS_OVERLAY_SRC_GL: &str = r#"
 #version 330 core
 // Fullscreen triangle strip generated in shader
 const vec2 verts[4] = vec2[](vec2(-1,-1), vec2(1,-1), vec2(-1,1), vec2(1,1));
-const vec2 uvs[4] = vec2[](vec2(0,1), vec2(1,1), vec2(0,0), vec2(1,0));
+const vec2 uvs[4] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(1,1));
 
 out vec2 v_uv;
 
@@ -293,7 +293,7 @@ const VS_OVERLAY_SRC_GLES: &str = r#"
 #version 300 es
 // Fullscreen triangle strip generated in shader (gl_VertexID is available in ES 3.0)
 const vec2 verts[4] = vec2[](vec2(-1.0,-1.0), vec2(1.0,-1.0), vec2(-1.0,1.0), vec2(1.0,1.0));
-const vec2 uvs[4] = vec2[](vec2(0.0,1.0), vec2(1.0,1.0), vec2(0.0,0.0), vec2(1.0,0.0));
+const vec2 uvs[4] = vec2[](vec2(0.0,0.0), vec2(1.0,0.0), vec2(0.0,1.0), vec2(1.0,1.0));
 
 out vec2 v_uv;
 
@@ -1093,14 +1093,13 @@ pub fn flush_to_host() -> bool {
         return false;
     }
 
-    let (width, height, stride_pixels, fb, video_cb) = {
+    let (width, height, stride_pixels, fb) = {
         let s = global().lock().unwrap();
         (
             s.video.width,
             s.video.height,
             s.video.stride_pixels,
             s.video.framebuffer.clone(),
-            s.video_refresh_cb,
         )
     };
 
@@ -1201,17 +1200,6 @@ pub fn flush_to_host() -> bool {
 
         gl::Disable(gl::BLEND);
         gl::BindVertexArray(0);
-
-        // 3. Present
-        // In HW render mode, we call video_refresh with RETRO_HW_FRAME_BUFFER_VALID (-1 cast to ptr)
-        if let Some(cb) = video_cb {
-            cb(
-                libretro_sys::HW_FRAME_BUFFER_VALID as *const c_void,
-                width,
-                height,
-                0, // Pitch is ignored for HW render
-            );
-        }
 
         check_gl_error("flush_to_host");
     }

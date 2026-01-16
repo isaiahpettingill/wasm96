@@ -1,7 +1,5 @@
 build-sdks:
     cargo build -p wasm96-sdk --release
-    cd wasm96-kotlin-sdk && ./gradlew build
-    cd wasm96-go-sdk && go build .
     cd wasm96-zig-sdk && zig build
 
 # --- RetroArch packaging helpers ----------------------------------------------
@@ -43,7 +41,7 @@ dist-examples:
     sh ./scripts/dist-examples.sh
 
 build-core:
-    cargo build -p wasm96-core --release
+    cargo build -p wasm96-libretro --release
 
 # --- Release helpers (core) ---------------------------------------------------
 #
@@ -56,7 +54,7 @@ build-core:
 # - `zip` available
 #
 # Notes:
-# - Output artifact has historically been `libwasm96_core.so` under
+# - Output artifact has historically been `libwasm96_libretro.so` under
 #   `target/<triple>/release/`. If your filename differs, adjust `core_so` below.
 # - We package the shared library as `wasm96_libretro.so` inside the zip.
 #
@@ -66,7 +64,7 @@ build-core:
 #
 
 core-cross-build triple:
-    cross build -p wasm96-core --release --target {{ triple }}
+    cross build -p wasm96-libretro --release --target {{ triple }}
 
 core-cross-build-all:
     just core-cross-build x86_64-unknown-linux-gnu
@@ -78,7 +76,7 @@ core-cross-build-all:
 # `version` is the tag/version you want embedded in the filename (e.g. 0.1.2).
 core-dist version triple:
     mkdir -p dist/{{ triple }}
-    cp "target/{{ triple }}/release/libwasm96_core.so" "dist/{{ triple }}/wasm96_libretro.so"
+    cp "target/{{ triple }}/release/libwasm96_libretro.so" "dist/{{ triple }}/wasm96_libretro.so"
     # Include RetroArch metadata (core info/config snippets) inside the zip.
     mkdir -p dist/{{ triple }}/libretro/info
     mkdir -p dist/{{ triple }}/libretro/config
@@ -91,7 +89,7 @@ core-dist-all version:
     just core-dist {{ version }} aarch64-unknown-linux-gnu
     just core-dist {{ version }} armv7-unknown-linux-gnueabihf
 
-run_command := if os_family() == "windows" { "/c/RetroArch-Win64/retroarch.exe -L ./target/release/wasm96_core.dll" } else { "retroarch -L ./target/release/libwasm96_core.so" }
+run_command := if os_family() == "windows" { "/c/RetroArch-Win64/retroarch.exe -L ./target/release/wasm96_libretro.dll" } else { "retroarch -L ./target/release/libwasm96_libretro.so" }
 
 run content-path: build-core
     RUST_BACKTRACE=1 {{ run_command }} {{ content-path }} --verbose

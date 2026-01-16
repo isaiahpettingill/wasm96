@@ -1,0 +1,26 @@
+[package]
+name = "wasm96-libretro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# This crate is the libretro core, so it must be built as a cdylib.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Platform-agnostic engine
+wasm96-engine = { path = "../wasm96-engine" }
+
+# Libretro bindings
+libretro-backend = { workspace = true }
+libretro-sys = "0.1.1"
+
+# GL for hardware rendering
+gl = "0.14"
+
+# Error handling
+anyhow = "1.0.99"
+
+[profile.dev]
+panic = "abort"

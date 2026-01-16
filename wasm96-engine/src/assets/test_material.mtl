@@ -1,0 +1,12 @@
+# Minimal MTL fixture for unit tests.
+# Contains one material with a diffuse texture map.
+
+newmtl TestMaterial
+Ka 0.000000 0.000000 0.000000
+Kd 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+d 1.0
+illum 2
+
+# Diffuse map (relative path/name)
+map_Kd test_texture.png

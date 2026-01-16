@@ -3206,6 +3206,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm96-engine"
+version = "0.1.2"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "bytemuck",
+ "fontdue",
+ "gif",
+ "gl",
+ "glam",
+ "hound",
+ "jpeg-decoder",
+ "lazy_static",
+ "nom_stl",
+ "png",
+ "qoaudio",
+ "resvg",
+ "tobj",
+ "wasmtime",
+ "wasmtime-wasi",
+ "wat",
+ "wgpu",
+ "xmrs",
+ "xmrsplayer",
+]
+
+[[package]]
+name = "wasm96-libretro"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "gl",
+ "libretro-backend",
+ "libretro-sys",
+ "wasm96-engine",
+]
+
+[[package]]
 name = "wasm96-sdk"
 version = "0.1.2"
 dependencies = [
