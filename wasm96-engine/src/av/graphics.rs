@@ -42,7 +42,6 @@ extern crate alloc;
 //
 // -------------------------------------------------------------------------------------------------
 
-use crate::platform;
 use crate::state::global;
 use wasmtime::Caller;
 
@@ -169,12 +168,8 @@ pub fn graphics_set_size(width: u32, height: u32) {
     s.video.width = width;
     s.video.height = height;
 
-    // Allocate software framebuffer with optional row padding (for some ARM GPUs/frontends).
-    let stride_pixels = if platform::should_align_software_pitch() {
-        platform::padded_width_pixels(width)
-    } else {
-        width
-    };
+    // Allocate software framebuffer (no padding - platform-agnostic).
+    let stride_pixels = width;
     s.video.stride_pixels = stride_pixels;
     s.video.pitch_bytes = (stride_pixels as usize) * 4;
 
@@ -1924,31 +1919,23 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
     ((width as u64) << 32) | (height as u64)
 }
 
-/// Present the framebuffer to libretro.
-pub fn video_present_host() {
-    // Flush any 3D content to the framebuffer before presenting (returns true only if HW rendering succeeded)
-    if super::graphics3d::flush_to_host() {
-        return;
-    }
+/// Present the framebuffer to the platform frontend.
+pub fn video_present_host(callbacks: &mut dyn crate::PlatformCallbacks) {
+    // Flush any 3D content to the framebuffer before presenting
+    let _ = super::graphics3d::flush_to_host();
 
-    let (video_cb, width, height, pitch, fb) = {
+    let (width, height, stride_pixels, fb) = {
         let s = match global().lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
         (
-            s.video_refresh_cb,
             s.video.width,
             s.video.height,
-            s.video.pitch_bytes,
+            s.video.stride_pixels,
             s.video.framebuffer.clone(),
         )
     };
 
-    if let Some(cb) = video_cb {
-        let data_ptr = fb.as_ptr() as *const std::ffi::c_void;
-        unsafe {
-            cb(data_ptr, width, height, pitch);
-        }
-    }
+    callbacks.video_refresh(&fb, width, height, stride_pixels);
 }

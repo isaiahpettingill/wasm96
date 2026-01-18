@@ -88,6 +88,25 @@ pub trait PlatformGraphics {
     /// * `width` - New visible width
     /// * `height` - New visible height
     fn notify_geometry_changed(&mut self, width: u32, height: u32);
+
+    /// Present a video frame (backward compatibility method).
+    ///
+    /// This method automatically selects between hardware and software rendering
+    /// based on whether a hardware framebuffer is available.
+    ///
+    /// # Arguments
+    /// * `framebuffer` - XRGB8888 pixel data (0x00RRGGBB format, top-left origin)
+    /// * `width` - Visible width in pixels
+    /// * `height` - Visible height in pixels
+    /// * `stride_pixels` - Row stride in pixels (may be >= width for alignment)
+    fn video_refresh(&mut self, framebuffer: &[u32], width: u32, height: u32, stride_pixels: u32) {
+        // Check if hardware rendering is available
+        if self.get_hardware_framebuffer() != 0 {
+            self.present_hardware_frame(framebuffer, width, height, stride_pixels);
+        } else {
+            self.present_software_frame(framebuffer, width, height, stride_pixels);
+        }
+    }
 }
 
 /// Platform-agnostic audio callbacks.

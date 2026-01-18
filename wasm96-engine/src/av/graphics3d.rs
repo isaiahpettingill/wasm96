@@ -14,6 +14,7 @@ use std::ffi::{CString, c_void};
 use std::io::Cursor;
 use std::path::Path;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use bytemuck::{Pod, Zeroable};
@@ -86,6 +87,7 @@ lazy_static::lazy_static! {
     static ref MESH_STORE: Mutex<HashMap<u64, Mesh>> = Mutex::new(HashMap::new());
 }
 static GL_STATE: OnceLock<Mutex<GlState>> = OnceLock::new();
+static OVERLAY_COMPOSITING_ENABLED: AtomicBool = AtomicBool::new(true);
 
 // --- Helpers ---
 
@@ -1081,7 +1083,16 @@ pub fn prepare_frame(fbo: usize) {
     check_gl_error("prepare_frame");
 }
 
+pub fn set_overlay_compositing_enabled(enabled: bool) {
+    OVERLAY_COMPOSITING_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
 pub fn flush_to_host() -> bool {
+    // Allow host/frontends to disable 2D overlay compositing (e.g. for debugging).
+    if !OVERLAY_COMPOSITING_ENABLED.load(Ordering::Relaxed) {
+        return true;
+    }
+
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {
         return false;

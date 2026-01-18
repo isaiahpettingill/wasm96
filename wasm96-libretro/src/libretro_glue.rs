@@ -44,8 +44,14 @@ impl LibretroGlueState {
                 // Will be overridden in `retro_set_environment` based on platform policy.
                 context_type: 3, // HwContextType::OpenGLCore
                 context_reset: context_reset,
+
+                // IMPORTANT:
+                // These MUST be set by the frontend when HW render is accepted via
+                // `RETRO_ENVIRONMENT_SET_HW_RENDER`. We keep dummy placeholders here so
+                // we never call null function pointers before negotiation succeeds.
                 get_current_framebuffer: dummy_get_current_framebuffer,
                 get_proc_address: dummy_get_proc_address,
+
                 depth: true,
                 stencil: true,
                 bottom_left_origin: false,
@@ -89,9 +95,45 @@ fn get_proc_address_wrapper(symbol: &str) -> *const c_void {
 /// Called by frontend when the HW context is created/reset.
 unsafe extern "C" fn context_reset() {
     eprintln!("(wasm96) context_reset called - initializing GL context");
-    // Initialize GL context
+
+    // Load GL function pointers (used by both the libretro compositor and the engine's 3D subsystem).
+    gl::load_with(get_proc_address_wrapper);
+
+    // Determine whether the frontend gave us a GLES context.
+    let use_gles = {
+        let g = glue().lock().unwrap();
+        matches!(
+            g.hw_render.context_type,
+            x if x == HwContextType::OpenGLES2 as u32
+                || x == HwContextType::OpenGLES3 as u32
+                || x == HwContextType::OpenGLESVersion as u32
+        )
+    };
+
+    // Initialize GL renderer (libretro owns GL compositing of the software framebuffer now).
+    if !crate::gl_renderer::init_gl_renderer(use_gles) {
+        eprintln!("(wasm96) Failed to initialize GL renderer");
+        return;
+    }
+
+    // Disable engine-side overlay compositing; libretro compositor handles the 2D framebuffer.
+    wasm96_engine::av::graphics3d::set_overlay_compositing_enabled(false);
+
+    // Initialize the engine's 3D GL subsystem so 3D APIs (meshCreateObj, meshCreate, meshDraw, etc.)
+    // are fully supported under libretro.
+    //
+    // Without this, `wasm96_engine::av::graphics3d::*` will detect that GL isn't initialized and
+    // return 0 / no-op, which guests interpret as "core may stub meshCreateObj".
     wasm96_engine::av::graphics3d::init_gl_context(get_proc_address_wrapper);
-    eprintln!("(wasm96) GL context initialized");
+
+    eprintln!(
+        "(wasm96) GL initialized (use_gles={}, context_type={})",
+        use_gles,
+        {
+            let g = glue().lock().unwrap();
+            g.hw_render.context_type
+        }
+    );
 
     // Reset engine state (guest may depend on GL resources).
     let mut g = glue().lock().unwrap();
@@ -104,7 +146,8 @@ unsafe extern "C" fn context_reset() {
 /// Called by frontend when the HW context is destroyed.
 /// We currently keep this as a no-op; add resource teardown if needed.
 unsafe extern "C" fn context_destroy() {
-    // wasm96_engine::av::graphics3d::deinit_gl_context();
+    // No explicit teardown yet; the frontend may cache/reuse contexts.
+    // If we add GL resource teardown later, it should live in `gl_renderer`.
 }
 
 #[unsafe(no_mangle)]
@@ -143,8 +186,12 @@ pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
     g.hw_render.version_major = req.version_major;
     g.hw_render.version_minor = req.version_minor;
 
-    // Align libretro HW framebuffer origin with our top-left software buffer convention.
-    g.hw_render.bottom_left_origin = false;
+    // Request a bottom-left origin for the HW framebuffer.
+    //
+    // OpenGL’s viewport and clip space are bottom-left oriented. The engine’s 3D renderer
+    // draws assuming that convention when targeting the HW FBO. If we request a top-left
+    // origin here, 3D content will appear vertically flipped.
+    g.hw_render.bottom_left_origin = true;
 
     // Enable HW Render (only on first call)
     if g.hw_render_initialized {
@@ -171,6 +218,15 @@ pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
                 (&raw mut g.hw_render) as *mut _ as *mut c_void,
             )
         };
+
+        // If accepted, the frontend has now copied our `HwRenderCallback` struct and will use:
+        // - `context_reset` / `context_destroy`
+        // - `get_proc_address`
+        // - `get_current_framebuffer`
+        //
+        // Some frontends (or older drivers) may not populate these until after the env call
+        // returns. To avoid ever using our dummy placeholders, we only treat HW render as
+        // available when the callback pointers are no longer dummies.
 
         let ret = if ret {
             true
@@ -207,8 +263,27 @@ pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
                 g.printed_hw_render_warn = true;
             }
         } else {
-            eprintln!("(wasm96) HW render enabled successfully");
-            g.hw_render_initialized = true;
+            // Validate that the frontend is actually going to call back through *real* functions.
+            // If these are still our dummy placeholders, treating HW render as active will result
+            // in FBO==0 and no rendering.
+            let got_real_fbo = g.hw_render.get_current_framebuffer as usize
+                != dummy_get_current_framebuffer as usize;
+            let got_real_proc =
+                g.hw_render.get_proc_address as usize != dummy_get_proc_address as usize;
+
+            if got_real_fbo && got_real_proc {
+                eprintln!("(wasm96) HW render enabled successfully");
+                g.hw_render_initialized = true;
+            } else {
+                // Keep running in software mode; HW is effectively unavailable.
+                if !g.printed_hw_render_warn {
+                    eprintln!(
+                        "(wasm96) HW render accepted but callbacks were not provided (get_current_framebuffer/get_proc_address still dummy); falling back to software"
+                    );
+                    g.printed_hw_render_warn = true;
+                }
+                g.hw_render_initialized = false;
+            }
         }
     }
 }
@@ -308,6 +383,12 @@ pub unsafe extern "C" fn retro_run() {
         (fbo, fbo != 0)
     };
 
+    // Feed the engine's 3D renderer the current output FBO so 3D mesh drawing targets
+    // the correct libretro-provided framebuffer.
+    //
+    // Without this, `wasm96_engine::av::graphics3d::graphics_mesh_draw` will early-out
+    // because `gl_state.output_fbo == 0`, causing meshes/objects to never appear even
+    // though 2D overlay/text renders fine.
     if do_prepare {
         wasm96_engine::av::graphics3d::prepare_frame(fbo);
     }

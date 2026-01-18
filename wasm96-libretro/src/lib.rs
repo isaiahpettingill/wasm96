@@ -3,6 +3,7 @@
 //! This crate wraps the platform-agnostic wasm96-engine with libretro-specific
 //! bindings and callbacks.
 
+mod gl_renderer;
 mod libretro_callbacks;
 mod libretro_env;
 mod libretro_glue;

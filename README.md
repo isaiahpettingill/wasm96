@@ -6,6 +6,10 @@ cd wasm96
 
 RetroArch’s content browser filters are driven by **core info files** (`*.info`). Even if the core reports `valid_extensions` at runtime, RetroArch may not show your content types in the file picker unless the matching `.info` file is installed.
 
+### Libretro rendering notes (2D overlay compositing)
+- The libretro frontend composites the **2D software framebuffer** onto the HW FBO using the `wasm96-libretro` GL compositor.
+- The engine’s internal 2D overlay compositing in `wasm96-engine` is **disabled** for libretro to avoid a second pass that can cause mirrored/duplicated output.
+
 This repo includes:
 - Core info file: `libretro/info/wasm96_libretro.info`
   - Advertises: `wasm|wat|w96`
