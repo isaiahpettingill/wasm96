@@ -24,16 +24,17 @@ lazy_static::lazy_static! {
     pub static ref RESOURCES: Mutex<Resources> = Mutex::new(Resources::default());
 }
 
-#[derive(Default)]
 pub struct Resources {
     // ID-based resources (existing APIs in this module).
     pub svgs: HashMap<u32, Tree>,
     pub gifs: HashMap<u32, GifResource>,
+    pub aseprites: HashMap<u32, AsepriteResource>,
     pub fonts: HashMap<u32, FontResource>,
 
     // Keyed indirection (new): map u64 keys (hashed strings) -> ids in the above maps.
     pub keyed_svgs: HashMap<u64, u32>,
     pub keyed_gifs: HashMap<u64, u32>,
+    pub keyed_aseprites: HashMap<u64, u32>,
 
     // New generalized keyed decoded images (RGBA8888), to be used for PNG/JPEG (and later other formats).
     pub keyed_images: HashMap<u64, ImageResource>,
@@ -43,11 +44,36 @@ pub struct Resources {
     pub next_id: u32,
 }
 
+impl Default for Resources {
+    fn default() -> Self {
+        Self {
+            svgs: HashMap::new(),
+            gifs: HashMap::new(),
+            aseprites: HashMap::new(),
+            fonts: HashMap::new(),
+            keyed_svgs: HashMap::new(),
+            keyed_gifs: HashMap::new(),
+            keyed_aseprites: HashMap::new(),
+            keyed_images: HashMap::new(),
+            keyed_fonts: HashMap::new(),
+            next_id: 1,
+        }
+    }
+}
+
 pub struct GifResource {
     pub frames: Vec<Vec<u8>>, // RGBA data per frame
     pub delays: Vec<u16>,     // in 10ms units
     pub width: u16,
     pub height: u16,
+}
+
+pub struct AsepriteResource {
+    pub frames: Vec<Vec<u8>>, // RGBA data per frame
+    pub delays: Vec<u16>,     // in milliseconds
+    pub width: u16,
+    pub height: u16,
+    pub tags: Vec<(String, usize, usize)>, // (name, start_frame, end_frame)
 }
 
 #[derive(Clone)]

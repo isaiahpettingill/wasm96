@@ -39,6 +39,13 @@
 //! - `wasm96_graphics_gif_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
 //! - `wasm96_graphics_gif_unregister(key: u64)`
 //!
+//! - `wasm96_graphics_aseprite_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
+//! - `wasm96_graphics_aseprite_draw_key(key: u64, x: i32, y: i32, frame: u32)`
+//! - `wasm96_graphics_aseprite_draw_key_scaled(key: u64, x: i32, y: i32, frame: u32, w: u32, h: u32)`
+//! - `wasm96_graphics_aseprite_play_key(key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32)`
+//! - `wasm96_graphics_aseprite_play_key_scaled(key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32, w: u32, h: u32)`
+//! - `wasm96_graphics_aseprite_unregister(key: u64)`
+//!
 //! - `wasm96_graphics_png_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
 //! - `wasm96_graphics_png_draw_key(key: u64, x: i32, y: i32)`
 //! - `wasm96_graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
@@ -159,6 +166,14 @@ pub mod host_imports {
     pub const GRAPHICS_GIF_DRAW_KEY: &str = "wasm96_graphics_gif_draw_key";
     pub const GRAPHICS_GIF_DRAW_KEY_SCALED: &str = "wasm96_graphics_gif_draw_key_scaled";
     pub const GRAPHICS_GIF_UNREGISTER: &str = "wasm96_graphics_gif_unregister";
+
+    // Keyed resources: Aseprite
+    pub const GRAPHICS_ASEPRITE_REGISTER: &str = "wasm96_graphics_aseprite_register";
+    pub const GRAPHICS_ASEPRITE_DRAW_KEY: &str = "wasm96_graphics_aseprite_draw_key";
+    pub const GRAPHICS_ASEPRITE_DRAW_KEY_SCALED: &str = "wasm96_graphics_aseprite_draw_key_scaled";
+    pub const GRAPHICS_ASEPRITE_PLAY_KEY: &str = "wasm96_graphics_aseprite_play_key";
+    pub const GRAPHICS_ASEPRITE_PLAY_KEY_SCALED: &str = "wasm96_graphics_aseprite_play_key_scaled";
+    pub const GRAPHICS_ASEPRITE_UNREGISTER: &str = "wasm96_graphics_aseprite_unregister";
 
     // Keyed resources: PNG
     pub const GRAPHICS_PNG_REGISTER: &str = "wasm96_graphics_png_register";

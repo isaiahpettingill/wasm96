@@ -46,6 +46,15 @@ Wasmtime configuration is set up to enable a broad set of WebAssembly feature fl
 
 ## Example guests
 
+### Aseprite dwarf mining (procedural)
+An infinite, tile-based dwarf mining game that uses host-side Aseprite decoding (guest registers `.aseprite` bytes; the core parses/animates them) and procedurally generated ore veins.
+- Source: `example/rust-guest-aseprite/src/lib.rs`
+- Assets: `example/rust-guest-aseprite/assets/` (includes `dwarf.qoa` music)
+- Run (from repo root): `just run-rust-aseprite`
+
+Stability note: Aseprite playback must avoid holding the resource mutex while issuing draw calls. The play path now selects the frame under the lock, releases it, then draws. This prevents deadlocks/hangs during guest startup in libretro frontends.
+
+
 ### AssemblyScript guest (Generated Flappy; manual ABI imports)
 This repository includes an AssemblyScript guest that manually imports the wasm96 ABI functions (no SDK wrapper):
 
@@ -511,6 +520,12 @@ Tip:
 - The repository `justfile` also contains helper recipes for these cross-build + zip steps. Use those to avoid typos and keep the release process consistent.
 
 ## Recent Fixes
+
+### Aseprite decode crash guard (host/core)
+Aseprite decoding now runs behind a panic-safe guard so malformed or unexpected `.aseprite` bytes cannot crash the core; failed decodes return 0 from `graphics_aseprite_register` and skip rendering.
+
+### Alpha-aware image blits (host/core)
+Software framebuffer blits now preserve alpha in the stored pixel format (`0xAARRGGBB`). This fixes cases where sprites/tiles were fully transparent when composited by the libretro overlay shader.
 
 ### Raspberry Pi GL Context Initialization Fix (host/core)
 Fixed crashes on Raspberry Pi 3 (Lakka/VideoCore GPU) where content would immediately close after loading, affecting both 2D and 3D games. The root cause was `check_gl_error()` calling `gl::GetError()` before GL function pointers were initialized via `gl::load_with()`. When `graphics::background()` was called during guest `setup()` (common in all games), it would call `clear_framebuffer()` which called `check_gl_error()`, triggering the crash. Fixed by making `check_gl_error()` check if `GL_STATE` is initialized before calling any GL functions. Additionally, all GL rendering functions (`clear_framebuffer`, `prepare_frame`, `flush_to_host`, `graphics_mesh_draw`) now check if `output_fbo == 0` and gracefully fall back to software rendering until the GL context is fully ready.

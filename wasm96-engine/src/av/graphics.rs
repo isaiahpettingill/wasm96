@@ -49,14 +49,17 @@ use wasmtime::Caller;
 use fontdue::{Font, FontSettings};
 
 // External crates for asset decoding
+use asefile::AsepriteFile;
 use resvg::usvg::Tree;
-use resvg::{tiny_skia, usvg};
 use std::collections::HashMap;
+use std::io::Cursor;
 
 // Storage ABI helpers
 use alloc::vec::Vec;
 
-use super::resources::{AvError, FontResource, GifResource, ImageResource, RESOURCES};
+use super::resources::{
+    AsepriteResource, AvError, FontResource, GifResource, ImageResource, RESOURCES,
+};
 use super::utils::{
     graphics_image_from_host, graphics_line_internal, read_guest_bytes, system_millis, tri_edge,
 };
@@ -460,7 +463,8 @@ pub fn graphics_image(
                 // Simple alpha check (0 = transparent, >0 = opaque).
                 // Real blending would be: result = alpha * src + (1-alpha) * dst
                 // For now, just overwrite if not fully transparent.
-                let color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                let color =
+                    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
                 fb[dst_row_start + (curr_x as usize)] = color;
             }
         }
@@ -1017,7 +1021,7 @@ pub fn graphics_svg_register(
         Err(_) => return 0,
     };
 
-    let tree = match Tree::from_str(svg_str, &usvg::Options::default()) {
+    let tree = match Tree::from_str(svg_str, &resvg::usvg::Options::default()) {
         Ok(t) => t,
         Err(_) => return 0,
     };
@@ -1377,6 +1381,268 @@ pub fn graphics_gif_unregister(key: u64) {
 
     if let Some(id) = id {
         graphics_gif_destroy(id);
+    }
+}
+
+pub(crate) fn aseprite_build_resource_safe(data: &[u8]) -> Option<AsepriteResource> {
+    if data.is_empty() {
+        return None;
+    }
+    let result = std::panic::catch_unwind(|| {
+        let aseprite = AsepriteFile::read(Cursor::new(data)).ok()?;
+
+        let width = aseprite.width() as u16;
+        let height = aseprite.height() as u16;
+
+        let mut frames = Vec::new();
+        let mut delays = Vec::new();
+        let mut tags = Vec::new();
+
+        let frame_count = aseprite.num_frames();
+        for frame_idx in 0..frame_count {
+            let frame = aseprite.frame(frame_idx);
+            delays.push(frame.duration() as u16);
+            let image = frame.image();
+            frames.push(image.into_raw());
+        }
+
+        let tag_count = aseprite.num_tags();
+        for tag_id in 0..tag_count {
+            if let Some(tag) = aseprite.get_tag(tag_id) {
+                tags.push((
+                    tag.name().to_string(),
+                    tag.from_frame() as usize,
+                    tag.to_frame() as usize + 1,
+                ));
+            }
+        }
+
+        Some(AsepriteResource {
+            frames,
+            delays,
+            width,
+            height,
+            tags,
+        })
+    });
+
+    match result {
+        Ok(res) => res,
+        Err(_) => None,
+    }
+}
+
+/// Create an Aseprite resource from guest memory.
+pub fn graphics_aseprite_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match read_guest_bytes(env, ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    if data.is_empty() {
+        return 0;
+    }
+
+    let aseprite_resource = match aseprite_build_resource_safe(&data) {
+        Some(r) => r,
+        None => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.aseprites.insert(id, aseprite_resource);
+    id
+}
+
+/// Draw Aseprite frame at natural size.
+pub fn graphics_aseprite_draw(id: u32, x: i32, y: i32, frame: u32) {
+    graphics_aseprite_draw_scaled(id, x, y, frame, 0, 0);
+}
+
+/// Draw Aseprite frame scaled.
+pub fn graphics_aseprite_draw_scaled(id: u32, x: i32, y: i32, frame: u32, w: u32, h: u32) {
+    let res = RESOURCES.lock().unwrap();
+    if let Some(ase) = res.aseprites.get(&id) {
+        let frame_idx = frame as usize;
+        if frame_idx >= ase.frames.len() {
+            return;
+        }
+
+        let src_rgba = &ase.frames[frame_idx];
+        let src_w = ase.width as u32;
+        let src_h = ase.height as u32;
+
+        if w == 0 || h == 0 {
+            graphics_image_from_host(x, y, src_w, src_h, src_rgba);
+            return;
+        }
+
+        if src_w == 0 || src_h == 0 {
+            return;
+        }
+
+        let mut dst = vec![0u8; (w as usize).saturating_mul(h as usize).saturating_mul(4)];
+        for dy in 0..h {
+            let sy = (dy as u64 * src_h as u64 / h as u64) as u32;
+            let sy = sy.min(src_h.saturating_sub(1));
+            for dx in 0..w {
+                let sx = (dx as u64 * src_w as u64 / w as u64) as u32;
+                let sx = sx.min(src_w.saturating_sub(1));
+
+                let sidx = ((sy as usize) * (src_w as usize) + (sx as usize)) * 4;
+                let didx = ((dy as usize) * (w as usize) + (dx as usize)) * 4;
+
+                if sidx + 3 < src_rgba.len() && didx + 3 < dst.len() {
+                    dst[didx] = src_rgba[sidx];
+                    dst[didx + 1] = src_rgba[sidx + 1];
+                    dst[didx + 2] = src_rgba[sidx + 2];
+                    dst[didx + 3] = src_rgba[sidx + 3];
+                }
+            }
+        }
+
+        graphics_image_from_host(x, y, w, h, &dst);
+    }
+}
+
+/// Play Aseprite animation by tag name scaled.
+pub fn graphics_aseprite_play(id: u32, x: i32, y: i32, tag_name: &str) {
+    graphics_aseprite_play_scaled(id, x, y, tag_name, 0, 0);
+}
+
+pub(crate) fn aseprite_select_frame(
+    ase: &AsepriteResource,
+    tag_name: &str,
+    now_ms: u64,
+) -> Option<usize> {
+    if ase.frames.is_empty() {
+        return None;
+    }
+
+    let (mut start, mut end) =
+        if let Some((_, start, end)) = ase.tags.iter().find(|(name, _, _)| name == tag_name) {
+            (*start, *end)
+        } else {
+            (0, ase.frames.len())
+        };
+
+    end = end.min(ase.frames.len());
+    start = start.min(end);
+    if start >= end {
+        return None;
+    }
+
+    let mut total_delay_ms: u64 = 0;
+    for i in start..end {
+        if i < ase.delays.len() {
+            total_delay_ms += ase.delays[i] as u64;
+        }
+    }
+
+    let mut frame_idx = start;
+    if total_delay_ms > 0 {
+        let mut rem = now_ms % total_delay_ms;
+        for i in start..end {
+            if i >= ase.delays.len() {
+                break;
+            }
+            let d_ms = ase.delays[i] as u64;
+            let effective_delay = if d_ms == 0 { 100 } else { d_ms };
+            if rem < effective_delay {
+                frame_idx = i;
+                break;
+            }
+            rem = rem.saturating_sub(effective_delay);
+        }
+    }
+
+    Some(frame_idx)
+}
+
+/// Play Aseprite animation by tag name scaled.
+pub fn graphics_aseprite_play_scaled(id: u32, x: i32, y: i32, tag_name: &str, w: u32, h: u32) {
+    let frame_idx = {
+        let res = RESOURCES.lock().unwrap();
+        if let Some(ase) = res.aseprites.get(&id) {
+            let millis = system_millis();
+            aseprite_select_frame(ase, tag_name, millis)
+        } else {
+            None
+        }
+    };
+
+    if let Some(frame_idx) = frame_idx {
+        graphics_aseprite_draw_scaled(id, x, y, frame_idx as u32, w, h);
+    }
+}
+
+/// Play Aseprite animation by tag name.
+pub fn graphics_aseprite_play_key(key: u64, x: i32, y: i32, tag_name: &str) {
+    graphics_aseprite_play_key_scaled(key, x, y, tag_name, 0, 0);
+}
+
+/// Play Aseprite animation by tag name scaled.
+pub fn graphics_aseprite_play_key_scaled(key: u64, x: i32, y: i32, tag_name: &str, w: u32, h: u32) {
+    let id = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_aseprites.get(&key).copied()
+    };
+
+    if let Some(id) = id {
+        graphics_aseprite_play_scaled(id, x, y, tag_name, w, h);
+    }
+}
+
+/// Destroy Aseprite by id.
+pub fn graphics_aseprite_destroy(id: u32) {
+    let mut res = RESOURCES.lock().unwrap();
+    res.aseprites.remove(&id);
+}
+
+/// Register Aseprite resource under a string key.
+pub fn graphics_aseprite_register(
+    env: &mut Caller<'_, ()>,
+    key: u64,
+    data_ptr: u32,
+    data_len: u32,
+) -> u32 {
+    let id = graphics_aseprite_create(env, data_ptr, data_len);
+    if id == 0 {
+        return 0;
+    }
+
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_aseprites.insert(key, id);
+    1
+}
+
+/// Draw Aseprite by key at natural size with specific frame.
+pub fn graphics_aseprite_draw_key(key: u64, x: i32, y: i32, frame: u32) {
+    graphics_aseprite_draw_key_scaled(key, x, y, frame, 0, 0);
+}
+
+/// Draw Aseprite by key scaled with specific frame.
+pub fn graphics_aseprite_draw_key_scaled(key: u64, x: i32, y: i32, frame: u32, w: u32, h: u32) {
+    let id = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_aseprites.get(&key).copied()
+    };
+
+    if let Some(id) = id {
+        graphics_aseprite_draw_scaled(id, x, y, frame, w, h);
+    }
+}
+
+/// Unregister Aseprite by key and destroy its underlying resource.
+pub fn graphics_aseprite_unregister(key: u64) {
+    let id = {
+        let mut res = RESOURCES.lock().unwrap();
+        res.keyed_aseprites.remove(&key)
+    };
+
+    if let Some(id) = id {
+        graphics_aseprite_destroy(id);
     }
 }
 

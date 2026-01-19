@@ -11,6 +11,11 @@ use crate::{
 };
 use wasmtime::{Caller, Linker};
 
+fn read_guest_string(caller: &mut Caller<'_, ()>, ptr: u32, len: u32) -> Result<String, String> {
+    av::utils::read_guest_string(caller, ptr, len)
+        .map_err(|_| String::from("Failed to read guest string"))
+}
+
 /// Define all host imports expected by guests under module `"env"`.
 pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     // --- Graphics ---
@@ -225,6 +230,70 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
         host_imports::GRAPHICS_JPEG_UNREGISTER,
         |_caller: Caller<'_, ()>, key: u64| {
             av::graphics_jpeg_unregister(key);
+        },
+    )?;
+
+    // Keyed resources: Aseprite
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_REGISTER,
+        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
+            av::graphics_aseprite_register(&mut caller, key, data_ptr, data_len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_DRAW_KEY,
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, frame: u32| {
+            av::graphics_aseprite_draw_key(key, x, y, frame)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_DRAW_KEY_SCALED,
+        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, frame: u32, w: u32, h: u32| {
+            av::graphics_aseprite_draw_key_scaled(key, x, y, frame, w, h)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_PLAY_KEY,
+        |mut caller: Caller<'_, ()>, key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32| {
+            let tag = match read_guest_string(&mut caller, tag_ptr, tag_len) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            av::graphics_aseprite_play_key(key, x, y, &tag);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_PLAY_KEY_SCALED,
+        |mut caller: Caller<'_, ()>,
+         key: u64,
+         x: i32,
+         y: i32,
+         tag_ptr: u32,
+         tag_len: u32,
+         w: u32,
+         h: u32| {
+            let tag = match read_guest_string(&mut caller, tag_ptr, tag_len) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            av::graphics_aseprite_play_key_scaled(key, x, y, &tag, w, h);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ASEPRITE_UNREGISTER,
+        |_caller: Caller<'_, ()>, key: u64| {
+            av::graphics_aseprite_unregister(key);
         },
     )?;
 

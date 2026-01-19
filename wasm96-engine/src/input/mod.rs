@@ -5,9 +5,9 @@
 //! - Implement those queries by calling into platform callbacks.
 //! - Optionally cache/snapshot inputs per-frame for determinism.
 
+use crate::PlatformCallbacks;
 use crate::abi::Button;
 use crate::state;
-use crate::PlatformCallbacks;
 
 /// Convert ABI joypad button id into a generic button index.
 fn map_joypad_button(button: u32) -> Option<u32> {
@@ -54,11 +54,7 @@ pub fn joypad_button_pressed(port: u32, button: u32) -> u32 {
 pub fn key_pressed(key: u32) -> u32 {
     state::with_callbacks(
         |callbacks| {
-            if callbacks.input_key_state(key) {
-                1
-            } else {
-                0
-            }
+            if callbacks.input_key_state(key) { 1 } else { 0 }
         },
     )
     .unwrap_or(0)

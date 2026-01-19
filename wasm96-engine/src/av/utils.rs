@@ -30,6 +30,17 @@ pub fn read_guest_bytes(
     Ok(data)
 }
 
+pub fn read_guest_string(
+    caller: &mut Caller<'_, ()>,
+    ptr: u32,
+    len: u32,
+) -> Result<String, AvError> {
+    let bytes = read_guest_bytes(caller, ptr, len)?;
+    core::str::from_utf8(&bytes)
+        .map(|s| s.to_string())
+        .map_err(|_| AvError::MemoryReadFailed)
+}
+
 pub fn graphics_line_internal(x1: i32, y1: i32, x2: i32, y2: i32) {
     super::graphics::graphics_line(x1, y1, x2, y2);
 }
@@ -68,7 +79,8 @@ pub fn graphics_image_from_host(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
             let b = data[src_idx + 2];
             let a = data[src_idx + 3];
             if a > 0 {
-                let color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                let color =
+                    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
                 fb[dst_row_start + (curr_x as usize)] = color;
             }
         }

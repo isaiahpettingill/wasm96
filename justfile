@@ -117,6 +117,10 @@ run-rust-rapier:
     cargo build -p rust-guest-rapier --release --target wasm32-unknown-unknown
     just run ./target/wasm32-unknown-unknown/release/rust_guest_rapier.wasm
 
+run-rust-aseprite:
+    cargo build -p rust-guest-aseprite --release --target wasm32-unknown-unknown
+    just run ./target/wasm32-unknown-unknown/release/rust_guest_aseprite.wasm
+
 run-rust-osmosis:
     cargo build -p rust_guest_osmosis --release --target wasm32-unknown-unknown
     just run ./target/wasm32-unknown-unknown/release/rust_guest_osmosis.wasm

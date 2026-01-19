@@ -209,6 +209,35 @@ pub mod sys {
         #[link_name = "wasm96_graphics_jpeg_unregister"]
         pub fn graphics_jpeg_unregister(key: u64);
 
+        // Aseprite
+        #[link_name = "wasm96_graphics_aseprite_register"]
+        pub fn graphics_aseprite_register(key: u64, data_ptr: u32, data_len: u32) -> u32;
+        #[link_name = "wasm96_graphics_aseprite_draw_key"]
+        pub fn graphics_aseprite_draw_key(key: u64, x: i32, y: i32, frame: u32);
+        #[link_name = "wasm96_graphics_aseprite_draw_key_scaled"]
+        pub fn graphics_aseprite_draw_key_scaled(
+            key: u64,
+            x: i32,
+            y: i32,
+            frame: u32,
+            w: u32,
+            h: u32,
+        );
+        #[link_name = "wasm96_graphics_aseprite_play_key"]
+        pub fn graphics_aseprite_play_key(key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32);
+        #[link_name = "wasm96_graphics_aseprite_play_key_scaled"]
+        pub fn graphics_aseprite_play_key_scaled(
+            key: u64,
+            x: i32,
+            y: i32,
+            tag_ptr: u32,
+            tag_len: u32,
+            w: u32,
+            h: u32,
+        );
+        #[link_name = "wasm96_graphics_aseprite_unregister"]
+        pub fn graphics_aseprite_unregister(key: u64);
+
         // Fonts + text (keyed by string)
         //
         // The host maintains a map of `u64 font_key -> font resource`.
@@ -475,6 +504,63 @@ pub mod graphics {
     /// Unregister a GIF by key.
     pub fn gif_unregister(key: &str) {
         unsafe { sys::graphics_gif_unregister(hash_key(key)) }
+    }
+
+    /// Register an Aseprite resource (encoded bytes) under a string key.
+    /// Returns true on success.
+    pub fn aseprite_register(key: &str, aseprite_bytes: &[u8]) -> bool {
+        unsafe {
+            sys::graphics_aseprite_register(
+                hash_key(key),
+                aseprite_bytes.as_ptr() as u32,
+                aseprite_bytes.len() as u32,
+            ) != 0
+        }
+    }
+
+    /// Draw a registered Aseprite by key at natural size with specific frame.
+    pub fn aseprite_draw_key(key: &str, x: i32, y: i32, frame: u32) {
+        unsafe { sys::graphics_aseprite_draw_key(hash_key(key), x, y, frame) }
+    }
+
+    /// Draw a registered Aseprite by key scaled with specific frame.
+    pub fn aseprite_draw_key_scaled(key: &str, x: i32, y: i32, frame: u32, w: u32, h: u32) {
+        unsafe { sys::graphics_aseprite_draw_key_scaled(hash_key(key), x, y, frame, w, h) }
+    }
+
+    /// Play a registered Aseprite animation by tag name at natural size.
+    pub fn aseprite_play_key(key: &str, x: i32, y: i32, tag_name: &str) {
+        let tag_bytes = tag_name.as_bytes();
+        unsafe {
+            sys::graphics_aseprite_play_key(
+                hash_key(key),
+                x,
+                y,
+                tag_bytes.as_ptr() as u32,
+                tag_bytes.len() as u32,
+            )
+        }
+    }
+
+    /// Play a registered Aseprite animation by tag name scaled.
+    pub fn aseprite_play_key_scaled(key: &str, x: i32, y: i32, tag_name: &str, w: u32, h: u32) {
+        let tag_bytes = tag_name.as_bytes();
+        unsafe {
+            sys::graphics_aseprite_play_key_scaled(
+                hash_key(key),
+                x,
+                y,
+                tag_bytes.as_ptr() as u32,
+                tag_bytes.len() as u32,
+                w,
+                h,
+            )
+        }
+    }
+
+    /// Unregister an Aseprite by key.
+    pub fn aseprite_unregister(key: &str) {
+        unsafe { sys::graphics_aseprite_unregister(hash_key(key)) }
     }
 
     /// Draw a filled triangle.

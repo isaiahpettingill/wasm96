@@ -13,6 +13,7 @@ set -eu
 # - zig (for C/C++ examples via zig cc/c++; and zig examples)
 # - node + npm (for AssemblyScript example)
 # - wabt (for wat2wasm) for WAT example
+# - wasm-opt (Binaryen) for optimizing WASM binaries
 #
 # Usage:
 #   ./scripts/dist-examples.sh
@@ -27,7 +28,9 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 DIST_DIR="${DIST_DIR:-dist/examples}"
 RUST_TARGET="${RUST_TARGET:-wasm32-unknown-unknown}"
+CARGO_FLAGS="-Z build-std=std,panic_abort"
 RUST_PROFILE="${RUST_PROFILE:-release}"
+RUSTFLAGS="-C target-feature=+simd128 -Zlocation-detail=none -Zfmt-debug=none"
 
 log() {
   printf '%s\n' "dist-examples: $*"
@@ -62,6 +65,24 @@ copy_wasm_as_w96() {
   log "wrote $DIST_DIR/$name.w96"
 }
 
+optimize_wasm_files() {
+  if ! need_cmd wasm-opt; then
+    warn "wasm-opt not found; skipping optimization"
+    return 0
+  fi
+
+  log "optimizing WASM binaries with wasm-opt"
+
+  for file in "$DIST_DIR"/*.w96; do
+    if [ -f "$file" ]; then
+      name="$(basename "$file")"
+      wasm-opt "$file" -O4 -o "$file.tmp" --all-features --strip-debug
+      mv "$file.tmp" "$file"
+      log "optimized $name"
+    fi
+  done
+}
+
 # We don't rely on `realpath` being installed.
 cd "$ROOT_DIR"
 
@@ -94,26 +115,30 @@ build_rust() {
 
   # Use explicit package names from the workspace.
   # Note: these package names match the workspace members list in wasm96/Cargo.toml.
-  cargo build -p rust_guest --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest.wasm" "rust-guest"
+  cargo +nightly build $CARGO_FLAGS -p rust_guest --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest.wasm" "basic"
 
-  cargo build -p rust-guest-showcase --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_showcase.wasm" "rust-guest-showcase"
+  cargo +nightly build $CARGO_FLAGS -p rust-guest-showcase --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_showcase.wasm" "showcase"
 
-  cargo build -p rust_guest_mp_platformer --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_mp_platformer.wasm" "rust-guest-mp-platformer"
+  cargo +nightly build $CARGO_FLAGS -p rust_guest_mp_platformer --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_mp_platformer.wasm" "platformer"
 
-  cargo build -p rust_guest_osmosis --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_osmosis.wasm" "rust-guest-osmosis"
+  cargo +nightly build $CARGO_FLAGS -p rust_guest_osmosis --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_osmosis.wasm" "osmosis_clone"
 
-  cargo build -p rust_guest_text --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_text.wasm" "rust-guest-text"
+  cargo +nightly build $CARGO_FLAGS -p rust_guest_text --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_text.wasm" "text_demo"
 
-  cargo build -p rust-guest-3d --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_3d.wasm" "rust-guest-3d"
+  cargo +nightly build $CARGO_FLAGS -p rust-guest-3d --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_3d.wasm" "spinning_cube"
 
-  cargo build -p rust-guest-rapier --target "$RUST_TARGET" --"$RUST_PROFILE"
-  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_rapier.wasm" "rust-guest-rapier"
+  cargo +nightly build $CARGO_FLAGS -p rust-guest-rapier --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_rapier.wasm" "throw_ball"
+
+  cargo +nightly build $CARGO_FLAGS -p rust-guest-aseprite --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_aseprite.wasm" "dwarf"
+
 }
 
 # -----------------------
@@ -134,12 +159,12 @@ build_zig() {
 
   if [ -d "example/zig-guest" ]; then
     (cd "example/zig-guest" && zig build)
-    copy_wasm_as_w96 "example/zig-guest/zig-out/bin/zig-guest.wasm" "zig-guest"
+    copy_wasm_as_w96 "example/zig-guest/zig-out/bin/zig-guest.wasm" "pong"
   fi
 
   if [ -d "example/zig-guest-3d" ]; then
     (cd "example/zig-guest-3d" && zig build)
-    copy_wasm_as_w96 "example/zig-guest-3d/zig-out/bin/zig-guest-3d.wasm" "zig-guest-3d"
+    copy_wasm_as_w96 "example/zig-guest-3d/zig-out/bin/zig-guest-3d.wasm" "obj_and_mtl"
   fi
 }
 
@@ -163,7 +188,7 @@ build_c() {
 
   log "building C example"
   (cd "example/c-guest" && make clean >/dev/null 2>&1 || true && make)
-  copy_wasm_as_w96 "example/c-guest/wasm96-example.wasm" "c-guest"
+  copy_wasm_as_w96 "example/c-guest/wasm96-example.wasm" "snake"
 }
 
 build_cpp() {
@@ -183,7 +208,7 @@ build_cpp() {
 
   log "building C++ example"
   (cd "example/cpp-guest" && make clean >/dev/null 2>&1 || true && make)
-  copy_wasm_as_w96 "example/cpp-guest/wasm96-example.wasm" "cpp-guest"
+  copy_wasm_as_w96 "example/cpp-guest/wasm96-example.wasm" "tetris"
 }
 
 # -----------------------
@@ -209,7 +234,7 @@ build_assemblyscript() {
   (cd "example/assemblyscript-guest" && npm install && npm run build)
 
   # The example already ships a `flappy.wasm` in the repo, but we prefer the built one.
-  copy_wasm_as_w96 "example/assemblyscript-guest/flappy.wasm" "assemblyscript-flappy"
+  copy_wasm_as_w96 "example/assemblyscript-guest/flappy.wasm" "flappy"
 }
 
 # -----------------------
@@ -232,7 +257,7 @@ build_wat() {
 
   log "building WAT example"
   (cd "example/wat-guest" && wat2wasm main.wat -o wat-guest.wasm)
-  copy_wasm_as_w96 "example/wat-guest/wat-guest.wasm" "wat-guest"
+  copy_wasm_as_w96 "example/wat-guest/wat-guest.wasm" "wat_demo"
 }
 
 # -----------------------
@@ -246,6 +271,8 @@ build_c
 build_cpp
 build_assemblyscript
 build_wat
+
+optimize_wasm_files
 
 log "done"
 log "artifacts:"

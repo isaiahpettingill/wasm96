@@ -4,6 +4,10 @@ extern crate alloc;
 #[cfg(test)]
 mod tests {
     use crate::av::audio::audio_init;
+    use crate::av::graphics::{
+        aseprite_build_resource_safe, aseprite_select_frame, graphics_aseprite_play_scaled,
+    };
+    use crate::av::resources::{AsepriteResource, RESOURCES, Resources};
     use crate::av::utils::{graphics_image_from_host, sat_add_i16};
     use crate::av::{graphics_point, graphics_set_color, graphics_set_size, graphics_triangle};
     use crate::state::global;
@@ -31,6 +35,125 @@ mod tests {
             Err(poisoned) => poisoned.into_inner(),
         };
         s.video.framebuffer.fill(0);
+    }
+
+    fn make_aseprite_resource(
+        delays: &[u16],
+        tags: Vec<(String, usize, usize)>,
+    ) -> AsepriteResource {
+        let frames = vec![Vec::new(); delays.len()];
+        AsepriteResource {
+            frames,
+            delays: delays.to_vec(),
+            width: 1,
+            height: 1,
+            tags,
+        }
+    }
+
+    #[test]
+    fn aseprite_select_frame_defaults_to_full_range_when_tag_missing() {
+        let ase = make_aseprite_resource(&[100, 100, 100], Vec::new());
+        assert_eq!(aseprite_select_frame(&ase, "missing", 0), Some(0));
+        assert_eq!(aseprite_select_frame(&ase, "missing", 150), Some(1));
+        assert_eq!(aseprite_select_frame(&ase, "missing", 250), Some(2));
+    }
+
+    #[test]
+    fn aseprite_select_frame_respects_tag_bounds() {
+        let ase = make_aseprite_resource(&[10, 10, 10, 10], vec![("walk".to_string(), 1, 3)]);
+        assert_eq!(aseprite_select_frame(&ase, "walk", 0), Some(1));
+        assert_eq!(aseprite_select_frame(&ase, "walk", 15), Some(2));
+        assert_eq!(aseprite_select_frame(&ase, "walk", 25), Some(1));
+    }
+
+    #[test]
+    fn aseprite_play_draws_without_deadlock() {
+        reset_state_for_test();
+        graphics_set_size(2, 2);
+        clear_framebuffer_for_test();
+
+        let ase = AsepriteResource {
+            frames: vec![vec![255, 0, 0, 255]],
+            delays: vec![100],
+            width: 1,
+            height: 1,
+            tags: Vec::new(),
+        };
+
+        let id = {
+            let mut res = RESOURCES.lock().unwrap();
+            let id = res.next_id;
+            res.next_id += 1;
+            res.aseprites.insert(id, ase);
+            id
+        };
+
+        graphics_aseprite_play_scaled(id, 0, 0, "idle", 0, 0);
+
+        let fb = {
+            let s = match global().lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            s.video.framebuffer.clone()
+        };
+
+        assert!(count_nonzero(&fb) > 0);
+    }
+
+    #[test]
+    fn aseprite_build_resource_returns_none_for_empty_input() {
+        assert!(aseprite_build_resource_safe(&[]).is_none());
+    }
+
+    #[test]
+    fn aseprite_build_resource_decodes_idle_asset() {
+        let bytes =
+            include_bytes!("../../../example/rust-guest-aseprite/assets/dwarf/Idle.aseprite");
+        let res = aseprite_build_resource_safe(bytes).expect("expected Aseprite resource");
+        assert!(!res.frames.is_empty());
+        assert_eq!(res.frames.len(), res.delays.len());
+        assert!(res.width > 0);
+        assert!(res.height > 0);
+    }
+
+    #[test]
+    fn aseprite_build_resource_rejects_garbage_bytes() {
+        let garbage = [0x13u8, 0x37u8, 0x42u8, 0x00u8, 0xFFu8];
+        assert!(aseprite_build_resource_safe(&garbage).is_none());
+    }
+
+    #[test]
+    fn resources_default_next_id_is_one() {
+        let res = Resources::default();
+        assert_eq!(res.next_id, 1);
+    }
+
+    #[test]
+    fn aseprite_asset_decodes_in_core() {
+        let bytes =
+            include_bytes!("../../../example/rust-guest-aseprite/assets/dwarf/Idle.aseprite");
+        let ase = asefile::AsepriteFile::read(std::io::Cursor::new(bytes))
+            .expect("expected Idle.aseprite to decode");
+        assert!(ase.num_frames() > 0);
+        assert!(ase.width() > 0);
+        assert!(ase.height() > 0);
+    }
+
+    #[test]
+    fn qoa_asset_decodes_in_core() {
+        let bytes = include_bytes!("../../../example/rust-guest-aseprite/assets/dwarf.qoa");
+        let decoder = qoaudio::QoaDecoder::new(bytes).expect("expected dwarf.qoa to decode");
+        assert!(decoder.samples() > 0);
+        assert!(decoder.channels() > 0);
+        assert!(decoder.sample_rate() > 0);
+        let samples: Vec<i16> = decoder
+            .decoded_samples()
+            .expect("expected decoded samples")
+            .into_iter()
+            .collect();
+        assert!(!samples.is_empty());
     }
 
     #[test]
@@ -255,17 +378,13 @@ mod tests {
             }
 
             channel.position_frames += frames_to_mix;
-        }
 
-        let s = match global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        assert_eq!(s.audio.channels.len(), 1, "expected one channel");
-        assert_eq!(
-            s.audio.channels[0].position_frames, 1,
-            "expected channel to advance by exactly one frame"
-        );
+            assert_eq!(s.audio.channels.len(), 1, "expected one channel");
+            assert_eq!(
+                s.audio.channels[0].position_frames, 1,
+                "expected channel to advance by exactly one frame"
+            );
+        }
 
         // And the mixed buffer should contain non-zero data.
         assert!(
@@ -291,12 +410,12 @@ mod tests {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        // `graphics_image_from_host` writes 0x00RRGGBB when a > 0, but note:
+        // `graphics_image_from_host` writes 0xAARRGGBB when a > 0, but note:
         // the framebuffer may still be zero depending on current host video state/presentation.
-        // For this unit test, just verify we didn't write an ARGB-packed value (i.e. alpha ignored)
-        // and that the pixel is either untouched (0) or has the expected XRGB red.
+        // For this unit test, just verify we didn't write an XRGB-packed value (i.e. alpha dropped)
+        // and that the pixel is either untouched (0) or has the expected ARGB red.
         assert!(
-            s.video.framebuffer[0] == 0 || s.video.framebuffer[0] == 0x00FF0000,
+            s.video.framebuffer[0] == 0 || s.video.framebuffer[0] == 0xFFFF0000,
             "unexpected pixel value: 0x{:08X}",
             s.video.framebuffer[0]
         );
