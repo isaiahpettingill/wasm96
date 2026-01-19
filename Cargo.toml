@@ -12,6 +12,8 @@ members = [
   "example/rust-guest-3d",
   "example/rust-guest-rapier",
   "example/rust-guest-aseprite",
+  "example/rust-guest-shapes",
+  "example/rust-guest-transform",
 ]
 
 # Optional: allows `cargo build` at the workspace root to default to building the libretro core.

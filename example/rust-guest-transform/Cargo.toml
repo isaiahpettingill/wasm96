@@ -1,0 +1,11 @@
+[package]
+name = "rust-guest-transform"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm96-sdk = { path = "../../wasm96-sdk" }

@@ -46,5 +46,8 @@ nom_stl = "0.2.2"
 # Used to parse `.wat` text into `.wasm` bytes before passing to the runtime.
 wat = "1.243.0"
 
+# MIDI parsing
+midly = "0.5"
+
 [profile.dev]
 panic = "abort"

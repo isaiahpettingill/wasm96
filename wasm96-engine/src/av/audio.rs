@@ -14,6 +14,9 @@ use alloc::vec::Vec;
 use super::resources::AvError;
 use super::utils::sat_add_i16;
 
+// MIDI synthesizer
+use midly::Smf;
+
 /// Helpers for mixing.
 /// NOTE: Higher-level playback and chiptune APIs are stubbed for now; these helpers
 /// are kept because `audio_drain_host` mixes guest-pushed audio and pads as needed.
@@ -249,6 +252,56 @@ pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     s.audio.channels.push(channel);
 }
 
+pub fn audio_play_midi(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+    let memory_ptr = {
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        s.memory_wasmtime
+    };
+
+    if memory_ptr.is_null() {
+        return;
+    }
+
+    // SAFETY: memory pointer checked.
+    let mem = unsafe { &*memory_ptr };
+
+    // Read MIDI bytes from guest memory.
+    let mut midi_bytes = vec![0u8; len as usize];
+    if mem.read(env, ptr as usize, &mut midi_bytes).is_err() {
+        return;
+    }
+
+    // Parse MIDI using midly.
+    let smf = match Smf::parse(&midi_bytes) {
+        Ok(smf) => smf,
+        Err(_) => return,
+    };
+
+    // Get sample rate.
+    let sample_rate = {
+        let s = match crate::state::global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        s.audio.sample_rate as f32
+    };
+
+    // Initialize synthesizer if not present.
+    let mut s = match crate::state::global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if s.audio.synthesizer.is_none() {
+        s.audio.synthesizer = Some(crate::state::Synthesizer::new(sample_rate));
+    }
+    if let Some(synth) = &mut s.audio.synthesizer {
+        synth.load_midi(smf);
+    }
+}
+
 pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Result<(), AvError> {
     let memory_ptr = {
         let s = match global().lock() {
@@ -377,6 +430,17 @@ pub fn audio_drain_host(callbacks: &mut dyn crate::PlatformCallbacks) {
             }
 
             channel.position_frames += frames_to_mix;
+        }
+
+        // Mix synthesizer
+        if let Some(synth) = &mut s.audio.synthesizer {
+            for i in 0..target_frames {
+                let sample = synth.generate_sample();
+                let sample_i16 = (sample * 32767.0) as i16;
+                let dst_idx = i * 2;
+                mixed[dst_idx] = sat_add_i16(mixed[dst_idx], sample_i16);
+                mixed[dst_idx + 1] = sat_add_i16(mixed[dst_idx + 1], sample_i16);
+            }
         }
     }
 

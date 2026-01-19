@@ -43,6 +43,7 @@ extern crate alloc;
 // -------------------------------------------------------------------------------------------------
 
 use crate::state::global;
+use glam::{Mat4, Vec3};
 use wasmtime::Caller;
 
 // External crates for rendering
@@ -60,9 +61,7 @@ use alloc::vec::Vec;
 use super::resources::{
     AsepriteResource, AvError, FontResource, GifResource, ImageResource, RESOURCES,
 };
-use super::utils::{
-    graphics_image_from_host, graphics_line_internal, read_guest_bytes, system_millis, tri_edge,
-};
+use super::utils::{graphics_image_from_host, read_guest_bytes, system_millis, tri_edge};
 
 // Material parsing (MTL)
 //
@@ -199,6 +198,411 @@ pub fn graphics_set_color(r: u32, g: u32, b: u32, a: u32) {
     s.video.draw_color = color;
 }
 
+/// Get red component of current color (0-255).
+pub fn graphics_red() -> u32 {
+    let s = global().lock().unwrap();
+    (s.video.draw_color >> 16) & 0xFF
+}
+
+/// Get green component of current color (0-255).
+pub fn graphics_green() -> u32 {
+    let s = global().lock().unwrap();
+    (s.video.draw_color >> 8) & 0xFF
+}
+
+/// Get blue component of current color (0-255).
+pub fn graphics_blue() -> u32 {
+    let s = global().lock().unwrap();
+    s.video.draw_color & 0xFF
+}
+
+/// Get alpha component of current color (0-255).
+pub fn graphics_alpha() -> u32 {
+    let s = global().lock().unwrap();
+    (s.video.draw_color >> 24) & 0xFF
+}
+
+/// Apply a transformation matrix.
+pub fn graphics_apply_matrix(
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m03: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m13: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    m23: f32,
+    m30: f32,
+    m31: f32,
+    m32: f32,
+    m33: f32,
+) {
+    let mut s = global().lock().unwrap();
+    let other = Mat4::from_cols_array(&[
+        m00, m10, m20, m30, m01, m11, m21, m31, m02, m12, m22, m32, m03, m13, m23, m33,
+    ]);
+    s.video.transform = s.video.transform * other;
+}
+
+/// Reset the transformation matrix to identity.
+pub fn graphics_reset_matrix() {
+    let mut s = global().lock().unwrap();
+    s.video.transform = Mat4::IDENTITY;
+}
+
+/// Rotate the coordinate system around the Z axis (2D rotation).
+pub fn graphics_rotate(angle: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_rotation_z(angle);
+}
+
+/// Rotate the coordinate system around the X axis.
+pub fn graphics_rotate_x(angle: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_rotation_x(angle);
+}
+
+/// Rotate the coordinate system around the Y axis.
+pub fn graphics_rotate_y(angle: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_rotation_y(angle);
+}
+
+/// Rotate the coordinate system around the Z axis.
+pub fn graphics_rotate_z(angle: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_rotation_z(angle);
+}
+
+/// Scale the coordinate system.
+pub fn graphics_scale(sx: f32, sy: f32, sz: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_scale(Vec3::new(sx, sy, sz));
+}
+
+/// Shear the coordinate system along the X axis.
+pub fn graphics_shear_x(angle: f32) {
+    let mut s = global().lock().unwrap();
+    let shear = Mat4::from_cols_array(&[
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        angle.tan(),
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]);
+    s.video.transform = s.video.transform * shear;
+}
+
+/// Shear the coordinate system along the Y axis.
+pub fn graphics_shear_y(angle: f32) {
+    let mut s = global().lock().unwrap();
+    let shear = Mat4::from_cols_array(&[
+        1.0,
+        angle.tan(),
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]);
+    s.video.transform = s.video.transform * shear;
+}
+
+/// Translate the coordinate system.
+pub fn graphics_translate(x: f32, y: f32, z: f32) {
+    let mut s = global().lock().unwrap();
+    s.video.transform = s.video.transform * Mat4::from_translation(Vec3::new(x, y, z));
+}
+
+/// Push the current transformation matrix onto the stack.
+pub fn graphics_push_matrix() {
+    let mut s = global().lock().unwrap();
+    let current = s.video.transform;
+    s.video.transform_stack.push(current);
+}
+
+/// Pop the last transformation matrix from the stack.
+pub fn graphics_pop_matrix() {
+    let mut s = global().lock().unwrap();
+    if let Some(prev) = s.video.transform_stack.pop() {
+        s.video.transform = prev;
+    }
+}
+
+/// Get brightness (perceived) of current color (0-255).
+/// Uses ITU-R BT.709 luma: 0.2126*R + 0.7152*G + 0.0722*B
+pub fn graphics_brightness() -> u32 {
+    let s = global().lock().unwrap();
+    let r = ((s.video.draw_color >> 16) & 0xFF) as f32;
+    let g = ((s.video.draw_color >> 8) & 0xFF) as f32;
+    let b = (s.video.draw_color & 0xFF) as f32;
+    (0.2126 * r + 0.7152 * g + 0.0722 * b) as u32
+}
+
+/// Convert RGB to HSL.
+fn rgb_to_hsl(r: u32, g: u32, b: u32) -> (f32, f32, f32) {
+    let r = r as f32 / 255.0;
+    let g = g as f32 / 255.0;
+    let b = b as f32 / 255.0;
+
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+
+    let h = if delta == 0.0 {
+        0.0
+    } else if max == r {
+        60.0 * (((g - b) / delta).rem_euclid(6.0))
+    } else if max == g {
+        60.0 * ((b - r) / delta + 2.0)
+    } else {
+        60.0 * ((r - g) / delta + 4.0)
+    };
+
+    let l = (max + min) / 2.0;
+
+    let s = if delta == 0.0 {
+        0.0
+    } else if l <= 0.5 {
+        delta / (max + min)
+    } else {
+        delta / (2.0 - max - min)
+    };
+
+    (h, s, l)
+}
+
+/// Convert HSL to RGB.
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u32, u32, u32) {
+    let c = if l <= 0.5 {
+        2.0 * l * s
+    } else {
+        (2.0 - 2.0 * l) * s
+    };
+    let m = l - c / 2.0;
+
+    let (r, g, b) = if s == 0.0 {
+        (l, l, l)
+    } else {
+        let hh = (h / 60.0).rem_euclid(6.0);
+        let x = c * (1.0 - (hh.rem_euclid(2.0) - 1.0).abs());
+
+        let (r1, g1, b1) = match hh as u32 {
+            0 => (c, x, 0.0),
+            1 => (x, c, 0.0),
+            2 => (0.0, c, x),
+            3 => (0.0, x, c),
+            4 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+
+        (r1 + m, g1 + m, b1 + m)
+    };
+
+    (
+        (r.min(1.0).max(0.0) * 255.0) as u32,
+        (g.min(1.0).max(0.0) * 255.0) as u32,
+        (b.min(1.0).max(0.0) * 255.0) as u32,
+    )
+}
+
+/// Get hue of current color (0-360 degrees).
+pub fn graphics_hue() -> f32 {
+    let s = global().lock().unwrap();
+    let r = (s.video.draw_color >> 16) & 0xFF;
+    let g = (s.video.draw_color >> 8) & 0xFF;
+    let b = s.video.draw_color & 0xFF;
+    rgb_to_hsl(r, g, b).0
+}
+
+/// Get saturation of current color (0-100%).
+pub fn graphics_saturation() -> f32 {
+    let s = global().lock().unwrap();
+    let r = (s.video.draw_color >> 16) & 0xFF;
+    let g = (s.video.draw_color >> 8) & 0xFF;
+    let b = s.video.draw_color & 0xFF;
+    rgb_to_hsl(r, g, b).1 * 100.0
+}
+
+/// Get lightness of current color (0-100%).
+pub fn graphics_lightness() -> f32 {
+    let s = global().lock().unwrap();
+    let r = (s.video.draw_color >> 16) & 0xFF;
+    let g = (s.video.draw_color >> 8) & 0xFF;
+    let b = s.video.draw_color & 0xFF;
+    rgb_to_hsl(r, g, b).2 * 100.0
+}
+
+/// Create and set a color from RGB values.
+pub fn graphics_color_rgb(r: u32, g: u32, b: u32, a: u32) {
+    graphics_set_color(r, g, b, a);
+}
+
+/// Create and set a color from HSL values.
+pub fn graphics_color_hsl(h: f32, s: f32, l: f32, a: u32) {
+    let (r, g, b) = hsl_to_rgb(h / 360.0, s / 100.0, l / 100.0);
+    graphics_set_color(r, g, b, a);
+}
+
+/// Linear interpolation between two colors.
+/// t is in range 0.0-1.0
+pub fn graphics_lerp_color(
+    r1: u32,
+    g1: u32,
+    b1: u32,
+    a1: u32,
+    r2: u32,
+    g2: u32,
+    b2: u32,
+    a2: u32,
+    t: f32,
+) -> u32 {
+    let t = t.min(1.0).max(0.0);
+    let r = (r1 as f32 + (r2 as f32 - r1 as f32) * t) as u32;
+    let g = (g1 as f32 + (g2 as f32 - g1 as f32) * t) as u32;
+    let b = (b1 as f32 + (b2 as f32 - b1 as f32) * t) as u32;
+    let a = (a1 as f32 + (a2 as f32 - a1 as f32) * t) as u32;
+    ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF)
+}
+
+/// Linear interpolation between two palette colors (indices 0-255).
+pub fn graphics_palette_lerp(c1: u32, c2: u32, t: f32) -> u32 {
+    let t = t.min(1.0).max(0.0);
+    let r1 = (c1 >> 16) & 0xFF;
+    let g1 = (c1 >> 8) & 0xFF;
+    let b1 = c1 & 0xFF;
+    let a1 = (c1 >> 24) & 0xFF;
+
+    let r2 = (c2 >> 16) & 0xFF;
+    let g2 = (c2 >> 8) & 0xFF;
+    let b2 = c2 & 0xFF;
+    let a2 = (c2 >> 24) & 0xFF;
+
+    let r = (r1 as f32 + (r2 as f32 - r1 as f32) * t) as u32;
+    let g = (g1 as f32 + (g2 as f32 - g1 as f32) * t) as u32;
+    let b = (b1 as f32 + (b2 as f32 - b1 as f32) * t) as u32;
+    let a = (a1 as f32 + (a2 as f32 - a1 as f32) * t) as u32;
+    ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF)
+}
+
+/// Set fill color.
+pub fn graphics_fill(r: u32, g: u32, b: u32, a: u32) {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let color = ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    s.video.fill_color = color;
+    s.video.fill_enabled = true;
+}
+
+/// Disable fill color.
+pub fn graphics_no_fill() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.fill_enabled = false;
+}
+
+/// Set stroke color.
+pub fn graphics_stroke(r: u32, g: u32, b: u32, a: u32) {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let color = ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    s.video.stroke_color = color;
+    s.video.stroke_enabled = true;
+}
+
+/// Disable stroke color.
+pub fn graphics_no_stroke() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.stroke_enabled = false;
+}
+
+/// Enable erase mode (draw with destination alpha blending).
+pub fn graphics_erase() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.erase_mode_enabled = true;
+}
+
+/// Disable erase mode.
+pub fn graphics_no_erase() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.erase_mode_enabled = false;
+}
+
+/// Set color mode (0 = RGB, 1 = HSL).
+pub fn graphics_color_mode(mode: u32) {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.color_mode = match mode {
+        0 => crate::state::ColorMode::RGB,
+        1 => crate::state::ColorMode::HSL,
+        _ => crate::state::ColorMode::RGB,
+    };
+}
+
+/// Set clipping region.
+pub fn graphics_clip(x: i32, y: i32, w: u32, h: u32) {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.clip_rect = Some((x, y, w, h));
+}
+
+/// Begin clipping region (alias for clip).
+pub fn graphics_begin_clip(x: i32, y: i32, w: u32, h: u32) {
+    graphics_clip(x, y, w, h);
+}
+
+/// End clipping region (clear clip).
+pub fn graphics_end_clip() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.clip_rect = None;
+}
+
 /// Clear the screen to a specific color.
 pub fn graphics_background(r: u32, g: u32, b: u32) {
     // Try to clear GL framebuffer first (returns false if GL not available/ready)
@@ -223,12 +627,28 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
     }
 }
 
+/// Clear the framebuffer to transparent.
+pub fn graphics_clear() {
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    s.video.framebuffer.fill(0x00000000);
+}
+
 /// Draw a single pixel.
 pub fn graphics_point(x: i32, y: i32) {
     let mut s = match global().lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
+    let p = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x as f32, y as f32, 0.0));
+    let x = p.x as i32;
+    let y = p.y as i32;
+
     let w = s.video.width as i32;
     let h = s.video.height as i32;
 
@@ -240,15 +660,34 @@ pub fn graphics_point(x: i32, y: i32) {
 }
 
 /// Draw a line using Bresenham's algorithm.
-pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
+pub fn graphics_line(mut x0: i32, mut y0: i32, mut x1: i32, mut y1: i32) {
     let mut s = match global().lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
+    let p0 = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x0 as f32, y0 as f32, 0.0));
+    let p1 = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x1 as f32, y1 as f32, 0.0));
+    x0 = p0.x as i32;
+    y0 = p0.y as i32;
+    x1 = p1.x as i32;
+    y1 = p1.y as i32;
+
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     let stride = s.video.stride_pixels as i32;
-    let color = s.video.draw_color;
+
+    let color = if s.video.stroke_enabled {
+        s.video.stroke_color
+    } else {
+        s.video.draw_color
+    };
+
     let fb = &mut s.video.framebuffer;
 
     let dx = (x1 - x0).abs();
@@ -279,10 +718,31 @@ pub fn graphics_line(mut x0: i32, mut y0: i32, x1: i32, y1: i32) {
 
 /// Draw a filled rectangle.
 pub fn graphics_rect(x: i32, y: i32, w: u32, h: u32) {
+    {
+        let s = global().lock().unwrap();
+        if s.video.transform != Mat4::IDENTITY {
+            drop(s);
+            let x1 = x;
+            let y1 = y;
+            let x2 = x + w as i32;
+            let y2 = y;
+            let x3 = x + w as i32;
+            let y3 = y + h as i32;
+            let x4 = x;
+            let y4 = y + h as i32;
+            graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4);
+            return;
+        }
+    }
+
     let mut s = global().lock().unwrap();
     let screen_w = s.video.width as i32;
     let screen_h = s.video.height as i32;
-    let color = s.video.draw_color;
+    let color = if s.video.fill_enabled {
+        s.video.fill_color
+    } else {
+        s.video.draw_color
+    };
 
     let x_start = x.max(0);
     let y_start = y.max(0);
@@ -305,49 +765,66 @@ pub fn graphics_rect(x: i32, y: i32, w: u32, h: u32) {
 
 /// Draw a rectangle outline.
 pub fn graphics_rect_outline(x: i32, y: i32, w: u32, h: u32) {
-    // Top
-    graphics_line_internal(x, y, x + w as i32, y);
-    // Bottom
-    graphics_line_internal(x, y + h as i32, x + w as i32, y + h as i32);
-    // Left
-    graphics_line_internal(x, y, x, y + h as i32);
-    // Right
-    graphics_line_internal(x + w as i32, y, x + w as i32, y + h as i32);
+    let x1 = x;
+    let y1 = y;
+    let x2 = x + w as i32;
+    let y2 = y;
+    let x3 = x + w as i32;
+    let y3 = y + h as i32;
+    let x4 = x;
+    let y4 = y + h as i32;
+
+    graphics_line(x1, y1, x2, y2);
+    graphics_line(x2, y2, x3, y3);
+    graphics_line(x3, y3, x4, y4);
+    graphics_line(x4, y4, x1, y1);
 }
 
 /// Draw a filled circle.
 pub fn graphics_circle(cx: i32, cy: i32, r: u32) {
+    {
+        let s = global().lock().unwrap();
+        if s.video.transform != Mat4::IDENTITY {
+            drop(s);
+            // Fallback to ellipse for transformed circle
+            graphics_ellipse(cx, cy, r * 2, r * 2);
+            return;
+        }
+    }
     let mut s = match global().lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let w = s.video.width as i32;
-    let h = s.video.height as i32;
+    let screen_w = s.video.width as i32;
+    let screen_h = s.video.height as i32;
     let stride = s.video.stride_pixels as i32;
-    let color = s.video.draw_color;
+    let color = if s.video.fill_enabled {
+        s.video.fill_color
+    } else {
+        s.video.draw_color
+    };
     let fb = &mut s.video.framebuffer;
 
     let r_sq = (r * r) as i32;
     let r_i32 = r as i32;
 
     let x_min = (cx - r_i32).max(0);
-    let x_max = (cx + r_i32).min(w);
+    let x_max = (cx + r_i32).min(screen_w);
     let y_min = (cy - r_i32).max(0);
-    let y_max = (cy + r_i32).min(h);
+    let y_max = (cy + r_i32).min(screen_h);
 
-    for y in y_min..y_max {
+    for curr_y in y_min..y_max {
         for x in x_min..x_max {
             let dx = x - cx;
-            let dy = y - cy;
+            let dy = curr_y - cy;
             if dx * dx + dy * dy <= r_sq {
-                fb[(y * stride + x) as usize] = color;
+                fb[(curr_y * stride + x) as usize] = color;
             }
         }
     }
 }
 
 /// Draw a circle outline (Bresenham's circle algorithm).
-/// Draw a circle outline.
 pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
     let mut s = match global().lock() {
         Ok(g) => g,
@@ -356,6 +833,12 @@ pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     let stride = s.video.stride_pixels as i32;
+    let old_color = s.video.draw_color;
+
+    if s.video.stroke_enabled {
+        s.video.draw_color = s.video.stroke_color;
+    }
+
     let color = s.video.draw_color;
     let fb = &mut s.video.framebuffer;
 
@@ -387,6 +870,114 @@ pub fn graphics_circle_outline(cx: i32, cy: i32, r: u32) {
             d = d + 4 * x + 6;
         }
     }
+
+    s.video.draw_color = old_color;
+}
+
+/// Draw a filled ellipse centered at (cx, cy) with width w and height h.
+pub fn graphics_ellipse(cx: i32, cy: i32, w: u32, h: u32) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    {
+        let s = global().lock().unwrap();
+        if s.video.transform != Mat4::IDENTITY {
+            drop(s);
+            // Tessellate ellipse into triangles
+            let segments = 32;
+            let rx = w as f32 / 2.0;
+            let ry = h as f32 / 2.0;
+            for i in 0..segments {
+                let a1 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+                let a2 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+                let x1 = cx as f32 + a1.cos() * rx;
+                let y1 = cy as f32 + a1.sin() * ry;
+                let x2 = cx as f32 + a2.cos() * rx;
+                let y2 = cy as f32 + a2.sin() * ry;
+                graphics_triangle(cx, cy, x1 as i32, y1 as i32, x2 as i32, y2 as i32);
+            }
+            return;
+        }
+    }
+    let mut s = match global().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let screen_w = s.video.width as i32;
+    let screen_h = s.video.height as i32;
+    let stride = s.video.stride_pixels as i32;
+
+    let color = if s.video.fill_enabled {
+        s.video.fill_color
+    } else {
+        s.video.draw_color
+    };
+
+    let fb = &mut s.video.framebuffer;
+
+    let rx = (w as i32) / 2;
+    let ry = (h as i32) / 2;
+    if rx == 0 || ry == 0 {
+        return;
+    }
+
+    let x_min = (cx - rx).max(0);
+    let x_max = (cx + rx).min(screen_w);
+    let y_min = (cy - ry).max(0);
+    let y_max = (cy + ry).min(screen_h);
+
+    let rx2 = (rx * rx) as i64;
+    let ry2 = (ry * ry) as i64;
+
+    for y in y_min..y_max {
+        let dy = (y - cy) as i64;
+        let dy2 = dy * dy;
+        for x in x_min..x_max {
+            let dx = (x - cx) as i64;
+            let dx2 = dx * dx;
+            if dx2 * ry2 + dy2 * rx2 <= rx2 * ry2 {
+                fb[(y * stride + x) as usize] = color;
+            }
+        }
+    }
+}
+
+/// Draw an arc centered at (cx, cy) with width w and height h, from start to end (radians).
+pub fn graphics_arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    let rx = (w as f32) / 2.0;
+    let ry = (h as f32) / 2.0;
+    if rx <= 0.0 || ry <= 0.0 {
+        return;
+    }
+
+    let mut a0 = start;
+    let mut a1 = end;
+    if a1 < a0 {
+        core::mem::swap(&mut a0, &mut a1);
+    }
+
+    let segments = 64u32;
+    let step = (a1 - a0) / segments as f32;
+    let mut prev_x = cx as f32 + rx * a0.cos();
+    let mut prev_y = cy as f32 + ry * a0.sin();
+
+    for i in 1..=segments {
+        let t = a0 + step * i as f32;
+        let x = cx as f32 + rx * t.cos();
+        let y = cy as f32 + ry * t.sin();
+        graphics_line(prev_x as i32, prev_y as i32, x as i32, y as i32);
+        prev_x = x;
+        prev_y = y;
+    }
+}
+
+/// Draw a filled quad using two triangles.
+pub fn graphics_quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i32, y4: i32) {
+    graphics_triangle(x1, y1, x2, y2, x3, y3);
+    graphics_triangle(x1, y1, x3, y3, x4, y4);
 }
 
 /// Draw an image from guest memory.
@@ -842,6 +1433,24 @@ pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
+    let p1 = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x1 as f32, y1 as f32, 0.0));
+    let p2 = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x2 as f32, y2 as f32, 0.0));
+    let p3 = s
+        .video
+        .transform
+        .transform_point3(Vec3::new(x3 as f32, y3 as f32, 0.0));
+    let x1 = p1.x as i32;
+    let y1 = p1.y as i32;
+    let x2 = p2.x as i32;
+    let y2 = p2.y as i32;
+    let x3 = p3.x as i32;
+    let y3 = p3.y as i32;
     let w = s.video.width as i32;
     let h = s.video.height as i32;
     if w <= 0 || h <= 0 {
@@ -1976,6 +2585,27 @@ fn parse_bdf(bdf_data: &[u8]) -> Option<(HashMap<char, Vec<u8>>, u32, u32)> {
 mod tests {
     use super::*;
 
+    fn reset_video(width: u32, height: u32) {
+        let mut s = match global().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        s.video.width = width;
+        s.video.height = height;
+        s.video.stride_pixels = width;
+        s.video.pitch_bytes = (width as usize) * 4;
+        s.video.framebuffer = vec![0; (width * height) as usize];
+        s.video.draw_color = 0xFFFFFFFF;
+        s.video.fill_color = 0xFFFFFFFF;
+        s.video.stroke_color = 0xFFFFFFFF;
+        s.video.fill_enabled = true;
+        s.video.stroke_enabled = true;
+        s.video.erase_mode_enabled = false;
+        s.video.color_mode = crate::state::ColorMode::RGB;
+        s.video.clip_rect = None;
+        s.video.geometry_dirty = true;
+    }
+
     #[test]
     fn test_parse_bdf_spleen_32x64() {
         let bdf_data = include_bytes!("../assets/spleen-32x64.bdf");
@@ -1984,6 +2614,43 @@ mod tests {
         assert_eq!(height, 64);
         assert!(!glyphs.is_empty());
         assert!(glyphs.contains_key(&'A'));
+    }
+
+    #[test]
+    fn test_graphics_ellipse_rasterization() {
+        reset_video(32, 24);
+        graphics_set_color(10, 20, 30, 255);
+        graphics_ellipse(16, 12, 10, 6);
+
+        let s = global().lock().unwrap();
+        let expected = (255u32 << 24) | (10u32 << 16) | (20u32 << 8) | 30u32;
+        let center_idx = (12 * 32 + 16) as usize;
+        assert_eq!(s.video.framebuffer[center_idx], expected);
+        assert_eq!(s.video.framebuffer[0], 0);
+    }
+
+    #[test]
+    fn test_graphics_arc_rasterization() {
+        reset_video(40, 40);
+        graphics_set_color(1, 2, 3, 255);
+        graphics_arc(20, 20, 10, 10, 0.0, std::f32::consts::FRAC_PI_2);
+
+        let s = global().lock().unwrap();
+        let expected = (255u32 << 24) | (1u32 << 16) | (2u32 << 8) | 3u32;
+        let start_idx = (20 * 40 + 25) as usize;
+        assert_eq!(s.video.framebuffer[start_idx], expected);
+    }
+
+    #[test]
+    fn test_graphics_quad_rasterization() {
+        reset_video(20, 20);
+        graphics_set_color(200, 100, 50, 255);
+        graphics_quad(2, 2, 10, 2, 10, 8, 2, 8);
+
+        let s = global().lock().unwrap();
+        let expected = (255u32 << 24) | (200u32 << 16) | (100u32 << 8) | 50u32;
+        let inside_idx = (5 * 20 + 5) as usize;
+        assert_eq!(s.video.framebuffer[inside_idx], expected);
     }
 }
 

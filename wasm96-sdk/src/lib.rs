@@ -136,6 +136,66 @@ pub mod sys {
         pub fn graphics_background(r: u32, g: u32, b: u32);
         #[link_name = "wasm96_graphics_point"]
         pub fn graphics_point(x: i32, y: i32);
+
+        // Color functions
+        #[link_name = "wasm96_graphics_red"]
+        pub fn graphics_red() -> u32;
+        #[link_name = "wasm96_graphics_green"]
+        pub fn graphics_green() -> u32;
+        #[link_name = "wasm96_graphics_blue"]
+        pub fn graphics_blue() -> u32;
+        #[link_name = "wasm96_graphics_alpha"]
+        pub fn graphics_alpha() -> u32;
+        #[link_name = "wasm96_graphics_brightness"]
+        pub fn graphics_brightness() -> u32;
+        #[link_name = "wasm96_graphics_hue"]
+        pub fn graphics_hue() -> f32;
+        #[link_name = "wasm96_graphics_saturation"]
+        pub fn graphics_saturation() -> f32;
+        #[link_name = "wasm96_graphics_lightness"]
+        pub fn graphics_lightness() -> f32;
+        #[link_name = "wasm96_graphics_color_rgb"]
+        pub fn graphics_color_rgb(r: u32, g: u32, b: u32, a: u32);
+        #[link_name = "wasm96_graphics_color_hsl"]
+        pub fn graphics_color_hsl(h: f32, s: f32, l: f32, a: u32);
+        #[link_name = "wasm96_graphics_lerp_color"]
+        pub fn graphics_lerp_color(
+            r1: u32,
+            g1: u32,
+            b1: u32,
+            a1: u32,
+            r2: u32,
+            g2: u32,
+            b2: u32,
+            a2: u32,
+            t: f32,
+        ) -> u32;
+        #[link_name = "wasm96_graphics_palette_lerp"]
+        pub fn graphics_palette_lerp(c1: u32, c2: u32, t: f32) -> u32;
+
+        // State functions
+        #[link_name = "wasm96_graphics_clear"]
+        pub fn graphics_clear();
+        #[link_name = "wasm96_graphics_fill"]
+        pub fn graphics_fill(r: u32, g: u32, b: u32, a: u32);
+        #[link_name = "wasm96_graphics_no_fill"]
+        pub fn graphics_no_fill();
+        #[link_name = "wasm96_graphics_stroke"]
+        pub fn graphics_stroke(r: u32, g: u32, b: u32, a: u32);
+        #[link_name = "wasm96_graphics_no_stroke"]
+        pub fn graphics_no_stroke();
+        #[link_name = "wasm96_graphics_erase"]
+        pub fn graphics_erase();
+        #[link_name = "wasm96_graphics_no_erase"]
+        pub fn graphics_no_erase();
+        #[link_name = "wasm96_graphics_color_mode"]
+        pub fn graphics_color_mode(mode: u32);
+        #[link_name = "wasm96_graphics_clip"]
+        pub fn graphics_clip(x: i32, y: i32, w: u32, h: u32);
+        #[link_name = "wasm96_graphics_begin_clip"]
+        pub fn graphics_begin_clip(x: i32, y: i32, w: u32, h: u32);
+        #[link_name = "wasm96_graphics_end_clip"]
+        pub fn graphics_end_clip();
         #[link_name = "wasm96_graphics_line"]
         pub fn graphics_line(x1: i32, y1: i32, x2: i32, y2: i32);
         #[link_name = "wasm96_graphics_rect"]
@@ -272,6 +332,24 @@ pub mod sys {
         #[link_name = "wasm96_graphics_text_measure_key"]
         pub fn graphics_text_measure_key(font_key: u64, text_ptr: u32, text_len: u32) -> u64;
 
+        #[link_name = "wasm96_graphics_ellipse"]
+        pub fn graphics_ellipse(cx: i32, cy: i32, w: u32, h: u32);
+
+        #[link_name = "wasm96_graphics_arc"]
+        pub fn graphics_arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32);
+
+        #[link_name = "wasm96_graphics_quad"]
+        pub fn graphics_quad(
+            x1: i32,
+            y1: i32,
+            x2: i32,
+            y2: i32,
+            x3: i32,
+            y3: i32,
+            x4: i32,
+            y4: i32,
+        );
+
         #[link_name = "wasm96_graphics_triangle"]
         pub fn graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32);
 
@@ -307,6 +385,59 @@ pub mod sys {
 
         #[link_name = "wasm96_graphics_pill_outline"]
         pub fn graphics_pill_outline(x: i32, y: i32, w: u32, h: u32);
+
+        #[link_name = "wasm96_graphics_apply_matrix"]
+        pub fn graphics_apply_matrix(
+            m00: f32,
+            m01: f32,
+            m02: f32,
+            m03: f32,
+            m10: f32,
+            m11: f32,
+            m12: f32,
+            m13: f32,
+            m20: f32,
+            m21: f32,
+            m22: f32,
+            m23: f32,
+            m30: f32,
+            m31: f32,
+            m32: f32,
+            m33: f32,
+        );
+
+        #[link_name = "wasm96_graphics_reset_matrix"]
+        pub fn graphics_reset_matrix();
+
+        #[link_name = "wasm96_graphics_rotate"]
+        pub fn graphics_rotate(angle: f32);
+
+        #[link_name = "wasm96_graphics_rotate_x"]
+        pub fn graphics_rotate_x(angle: f32);
+
+        #[link_name = "wasm96_graphics_rotate_y"]
+        pub fn graphics_rotate_y(angle: f32);
+
+        #[link_name = "wasm96_graphics_rotate_z"]
+        pub fn graphics_rotate_z(angle: f32);
+
+        #[link_name = "wasm96_graphics_scale"]
+        pub fn graphics_scale(sx: f32, sy: f32, sz: f32);
+
+        #[link_name = "wasm96_graphics_shear_x"]
+        pub fn graphics_shear_x(angle: f32);
+
+        #[link_name = "wasm96_graphics_shear_y"]
+        pub fn graphics_shear_y(angle: f32);
+
+        #[link_name = "wasm96_graphics_translate"]
+        pub fn graphics_translate(x: f32, y: f32, z: f32);
+
+        #[link_name = "wasm96_graphics_push_matrix"]
+        pub fn graphics_push_matrix();
+
+        #[link_name = "wasm96_graphics_pop_matrix"]
+        pub fn graphics_pop_matrix();
 
         // 3D Graphics
         #[link_name = "wasm96_graphics_set_3d"]
@@ -415,6 +546,119 @@ pub mod graphics {
             hash = hash.wrapping_mul(0x100000001b3);
         }
         hash
+    }
+
+    // Color functions
+    pub fn red() -> u8 {
+        unsafe { sys::graphics_red() as u8 }
+    }
+
+    pub fn green() -> u8 {
+        unsafe { sys::graphics_green() as u8 }
+    }
+
+    pub fn blue() -> u8 {
+        unsafe { sys::graphics_blue() as u8 }
+    }
+
+    pub fn alpha() -> u8 {
+        unsafe { sys::graphics_alpha() as u8 }
+    }
+
+    pub fn brightness() -> u8 {
+        unsafe { sys::graphics_brightness() as u8 }
+    }
+
+    pub fn hue() -> f32 {
+        unsafe { sys::graphics_hue() }
+    }
+
+    pub fn saturation() -> f32 {
+        unsafe { sys::graphics_saturation() }
+    }
+
+    pub fn lightness() -> f32 {
+        unsafe { sys::graphics_lightness() }
+    }
+
+    /// Create and set a color from RGB values.
+    pub fn color_rgb(r: u8, g: u8, b: u8, a: u8) {
+        unsafe { sys::graphics_color_rgb(r as u32, g as u32, b as u32, a as u32) }
+    }
+
+    /// Create and set a color from HSL values.
+    pub fn color_hsl(h: f32, s: f32, l: f32, a: u8) {
+        unsafe { sys::graphics_color_hsl(h, s, l, a as u32) }
+    }
+
+    /// Linear interpolation between two colors.
+    pub fn lerp_color(
+        r1: u8,
+        g1: u8,
+        b1: u8,
+        a1: u8,
+        r2: u8,
+        g2: u8,
+        b2: u8,
+        a2: u8,
+        t: f32,
+    ) -> u32 {
+        unsafe {
+            sys::graphics_lerp_color(
+                r1 as u32, g1 as u32, b1 as u32, a1 as u32, r2 as u32, g2 as u32, b2 as u32,
+                a2 as u32, t,
+            )
+        }
+    }
+
+    /// Linear interpolation between two palette colors.
+    pub fn palette_lerp(c1: u32, c2: u32, t: f32) -> u32 {
+        unsafe { sys::graphics_palette_lerp(c1, c2, t) }
+    }
+
+    // State functions
+    pub fn clear() {
+        unsafe { sys::graphics_clear() }
+    }
+
+    pub fn fill(r: u8, g: u8, b: u8, a: u8) {
+        unsafe { sys::graphics_fill(r as u32, g as u32, b as u32, a as u32) }
+    }
+
+    pub fn no_fill() {
+        unsafe { sys::graphics_no_fill() }
+    }
+
+    pub fn stroke(r: u8, g: u8, b: u8, a: u8) {
+        unsafe { sys::graphics_stroke(r as u32, g as u32, b as u32, a as u32) }
+    }
+
+    pub fn no_stroke() {
+        unsafe { sys::graphics_no_stroke() }
+    }
+
+    pub fn erase() {
+        unsafe { sys::graphics_erase() }
+    }
+
+    pub fn no_erase() {
+        unsafe { sys::graphics_no_erase() }
+    }
+
+    pub fn color_mode(mode: u32) {
+        unsafe { sys::graphics_color_mode(mode) }
+    }
+
+    pub fn clip(x: i32, y: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_clip(x, y, w, h) }
+    }
+
+    pub fn begin_clip(x: i32, y: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_begin_clip(x, y, w, h) }
+    }
+
+    pub fn end_clip() {
+        unsafe { sys::graphics_end_clip() }
     }
 
     /// Set the screen dimensions.
@@ -563,6 +807,21 @@ pub mod graphics {
         unsafe { sys::graphics_aseprite_unregister(hash_key(key)) }
     }
 
+    /// Draw a filled ellipse centered at (cx, cy) with width w and height h.
+    pub fn ellipse(cx: i32, cy: i32, w: u32, h: u32) {
+        unsafe { sys::graphics_ellipse(cx, cy, w, h) }
+    }
+
+    /// Draw an arc centered at (cx, cy) with width w and height h, from start to end (radians).
+    pub fn arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32) {
+        unsafe { sys::graphics_arc(cx, cy, w, h, start, end) }
+    }
+
+    /// Draw a filled quad using two triangles.
+    pub fn quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i32, y4: i32) {
+        unsafe { sys::graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4) }
+    }
+
     /// Draw a filled triangle.
     pub fn triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) {
         unsafe { sys::graphics_triangle(x1, y1, x2, y2, x3, y3) }
@@ -600,9 +859,79 @@ pub mod graphics {
 
     /// Draw a pill outline.
     pub fn pill_outline(x: i32, y: i32, w: u32, h: u32) {
-        unsafe { sys::graphics_pill_outline(x, y, w, h) }
+        unsafe { sys::graphics_pill_outline(x, y, w, h) };
     }
 
+    pub fn apply_matrix(
+        m00: f32,
+        m01: f32,
+        m02: f32,
+        m03: f32,
+        m10: f32,
+        m11: f32,
+        m12: f32,
+        m13: f32,
+        m20: f32,
+        m21: f32,
+        m22: f32,
+        m23: f32,
+        m30: f32,
+        m31: f32,
+        m32: f32,
+        m33: f32,
+    ) {
+        unsafe {
+            sys::graphics_apply_matrix(
+                m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33,
+            )
+        };
+    }
+
+    pub fn reset_matrix() {
+        unsafe { sys::graphics_reset_matrix() };
+    }
+
+    pub fn rotate(angle: f32) {
+        unsafe { sys::graphics_rotate(angle) };
+    }
+
+    pub fn rotate_x(angle: f32) {
+        unsafe { sys::graphics_rotate_x(angle) };
+    }
+
+    pub fn rotate_y(angle: f32) {
+        unsafe { sys::graphics_rotate_y(angle) };
+    }
+
+    pub fn rotate_z(angle: f32) {
+        unsafe { sys::graphics_rotate_z(angle) };
+    }
+
+    pub fn scale(sx: f32, sy: f32, sz: f32) {
+        unsafe { sys::graphics_scale(sx, sy, sz) };
+    }
+
+    pub fn shear_x(angle: f32) {
+        unsafe { sys::graphics_shear_x(angle) };
+    }
+
+    pub fn shear_y(angle: f32) {
+        unsafe { sys::graphics_shear_y(angle) };
+    }
+
+    pub fn translate(x: f32, y: f32, z: f32) {
+        unsafe { sys::graphics_translate(x, y, z) };
+    }
+
+    pub fn push_matrix() {
+        unsafe { sys::graphics_push_matrix() };
+    }
+
+    pub fn pop_matrix() {
+        unsafe { sys::graphics_pop_matrix() };
+    }
+
+    // --- 3D Graphics ---
     // =========================
     // 3D Graphics
     // =========================

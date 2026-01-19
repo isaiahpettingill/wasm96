@@ -188,14 +188,57 @@ pub mod host_imports {
     pub const GRAPHICS_JPEG_UNREGISTER: &str = "wasm96_graphics_jpeg_unregister";
 
     // Shapes
+    pub const GRAPHICS_ELLIPSE: &str = "wasm96_graphics_ellipse";
+    pub const GRAPHICS_ARC: &str = "wasm96_graphics_arc";
+    pub const GRAPHICS_QUAD: &str = "wasm96_graphics_quad";
     pub const GRAPHICS_TRIANGLE: &str = "wasm96_graphics_triangle";
     pub const GRAPHICS_TRIANGLE_OUTLINE: &str = "wasm96_graphics_triangle_outline";
     pub const GRAPHICS_BEZIER_QUADRATIC: &str = "wasm96_graphics_bezier_quadratic";
     pub const GRAPHICS_BEZIER_CUBIC: &str = "wasm96_graphics_bezier_cubic";
     pub const GRAPHICS_PILL: &str = "wasm96_graphics_pill";
     pub const GRAPHICS_PILL_OUTLINE: &str = "wasm96_graphics_pill_outline";
+    pub const GRAPHICS_QUAD_OUTLINE: &str = "wasm96_graphics_quad_outline";
 
-    // 3D Graphics
+    // Color functions
+    pub const GRAPHICS_RED: &str = "wasm96_graphics_red";
+    pub const GRAPHICS_GREEN: &str = "wasm96_graphics_green";
+    pub const GRAPHICS_BLUE: &str = "wasm96_graphics_blue";
+    pub const GRAPHICS_ALPHA: &str = "wasm96_graphics_alpha";
+    pub const GRAPHICS_BRIGHTNESS: &str = "wasm96_graphics_brightness";
+    pub const GRAPHICS_HUE: &str = "wasm96_graphics_hue";
+    pub const GRAPHICS_SATURATION: &str = "wasm96_graphics_saturation";
+    pub const GRAPHICS_LIGHTNESS: &str = "wasm96_graphics_lightness";
+    pub const GRAPHICS_COLOR_RGB: &str = "wasm96_graphics_color_rgb";
+    pub const GRAPHICS_COLOR_HSL: &str = "wasm96_graphics_color_hsl";
+    pub const GRAPHICS_LERP_COLOR: &str = "wasm96_graphics_lerp_color";
+    pub const GRAPHICS_PALETTE_LERP: &str = "wasm96_graphics_palette_lerp";
+
+    // State functions
+    pub const GRAPHICS_CLEAR: &str = "wasm96_graphics_clear";
+    pub const GRAPHICS_FILL: &str = "wasm96_graphics_fill";
+    pub const GRAPHICS_NO_FILL: &str = "wasm96_graphics_no_fill";
+    pub const GRAPHICS_STROKE: &str = "wasm96_graphics_stroke";
+    pub const GRAPHICS_NO_STROKE: &str = "wasm96_graphics_no_stroke";
+    pub const GRAPHICS_ERASE: &str = "wasm96_graphics_erase";
+    pub const GRAPHICS_NO_ERASE: &str = "wasm96_graphics_no_erase";
+    pub const GRAPHICS_COLOR_MODE: &str = "wasm96_graphics_color_mode";
+    pub const GRAPHICS_CLIP: &str = "wasm96_graphics_clip";
+    pub const GRAPHICS_BEGIN_CLIP: &str = "wasm96_graphics_begin_clip";
+    pub const GRAPHICS_END_CLIP: &str = "wasm96_graphics_end_clip";
+
+    pub const GRAPHICS_APPLY_MATRIX: &str = "wasm96_graphics_apply_matrix";
+    pub const GRAPHICS_RESET_MATRIX: &str = "wasm96_graphics_reset_matrix";
+    pub const GRAPHICS_ROTATE: &str = "wasm96_graphics_rotate";
+    pub const GRAPHICS_ROTATE_X: &str = "wasm96_graphics_rotate_x";
+    pub const GRAPHICS_ROTATE_Y: &str = "wasm96_graphics_rotate_y";
+    pub const GRAPHICS_ROTATE_Z: &str = "wasm96_graphics_rotate_z";
+    pub const GRAPHICS_SCALE: &str = "wasm96_graphics_scale";
+    pub const GRAPHICS_SHEAR_X: &str = "wasm96_graphics_shear_x";
+    pub const GRAPHICS_SHEAR_Y: &str = "wasm96_graphics_shear_y";
+    pub const GRAPHICS_TRANSLATE: &str = "wasm96_graphics_translate";
+    pub const GRAPHICS_PUSH_MATRIX: &str = "wasm96_graphics_push_matrix";
+    pub const GRAPHICS_POP_MATRIX: &str = "wasm96_graphics_pop_matrix";
+
     pub const GRAPHICS_SET_3D: &str = "wasm96_graphics_set_3d";
     pub const GRAPHICS_CAMERA_LOOK_AT: &str = "wasm96_graphics_camera_look_at";
     pub const GRAPHICS_CAMERA_PERSPECTIVE: &str = "wasm96_graphics_camera_perspective";
@@ -232,6 +275,7 @@ pub mod host_imports {
     pub const AUDIO_PLAY_WAV: &str = "wasm96_audio_play_wav";
     pub const AUDIO_PLAY_QOA: &str = "wasm96_audio_play_qoa";
     pub const AUDIO_PLAY_XM: &str = "wasm96_audio_play_xm";
+    pub const AUDIO_PLAY_MIDI: &str = "wasm96_audio_play_midi";
 
     // Storage
     pub const STORAGE_SAVE: &str = "wasm96_storage_save";

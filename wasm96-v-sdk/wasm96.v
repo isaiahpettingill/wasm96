@@ -50,6 +50,18 @@ fn C.wasm96_graphics_bezier_quadratic(x1 int, y1 int, cx int, cy int, x2 int, y2
 fn C.wasm96_graphics_bezier_cubic(x1 int, y1 int, cx1 int, cy1 int, cx2 int, cy2 int, x2 int, y2 int, segments u32)
 fn C.wasm96_graphics_pill(x int, y int, w u32, h u32)
 fn C.wasm96_graphics_pill_outline(x int, y int, w u32, h u32)
+fn C.wasm96_graphics_apply_matrix(m00 f32, m01 f32, m02 f32, m03 f32, m10 f32, m11 f32, m12 f32, m13 f32, m20 f32, m21 f32, m22 f32, m23 f32, m30 f32, m31 f32, m32 f32, m33 f32)
+fn C.wasm96_graphics_reset_matrix()
+fn C.wasm96_graphics_rotate(angle f32)
+fn C.wasm96_graphics_rotate_x(angle f32)
+fn C.wasm96_graphics_rotate_y(angle f32)
+fn C.wasm96_graphics_rotate_z(angle f32)
+fn C.wasm96_graphics_scale(sx f32, sy f32, sz f32)
+fn C.wasm96_graphics_shear_x(angle f32)
+fn C.wasm96_graphics_shear_y(angle f32)
+fn C.wasm96_graphics_translate(x f32, y f32, z f32)
+fn C.wasm96_graphics_push_matrix()
+fn C.wasm96_graphics_pop_matrix()
 
 // Materials / textures (OBJ+MTL workflows)
 // Given an `.mtl` file + one encoded texture blob (PNG/JPEG) + its filename, the host will
@@ -197,6 +209,66 @@ pub fn graphics_pill(x int, y int, w u32, h u32) {
 // Draw a pill outline.
 pub fn graphics_pill_outline(x int, y int, w u32, h u32) {
 	C.wasm96_graphics_pill_outline(x, y, w, h)
+}
+
+// Apply a 4x4 transformation matrix.
+pub fn graphics_apply_matrix(m00 f32, m01 f32, m02 f32, m03 f32, m10 f32, m11 f32, m12 f32, m13 f32, m20 f32, m21 f32, m22 f32, m23 f32, m30 f32, m31 f32, m32 f32, m33 f32) {
+	C.wasm96_graphics_apply_matrix(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33)
+}
+
+// Reset transformation matrix to identity.
+pub fn graphics_reset_matrix() {
+	C.wasm96_graphics_reset_matrix()
+}
+
+// Rotate around Z axis (2D rotation).
+pub fn graphics_rotate(angle f32) {
+	C.wasm96_graphics_rotate(angle)
+}
+
+// Rotate around X axis.
+pub fn graphics_rotate_x(angle f32) {
+	C.wasm96_graphics_rotate_x(angle)
+}
+
+// Rotate around Y axis.
+pub fn graphics_rotate_y(angle f32) {
+	C.wasm96_graphics_rotate_y(angle)
+}
+
+// Rotate around Z axis.
+pub fn graphics_rotate_z(angle f32) {
+	C.wasm96_graphics_rotate_z(angle)
+}
+
+// Scale coordinate system.
+pub fn graphics_scale(sx f32, sy f32, sz f32) {
+	C.wasm96_graphics_scale(sx, sy, sz)
+}
+
+// Shear along X axis.
+pub fn graphics_shear_x(angle f32) {
+	C.wasm96_graphics_shear_x(angle)
+}
+
+// Shear along Y axis.
+pub fn graphics_shear_y(angle f32) {
+	C.wasm96_graphics_shear_y(angle)
+}
+
+// Translate coordinate system.
+pub fn graphics_translate(x f32, y f32, z f32) {
+	C.wasm96_graphics_translate(x, y, z)
+}
+
+// Push transformation matrix onto stack.
+pub fn graphics_push_matrix() {
+	C.wasm96_graphics_push_matrix()
+}
+
+// Pop transformation matrix from stack.
+pub fn graphics_pop_matrix() {
+	C.wasm96_graphics_pop_matrix()
 }
 
 // Register an encoded texture referenced by an `.mtl` file (`map_Kd`) under `texture_key`.

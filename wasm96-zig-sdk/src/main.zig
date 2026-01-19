@@ -41,12 +41,28 @@ pub const sys = struct {
     extern fn wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: [*]const u8, len: usize) void;
     extern fn wasm96_graphics_image_png(x: i32, y: i32, ptr: [*]const u8, len: usize) void;
     extern fn wasm96_graphics_image_jpeg(x: i32, y: i32, ptr: [*]const u8, len: usize) void;
+    extern fn wasm96_graphics_ellipse(cx: i32, cy: i32, w: u32, h: u32) void;
+    extern fn wasm96_graphics_arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32) void;
+    extern fn wasm96_graphics_quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i32, y4: i32) void;
     extern fn wasm96_graphics_triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void;
     extern fn wasm96_graphics_triangle_outline(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void;
     extern fn wasm96_graphics_bezier_quadratic(x1: i32, y1: i32, cx: i32, cy: i32, x2: i32, y2: i32, segments: u32) void;
     extern fn wasm96_graphics_bezier_cubic(x1: i32, y1: i32, cx1: i32, cy1: i32, cx2: i32, cy2: i32, x2: i32, y2: i32, segments: u32) void;
     extern fn wasm96_graphics_pill(x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_pill_outline(x: i32, y: i32, w: u32, h: u32) void;
+
+    extern fn wasm96_graphics_apply_matrix(m00: f32, m01: f32, m02: f32, m03: f32, m10: f32, m11: f32, m12: f32, m13: f32, m20: f32, m21: f32, m22: f32, m23: f32, m30: f32, m31: f32, m32: f32, m33: f32) void;
+    extern fn wasm96_graphics_reset_matrix() void;
+    extern fn wasm96_graphics_rotate(angle: f32) void;
+    extern fn wasm96_graphics_rotate_x(angle: f32) void;
+    extern fn wasm96_graphics_rotate_y(angle: f32) void;
+    extern fn wasm96_graphics_rotate_z(angle: f32) void;
+    extern fn wasm96_graphics_scale(sx: f32, sy: f32, sz: f32) void;
+    extern fn wasm96_graphics_shear_x(angle: f32) void;
+    extern fn wasm96_graphics_shear_y(angle: f32) void;
+    extern fn wasm96_graphics_translate(x: f32, y: f32, z: f32) void;
+    extern fn wasm96_graphics_push_matrix() void;
+    extern fn wasm96_graphics_pop_matrix() void;
 
     // 3D Graphics
     extern fn wasm96_graphics_set_3d(enable: u32) void;
@@ -189,6 +205,21 @@ pub const graphics = struct {
         sys.wasm96_graphics_image_jpeg(x, y, data.ptr, data.len);
     }
 
+    /// Draw a filled ellipse centered at (cx, cy) with width w and height h.
+    pub fn ellipse(cx: i32, cy: i32, w: u32, h: u32) void {
+        sys.wasm96_graphics_ellipse(cx, cy, w, h);
+    }
+
+    /// Draw an arc centered at (cx, cy) with width w and height h, from start to end (radians).
+    pub fn arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32) void {
+        sys.wasm96_graphics_arc(cx, cy, w, h, start, end);
+    }
+
+    /// Draw a filled quad using two triangles.
+    pub fn quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i32, y4: i32) void {
+        sys.wasm96_graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4);
+    }
+
     /// Draw a filled triangle.
     pub fn triangle(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void {
         sys.wasm96_graphics_triangle(x1, y1, x2, y2, x3, y3);
@@ -219,7 +250,54 @@ pub const graphics = struct {
         sys.wasm96_graphics_pill_outline(x, y, w, h);
     }
 
-    // =========================
+    pub fn applyMatrix(m00: f32, m01: f32, m02: f32, m03: f32, m10: f32, m11: f32, m12: f32, m13: f32, m20: f32, m21: f32, m22: f32, m23: f32, m30: f32, m31: f32, m32: f32, m33: f32) void {
+        sys.wasm96_graphics_apply_matrix(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
+    }
+
+    pub fn resetMatrix() void {
+        sys.wasm96_graphics_reset_matrix();
+    }
+
+    pub fn rotate(angle: f32) void {
+        sys.wasm96_graphics_rotate(angle);
+    }
+
+    pub fn rotateX(angle: f32) void {
+        sys.wasm96_graphics_rotate_x(angle);
+    }
+
+    pub fn rotateY(angle: f32) void {
+        sys.wasm96_graphics_rotate_y(angle);
+    }
+
+    pub fn rotateZ(angle: f32) void {
+        sys.wasm96_graphics_rotate_z(angle);
+    }
+
+    pub fn scale(sx: f32, sy: f32, sz: f32) void {
+        sys.wasm96_graphics_scale(sx, sy, sz);
+    }
+
+    pub fn shearX(angle: f32) void {
+        sys.wasm96_graphics_shear_x(angle);
+    }
+
+    pub fn shearY(angle: f32) void {
+        sys.wasm96_graphics_shear_y(angle);
+    }
+
+    pub fn translate(x: f32, y: f32, z: f32) void {
+        sys.wasm96_graphics_translate(x, y, z);
+    }
+
+    pub fn pushMatrix() void {
+        sys.wasm96_graphics_push_matrix();
+    }
+
+    pub fn popMatrix() void {
+        sys.wasm96_graphics_pop_matrix();
+    }
+
     // 3D Graphics
     // =========================
 

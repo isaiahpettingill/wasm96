@@ -129,6 +129,14 @@ run-rust-text:
     cargo build -p rust_guest_text --release --target wasm32-unknown-unknown
     just run ./target/wasm32-unknown-unknown/release/rust_guest_text.wasm
 
+run-rust-shapes:
+    cargo build -p rust-guest-shapes --release --target wasm32-unknown-unknown
+    just run ./target/wasm32-unknown-unknown/release/rust_guest_shapes.wasm
+
+run-rust-transform:
+    cargo build -p rust-guest-transform --release --target wasm32-unknown-unknown
+    just run ./target/wasm32-unknown-unknown/release/rust_guest_transform.wasm
+
 run-zig-guest:
     cd example/zig-guest && zig build
     just run ./example/zig-guest/zig-out/bin/zig-guest.wasm

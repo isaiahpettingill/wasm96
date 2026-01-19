@@ -29,6 +29,120 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::GRAPHICS_APPLY_MATRIX,
+        |_caller: Caller<'_, ()>,
+         m00: f32,
+         m01: f32,
+         m02: f32,
+         m03: f32,
+         m10: f32,
+         m11: f32,
+         m12: f32,
+         m13: f32,
+         m20: f32,
+         m21: f32,
+         m22: f32,
+         m23: f32,
+         m30: f32,
+         m31: f32,
+         m32: f32,
+         m33: f32| {
+            av::graphics_apply_matrix(
+                m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_RESET_MATRIX,
+        |_caller: Caller<'_, ()>| {
+            av::graphics_reset_matrix();
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ROTATE,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_rotate(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ROTATE_X,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_rotate_x(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ROTATE_Y,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_rotate_y(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ROTATE_Z,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_rotate_z(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_SCALE,
+        |_caller: Caller<'_, ()>, sx: f32, sy: f32, sz: f32| {
+            av::graphics_scale(sx, sy, sz);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_SHEAR_X,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_shear_x(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_SHEAR_Y,
+        |_caller: Caller<'_, ()>, angle: f32| {
+            av::graphics_shear_y(angle);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_TRANSLATE,
+        |_caller: Caller<'_, ()>, x: f32, y: f32, z: f32| {
+            av::graphics_translate(x, y, z);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_PUSH_MATRIX,
+        |_caller: Caller<'_, ()>| {
+            av::graphics_push_matrix();
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_POP_MATRIX,
+        |_caller: Caller<'_, ()>| {
+            av::graphics_pop_matrix();
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::GRAPHICS_SET_COLOR,
         |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
             av::graphics_set_color(r, g, b, a);
@@ -351,7 +465,203 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
         },
     )?;
 
-    // Shapes
+    // Color functions
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_RED,
+        |_caller: Caller<'_, ()>| -> u32 { av::graphics_red() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_GREEN,
+        |_caller: Caller<'_, ()>| -> u32 { av::graphics_green() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_BLUE,
+        |_caller: Caller<'_, ()>| -> u32 { av::graphics_blue() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ALPHA,
+        |_caller: Caller<'_, ()>| -> u32 { av::graphics_alpha() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_BRIGHTNESS,
+        |_caller: Caller<'_, ()>| -> u32 { av::graphics_brightness() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_HUE,
+        |_caller: Caller<'_, ()>| -> f32 { av::graphics_hue() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_SATURATION,
+        |_caller: Caller<'_, ()>| -> f32 { av::graphics_saturation() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_LIGHTNESS,
+        |_caller: Caller<'_, ()>| -> f32 { av::graphics_lightness() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_COLOR_RGB,
+        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+            av::graphics_color_rgb(r, g, b, a);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_COLOR_HSL,
+        |_caller: Caller<'_, ()>, h: f32, s: f32, l: f32, a: u32| {
+            av::graphics_color_hsl(h, s, l, a);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_LERP_COLOR,
+        |_caller: Caller<'_, ()>,
+         r1: u32,
+         g1: u32,
+         b1: u32,
+         a1: u32,
+         r2: u32,
+         g2: u32,
+         b2: u32,
+         a2: u32,
+         t: f32|
+         -> u32 { av::graphics_lerp_color(r1, g1, b1, a1, r2, g2, b2, a2, t) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_PALETTE_LERP,
+        |_caller: Caller<'_, ()>, c1: u32, c2: u32, t: f32| -> u32 {
+            av::graphics_palette_lerp(c1, c2, t)
+        },
+    )?;
+
+    // State functions
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_CLEAR,
+        |_caller: Caller<'_, ()>| av::graphics_clear(),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_FILL,
+        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+            av::graphics_fill(r, g, b, a);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_NO_FILL,
+        |_caller: Caller<'_, ()>| av::graphics_no_fill(),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_STROKE,
+        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+            av::graphics_stroke(r, g, b, a);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_NO_STROKE,
+        |_caller: Caller<'_, ()>| av::graphics_no_stroke(),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ERASE,
+        |_caller: Caller<'_, ()>| av::graphics_erase(),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_NO_ERASE,
+        |_caller: Caller<'_, ()>| av::graphics_no_erase(),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_COLOR_MODE,
+        |_caller: Caller<'_, ()>, mode: u32| av::graphics_color_mode(mode),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_CLIP,
+        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+            av::graphics_clip(x, y, w, h);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_BEGIN_CLIP,
+        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+            av::graphics_begin_clip(x, y, w, h);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_END_CLIP,
+        |_caller: Caller<'_, ()>| av::graphics_end_clip(),
+    )?;
+
+    // 3D
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ELLIPSE,
+        |_caller: Caller<'_, ()>, cx: i32, cy: i32, w: u32, h: u32| {
+            av::graphics_ellipse(cx, cy, w, h);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_ARC,
+        |_caller: Caller<'_, ()>, cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32| {
+            av::graphics_arc(cx, cy, w, h, start, end);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::GRAPHICS_QUAD,
+        |_caller: Caller<'_, ()>,
+         x1: i32,
+         y1: i32,
+         x2: i32,
+         y2: i32,
+         x3: i32,
+         y3: i32,
+         x4: i32,
+         y4: i32| {
+            av::graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4);
+        },
+    )?;
+
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TRIANGLE,
@@ -605,6 +915,14 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
         host_imports::AUDIO_PLAY_XM,
         |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
             av::audio_play_xm(&mut caller, ptr, len);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::AUDIO_PLAY_MIDI,
+        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+            av::audio_play_midi(&mut caller, ptr, len);
         },
     )?;
 

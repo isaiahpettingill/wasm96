@@ -46,6 +46,11 @@ Wasmtime configuration is set up to enable a broad set of WebAssembly feature fl
 
 ## Example guests
 
+### Shapes demo (ellipse/arc/quad)
+Demonstrates the new 2D shape primitives.
+- Source: `example/rust-guest-shapes/src/lib.rs`
+- Run (from repo root): `just run-rust-shapes`
+
 ### Aseprite dwarf mining (procedural)
 An infinite, tile-based dwarf mining game that uses host-side Aseprite decoding (guest registers `.aseprite` bytes; the core parses/animates them) and procedurally generated ore veins.
 - Source: `example/rust-guest-aseprite/src/lib.rs`
@@ -317,6 +322,7 @@ The `example/` directory contains guest applications:
 - `rust-guest-mp-platformer/`: Multiplayer platformer game (Rust)
 - `rust-guest-showcase/`: Comprehensive demo of all features (Rust)
 - `rust-guest-text/`: Text rendering example (Rust)
+- `rust-guest-shapes/`: Shapes demo (ellipse/arc/quad) (Rust)
 - `rust-guest-3d/`: 3D rotating cube example (Rust)
 - `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
@@ -581,6 +587,12 @@ The resource ABI has been updated to use `u64` keys instead of string pointers. 
 ### 3D Graphics Support (host/core/sdk)
 Added a hardware-accelerated (wgpu) renderer for 3D graphics. Guests can now enable 3D mode, configure a camera, create meshes from raw data, OBJ strings, or STL bytes, and draw them with transformations.
 
+### MIDI Synthesizer (host/core/sdk)
+Added a software MIDI synthesizer for real-time playback of MIDI files. Guests can load and play MIDI data, with support for basic waveforms (sine, square, sawtooth) and ADSR envelopes. Integrated into the audio mixing pipeline.
+
+### Transformation Support (host/core/sdk)
+Added support for 2D and 3D transformations, including translation, rotation, scaling, and shearing. Added a transformation matrix stack (`push-matrix`/`pop-matrix`) and the ability to apply custom 4x4 matrices. These transformations affect both 2D primitives and 3D mesh drawing.
+
 ## License
 
 MIT License - see `LICENSE` for details.
@@ -597,3 +609,4 @@ MIT License - see `LICENSE` for details.
 - WAV playback is implemented using the hound library for decoding and mixing.
 - QOA playback is implemented using the qoaudio library for decoding and mixing.
 - XM playback is implemented using the xmrsplayer library for decoding and mixing.
+- MIDI playback is implemented using the midly library for parsing and a software synthesizer for real-time generation and mixing.

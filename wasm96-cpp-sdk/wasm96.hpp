@@ -102,12 +102,28 @@ extern void wasm96_graphics_circle_outline(int32_t x, int32_t y, uint32_t r) WAS
 extern void wasm96_graphics_image(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image");
 extern void wasm96_graphics_image_png(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image_png");
 extern void wasm96_graphics_image_jpeg(int32_t x, int32_t y, const uint8_t* data, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_image_jpeg");
+extern void wasm96_graphics_ellipse(int32_t cx, int32_t cy, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_ellipse");
+extern void wasm96_graphics_arc(int32_t cx, int32_t cy, uint32_t w, uint32_t h, float start, float end) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_arc");
+extern void wasm96_graphics_quad(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3, int32_t x4, int32_t y4) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_quad");
 extern void wasm96_graphics_triangle(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_triangle");
 extern void wasm96_graphics_triangle_outline(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_triangle_outline");
 extern void wasm96_graphics_bezier_quadratic(int32_t x1, int32_t y1, int32_t cx, int32_t cy, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_bezier_quadratic");
 extern void wasm96_graphics_bezier_cubic(int32_t x1, int32_t y1, int32_t cx1, int32_t cy1, int32_t cx2, int32_t cy2, int32_t x2, int32_t y2, uint32_t segments) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_bezier_cubic");
 extern void wasm96_graphics_pill(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_pill");
 extern void wasm96_graphics_pill_outline(int32_t x, int32_t y, uint32_t w, uint32_t h) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_pill_outline");
+
+extern void wasm96_graphics_apply_matrix(float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13, float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_apply_matrix");
+extern void wasm96_graphics_reset_matrix(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_reset_matrix");
+extern void wasm96_graphics_rotate(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rotate");
+extern void wasm96_graphics_rotate_x(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rotate_x");
+extern void wasm96_graphics_rotate_y(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rotate_y");
+extern void wasm96_graphics_rotate_z(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_rotate_z");
+extern void wasm96_graphics_scale(float sx, float sy, float sz) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_scale");
+extern void wasm96_graphics_shear_x(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_shear_x");
+extern void wasm96_graphics_shear_y(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_shear_y");
+extern void wasm96_graphics_translate(float x, float y, float z) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_translate");
+extern void wasm96_graphics_push_matrix(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_push_matrix");
+extern void wasm96_graphics_pop_matrix(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_pop_matrix");
 
 // 3D Graphics
 extern void wasm96_graphics_set_3d(uint32_t enable) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_3d");
@@ -208,11 +224,29 @@ public:
     static void line(int32_t x1, int32_t y1, int32_t x2, int32_t y2) { wasm96_graphics_line(x1, y1, x2, y2); }
     static void rect(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_rect(x, y, w, h); }
     static void rectOutline(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_rect_outline(x, y, w, h); }
+    static void pill(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_pill(x, y, w, h); }
+    static void pillOutline(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_pill_outline(x, y, w, h); }
+
+    static void applyMatrix(float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13, float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33) { wasm96_graphics_apply_matrix(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33); }
+    static void resetMatrix() { wasm96_graphics_reset_matrix(); }
+    static void rotate(float angle) { wasm96_graphics_rotate(angle); }
+    static void rotateX(float angle) { wasm96_graphics_rotate_x(angle); }
+    static void rotateY(float angle) { wasm96_graphics_rotate_y(angle); }
+    static void rotateZ(float angle) { wasm96_graphics_rotate_z(angle); }
+    static void scale(float sx, float sy, float sz) { wasm96_graphics_scale(sx, sy, sz); }
+    static void shearX(float angle) { wasm96_graphics_shear_x(angle); }
+    static void shearY(float angle) { wasm96_graphics_shear_y(angle); }
+    static void translate(float x, float y, float z) { wasm96_graphics_translate(x, y, z); }
+    static void pushMatrix() { wasm96_graphics_push_matrix(); }
+    static void popMatrix() { wasm96_graphics_pop_matrix(); }
     static void circle(int32_t x, int32_t y, uint32_t r) { wasm96_graphics_circle(x, y, r); }
     static void circleOutline(int32_t x, int32_t y, uint32_t r) { wasm96_graphics_circle_outline(x, y, r); }
     static void image(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t* data, uint32_t len) { wasm96_graphics_image(x, y, w, h, data, len); }
     static void imagePng(int32_t x, int32_t y, const uint8_t* data, uint32_t len) { wasm96_graphics_image_png(x, y, data, len); }
     static void imageJpeg(int32_t x, int32_t y, const uint8_t* data, uint32_t len) { wasm96_graphics_image_jpeg(x, y, data, len); }
+    static void ellipse(int32_t cx, int32_t cy, uint32_t w, uint32_t h) { wasm96_graphics_ellipse(cx, cy, w, h); }
+    static void arc(int32_t cx, int32_t cy, uint32_t w, uint32_t h, float start, float end) { wasm96_graphics_arc(cx, cy, w, h, start, end); }
+    static void quad(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3, int32_t x4, int32_t y4) { wasm96_graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4); }
     static void triangle(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) { wasm96_graphics_triangle(x1, y1, x2, y2, x3, y3); }
     static void triangleOutline(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3) { wasm96_graphics_triangle_outline(x1, y1, x2, y2, x3, y3); }
     static void bezierQuadratic(int32_t x1, int32_t y1, int32_t cx, int32_t cy, int32_t x2, int32_t y2, uint32_t segments) { wasm96_graphics_bezier_quadratic(x1, y1, cx, cy, x2, y2, segments); }

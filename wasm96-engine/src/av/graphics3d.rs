@@ -910,7 +910,9 @@ pub fn graphics_mesh_draw(
     };
 
     // Calculate matrices
-    let model = Mat4::from_translation(Vec3::new(x, y, z))
+    let global_transform = global().lock().unwrap().video.transform;
+    let model = global_transform
+        * Mat4::from_translation(Vec3::new(x, y, z))
         * Mat4::from_rotation_z(rz)
         * Mat4::from_rotation_y(ry)
         * Mat4::from_rotation_x(rx)

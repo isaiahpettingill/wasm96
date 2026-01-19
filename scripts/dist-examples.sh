@@ -130,6 +130,9 @@ build_rust() {
   cargo +nightly build $CARGO_FLAGS -p rust_guest_text --target "$RUST_TARGET" --"$RUST_PROFILE"
   copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_text.wasm" "text_demo"
 
+  cargo +nightly build $CARGO_FLAGS -p rust-guest-shapes --target "$RUST_TARGET" --"$RUST_PROFILE"
+  copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_shapes.wasm" "shapes"
+
   cargo +nightly build $CARGO_FLAGS -p rust-guest-3d --target "$RUST_TARGET" --"$RUST_PROFILE"
   copy_wasm_as_w96 "target/$RUST_TARGET/$RUST_PROFILE/rust_guest_3d.wasm" "spinning_cube"
 

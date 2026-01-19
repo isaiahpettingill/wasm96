@@ -41,10 +41,6 @@ pub fn read_guest_string(
         .map_err(|_| AvError::MemoryReadFailed)
 }
 
-pub fn graphics_line_internal(x1: i32, y1: i32, x2: i32, y2: i32) {
-    super::graphics::graphics_line(x1, y1, x2, y2);
-}
-
 #[inline]
 pub fn tri_edge(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i64 {
     (c.0 as i64 - a.0 as i64) * (b.1 as i64 - a.1 as i64)

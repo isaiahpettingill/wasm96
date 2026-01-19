@@ -1726,6 +1726,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c8dda44ff03a2f238717214da50f65d5a53b45cd213a7370424ffdb6fae815"
 
 [[package]]
+name = "midly"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "207d755f4cb882d20c4da58d707ca9130a0c9bc5061f657a4f299b8e36362b7a"
+dependencies = [
+ "rayon",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2370,7 +2379,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-guest-shapes"
+version = "0.1.0"
+dependencies = [
+ "wasm96-sdk",
+]
+
+[[package]]
 name = "rust-guest-showcase"
+version = "0.1.0"
+dependencies = [
+ "wasm96-sdk",
+]
+
+[[package]]
+name = "rust-guest-transform"
 version = "0.1.0"
 dependencies = [
  "wasm96-sdk",
@@ -3291,6 +3314,7 @@ dependencies = [
  "image",
  "jpeg-decoder",
  "lazy_static",
+ "midly",
  "nom_stl",
  "png",
  "qoaudio",

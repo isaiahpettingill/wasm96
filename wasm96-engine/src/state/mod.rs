@@ -15,7 +15,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use glam::Mat4;
 use wasmtime::Memory as WasmtimeMemory;
+
+// MIDI synthesizer
+use midly::{MidiMessage, Smf};
 
 thread_local! {
     /// Thread-local storage for PlatformCallbacks during frame execution.
@@ -23,6 +27,165 @@ thread_local! {
     /// This allows WASM imports to access platform callbacks without requiring
     /// them to be passed through Wasmtime's Caller<T> store data.
     static CALLBACKS: RefCell<Option<*mut dyn crate::PlatformCallbacks>> = RefCell::new(None);
+}
+
+// Synthesizer structures
+#[derive(Clone, Debug)]
+pub struct Voice {
+    pub note: u8,
+    pub velocity: u8,
+    pub phase: f32,
+    pub envelope_phase: f32,
+    pub active: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Instrument {
+    pub waveform: Waveform,
+    pub attack: f32,
+    pub decay: f32,
+    pub sustain: f32,
+    pub release: f32,
+}
+
+#[derive(Clone, Debug)]
+pub enum Waveform {
+    Sine,
+    Square,
+    Sawtooth,
+}
+
+impl Default for Instrument {
+    fn default() -> Self {
+        Instrument {
+            waveform: Waveform::Sine,
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.7,
+            release: 0.2,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Synthesizer {
+    pub sample_rate: f32,
+    pub voices: Vec<Voice>,
+    pub instruments: HashMap<u8, Instrument>,
+    pub midi_events: Vec<(u32, MidiMessage)>, // (time in samples, event)
+    pub current_time: u32,
+}
+
+impl Synthesizer {
+    pub fn new(sample_rate: f32) -> Self {
+        Synthesizer {
+            sample_rate,
+            voices: Vec::new(),
+            instruments: HashMap::new(),
+            midi_events: Vec::new(),
+            current_time: 0,
+        }
+    }
+
+    pub fn load_midi(&mut self, smf: Smf) {
+        self.midi_events.clear();
+        let mut time = 0u32;
+        for track in smf.tracks {
+            for event in track {
+                time += event.delta.as_int() as u32;
+                if let midly::TrackEventKind::Midi { message, .. } = event.kind {
+                    self.midi_events.push((time, message));
+                }
+            }
+        }
+        self.midi_events.sort_by_key(|(t, _)| *t);
+    }
+
+    pub fn generate_sample(&mut self) -> f32 {
+        self.current_time += 1;
+        let mut sample = 0.0f32;
+
+        // Process MIDI events
+        while let Some((time, message)) = self.midi_events.first() {
+            if *time <= self.current_time {
+                self.handle_midi_message(*message);
+                self.midi_events.remove(0);
+            } else {
+                break;
+            }
+        }
+
+        // Generate audio from voices
+        self.voices.retain(|voice| voice.active);
+        for voice in &mut self.voices {
+            let freq = 440.0 * 2.0f32.powf((voice.note as f32 - 69.0) / 12.0);
+            let phase_inc = freq / self.sample_rate;
+
+            voice.phase += phase_inc;
+            if voice.phase >= 1.0 {
+                voice.phase -= 1.0;
+            }
+
+            let wave_sample = match self
+                .instruments
+                .get(&0)
+                .unwrap_or(&Instrument::default())
+                .waveform
+            {
+                Waveform::Sine => (voice.phase * std::f32::consts::TAU).sin(),
+                Waveform::Square => {
+                    if voice.phase < 0.5 {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                }
+                Waveform::Sawtooth => voice.phase * 2.0 - 1.0,
+            };
+
+            // Simple envelope
+            let envelope = if voice.envelope_phase < 0.1 {
+                voice.envelope_phase / 0.1
+            } else {
+                0.7
+            };
+            voice.envelope_phase += 1.0 / self.sample_rate;
+
+            sample += wave_sample * envelope * (voice.velocity as f32 / 127.0);
+        }
+
+        sample * 0.1 // Reduce volume
+    }
+
+    pub fn handle_midi_message(&mut self, message: MidiMessage) {
+        match message {
+            MidiMessage::NoteOn { key, vel } => {
+                if vel > 0 {
+                    self.voices.push(Voice {
+                        note: key.as_int(),
+                        velocity: vel.as_int(),
+                        phase: 0.0,
+                        envelope_phase: 0.0,
+                        active: true,
+                    });
+                } else {
+                    self.note_off(key.as_int());
+                }
+            }
+            MidiMessage::NoteOff { key, .. } => {
+                self.note_off(key.as_int());
+            }
+            _ => {}
+        }
+    }
+
+    pub fn note_off(&mut self, note: u8) {
+        for voice in &mut self.voices {
+            if voice.note == note {
+                voice.active = false;
+            }
+        }
+    }
 }
 
 /// A single host-side “audio channel” (a.k.a. a mixing voice).
@@ -108,6 +271,20 @@ pub fn global() -> &'static Mutex<GlobalState> {
     GLOBAL_STATE.get_or_init(|| Mutex::new(GlobalState::default()))
 }
 
+/// Color mode for color interpretation.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ColorMode {
+    RGB = 0,
+    HSL = 1,
+}
+
+impl Default for ColorMode {
+    fn default() -> Self {
+        ColorMode::RGB
+    }
+}
+
 /// Host-owned framebuffer state for immediate mode drawing.
 #[derive(Debug)]
 pub struct VideoState {
@@ -119,7 +296,7 @@ pub struct VideoState {
     /// Row stride in pixels (may be >= `width`).
     ///
     /// This allows us to align/pad rows for frontends/drivers (e.g. some ARM GPUs)
-    /// while keeping the visible geometry unchanged.
+    /// while keeping visible geometry unchanged.
     pub stride_pixels: u32,
 
     /// Cached pitch in bytes for XRGB8888 output.
@@ -134,8 +311,35 @@ pub struct VideoState {
     /// Format: 0x00RRGGBB (little endian in memory: BB GG RR 00).
     pub framebuffer: Vec<u32>,
 
-    /// Current drawing color (packed 0x00RRGGBB for XRGB8888).
+    /// Current drawing color (packed 0xAARRGGBB for ARGB8888).
     pub draw_color: u32,
+
+    /// Fill color (packed 0xAARRGGBB for ARGB8888).
+    pub fill_color: u32,
+
+    /// Stroke color (packed 0xAARRGGBB for ARGB8888).
+    pub stroke_color: u32,
+
+    /// Whether fill is enabled for filled shapes.
+    pub fill_enabled: bool,
+
+    /// Whether stroke is enabled for outlines.
+    pub stroke_enabled: bool,
+
+    /// Whether erase mode is enabled (draw with destination alpha blending).
+    pub erase_mode_enabled: bool,
+
+    /// Current color mode (RGB or HSL).
+    pub color_mode: ColorMode,
+
+    /// Clipping region (x, y, w, h). None means no clipping.
+    pub clip_rect: Option<(i32, i32, u32, u32)>,
+
+    /// Current transformation matrix.
+    pub transform: Mat4,
+
+    /// Transformation matrix stack.
+    pub transform_stack: Vec<Mat4>,
 
     /// Tracks whether geometry was last communicated to libretro for the current size.
     ///
@@ -157,7 +361,16 @@ impl Default for VideoState {
             stride_pixels,
             pitch_bytes,
             framebuffer: vec![0; (stride_pixels * height) as usize],
-            draw_color: 0x00FFFFFF, // Default white
+            draw_color: 0xFFFFFFFF, // Default white with full alpha
+            fill_color: 0xFFFFFFFF,
+            stroke_color: 0xFFFFFFFF,
+            fill_enabled: false,
+            stroke_enabled: false,
+            erase_mode_enabled: false,
+            color_mode: ColorMode::default(),
+            clip_rect: None,
+            transform: Mat4::IDENTITY,
+            transform_stack: Vec::new(),
             geometry_dirty: true,
         }
     }
@@ -179,6 +392,9 @@ pub struct AudioState {
     /// Guests can trigger playback via higher-level audio APIs and the core will mix
     /// these channels into the output stream.
     pub channels: Vec<AudioChannel>,
+
+    /// MIDI synthesizer.
+    pub synthesizer: Option<Synthesizer>,
 }
 
 impl Default for AudioState {
@@ -188,6 +404,7 @@ impl Default for AudioState {
             host_queue: Vec::new(),
 
             channels: Vec::new(),
+            synthesizer: None,
         }
     }
 }
