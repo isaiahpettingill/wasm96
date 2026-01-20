@@ -2,6 +2,7 @@
 extern crate alloc;
 
 use crate::state::global;
+use glam::{Mat4, Vec3};
 use wasmtime::Caller;
 
 // External crates for rendering
@@ -56,28 +57,74 @@ pub fn graphics_image_from_host(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
     };
     let screen_w = s.video.width as i32;
     let screen_h = s.video.height as i32;
+    let transform = s.video.transform;
     let fb = &mut s.video.framebuffer;
 
-    let x_start = x.max(0);
-    let y_start = y.max(0);
-    let x_end = (x + w as i32).min(screen_w);
-    let y_end = (y + h as i32).min(screen_h);
+    if transform == Mat4::IDENTITY {
+        let x_start = x.max(0);
+        let y_start = y.max(0);
+        let x_end = (x + w as i32).min(screen_w);
+        let y_end = (y + h as i32).min(screen_h);
 
-    for curr_y in y_start..y_end {
-        let src_y = curr_y - y;
-        let src_row_start = (src_y as usize) * (w as usize) * 4;
-        let dst_row_start = (curr_y as usize) * (screen_w as usize);
-        for curr_x in x_start..x_end {
-            let src_x = curr_x - x;
-            let src_idx = src_row_start + (src_x as usize) * 4;
-            let r = data[src_idx];
-            let g = data[src_idx + 1];
-            let b = data[src_idx + 2];
-            let a = data[src_idx + 3];
-            if a > 0 {
-                let color =
-                    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-                fb[dst_row_start + (curr_x as usize)] = color;
+        for curr_y in y_start..y_end {
+            let src_y = curr_y - y;
+            let src_row_start = (src_y as usize) * (w as usize) * 4;
+            let dst_row_start = (curr_y as usize) * (screen_w as usize);
+            for curr_x in x_start..x_end {
+                let src_x = curr_x - x;
+                let src_idx = src_row_start + (src_x as usize) * 4;
+                let r = data[src_idx];
+                let g = data[src_idx + 1];
+                let b = data[src_idx + 2];
+                let a = data[src_idx + 3];
+                if a > 0 {
+                    let color =
+                        ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+                    fb[dst_row_start + (curr_x as usize)] = color;
+                }
+            }
+        }
+    } else {
+        let inv = transform.inverse();
+        let p0 = transform.transform_point3(Vec3::new(x as f32, y as f32, 0.0));
+        let p1 = transform.transform_point3(Vec3::new(x as f32 + w as f32, y as f32, 0.0));
+        let p2 = transform.transform_point3(Vec3::new(x as f32, y as f32 + h as f32, 0.0));
+        let p3 =
+            transform.transform_point3(Vec3::new(x as f32 + w as f32, y as f32 + h as f32, 0.0));
+
+        let min_x = p0.x.min(p1.x).min(p2.x).min(p3.x).floor() as i32;
+        let max_x = p0.x.max(p1.x).max(p2.x).max(p3.x).ceil() as i32;
+        let min_y = p0.y.min(p1.y).min(p2.y).min(p3.y).floor() as i32;
+        let max_y = p0.y.max(p1.y).max(p2.y).max(p3.y).ceil() as i32;
+
+        let x_start = min_x.max(0);
+        let y_start = min_y.max(0);
+        let x_end = max_x.min(screen_w);
+        let y_end = max_y.min(screen_h);
+
+        for curr_y in y_start..y_end {
+            let dst_row_start = (curr_y as usize) * (screen_w as usize);
+            for curr_x in x_start..x_end {
+                let p_screen = Vec3::new(curr_x as f32 + 0.5, curr_y as f32 + 0.5, 0.0);
+                let p_local = inv.transform_point3(p_screen);
+
+                let src_x = (p_local.x - x as f32).floor() as i32;
+                let src_y = (p_local.y - y as f32).floor() as i32;
+
+                if src_x >= 0 && src_x < w as i32 && src_y >= 0 && src_y < h as i32 {
+                    let src_idx = ((src_y as usize) * (w as usize) + (src_x as usize)) * 4;
+                    let r = data[src_idx];
+                    let g = data[src_idx + 1];
+                    let b = data[src_idx + 2];
+                    let a = data[src_idx + 3];
+                    if a > 0 {
+                        let color = ((a as u32) << 24)
+                            | ((r as u32) << 16)
+                            | ((g as u32) << 8)
+                            | (b as u32);
+                        fb[dst_row_start + (curr_x as usize)] = color;
+                    }
+                }
             }
         }
     }

@@ -52,7 +52,11 @@ Demonstrates the new 2D shape primitives.
 - Run (from repo root): `just run-rust-shapes`
 
 ### Aseprite dwarf mining (procedural)
-An infinite, tile-based dwarf mining game that uses host-side Aseprite decoding (guest registers `.aseprite` bytes; the core parses/animates them) and procedurally generated ore veins.
+An infinite, tile-based dwarf mining game with procedural noise-based generation (surface, caves, and ore veins).
+- **Physics**: Smooth acceleration/friction and sub-pixel collision resolution.
+- **Tools**: Automatic tool switching (shovel for dirt, pickaxe for stone/ores) with variable mining speeds.
+- **Rendering**: Tiles and ores rendered as vector shapes for clarity.
+- **Controls**: D-pad directed mining and mirrored character animations.
 - Source: `example/rust-guest-aseprite/src/lib.rs`
 - Assets: `example/rust-guest-aseprite/assets/` (includes `dwarf.qoa` music)
 - Run (from repo root): `just run-rust-aseprite`

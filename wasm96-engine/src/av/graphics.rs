@@ -1016,50 +1016,8 @@ pub fn graphics_image(
         .read(&*caller, ptr as usize, &mut img_data)
         .map_err(|_| AvError::MemoryReadFailed)?;
 
-    // Lock and draw
-    let mut s = match global().lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let screen_w = s.video.width as i32;
-    let screen_h = s.video.height as i32;
-    let fb = &mut s.video.framebuffer;
-
-    // Clipping
-    let x_start = x.max(0);
-    let y_start = y.max(0);
-    let x_end = (x + img_w as i32).min(screen_w);
-    let y_end = (y + img_h as i32).min(screen_h);
-
-    if x_start >= x_end || y_start >= y_end {
-        return Ok(());
-    }
-
-    for curr_y in y_start..y_end {
-        let src_y = curr_y - y; // relative to image
-        let src_row_start = (src_y as usize) * (img_w as usize) * 4;
-
-        let dst_row_start = (curr_y as usize) * (screen_w as usize);
-
-        for curr_x in x_start..x_end {
-            let src_x = curr_x - x; // relative to image
-            let src_idx = src_row_start + (src_x as usize) * 4;
-
-            let r = img_data[src_idx];
-            let g = img_data[src_idx + 1];
-            let b = img_data[src_idx + 2];
-            let a = img_data[src_idx + 3];
-
-            if a > 0 {
-                // Simple alpha check (0 = transparent, >0 = opaque).
-                // Real blending would be: result = alpha * src + (1-alpha) * dst
-                // For now, just overwrite if not fully transparent.
-                let color =
-                    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-                fb[dst_row_start + (curr_x as usize)] = color;
-            }
-        }
-    }
+    // Lock and draw (using helper to handle transformations)
+    graphics_image_from_host(x, y, img_w, img_h, &img_data);
 
     Ok(())
 }
