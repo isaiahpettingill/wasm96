@@ -597,6 +597,9 @@ Added a software MIDI synthesizer for real-time playback of MIDI files. Guests c
 ### Transformation Support (host/core/sdk)
 Added support for 2D and 3D transformations, including translation, rotation, scaling, and shearing. Added a transformation matrix stack (`push-matrix`/`pop-matrix`) and the ability to apply custom 4x4 matrices. These transformations affect both 2D primitives and 3D mesh drawing.
 
+### Math & System Host Functions (host/core/sdk)
+Added a comprehensive set of math functions (abs, ceil, constrain, dist, exp, floor, fract, lerp, log, mag, map, max, min, norm, pow, round, sq, sqrt, acos, asin, atan, atan2, cos, sin, tan, degrees, radians, random, noise) and system functions (day, hour, minute, month, second, year) to the host environment and SDK. Added `Vector2` and `Vector3` helper types to the Rust SDK with common vector operations inspired by p5.js and Processing.
+
 ## License
 
 MIT License - see `LICENSE` for details.

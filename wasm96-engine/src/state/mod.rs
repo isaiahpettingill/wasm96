@@ -237,7 +237,6 @@ impl Default for AudioChannel {
 /// Global core state accessed from:
 /// - `Engine::run_frame` (to set the current `RuntimeHandle`)
 /// - host import functions
-#[derive(Default)]
 pub struct GlobalState {
     /// Guest linear memory export (`memory`) for the Wasmtime runtime.
     ///
@@ -259,6 +258,28 @@ pub struct GlobalState {
 
     /// Host-owned storage state (persistent-ish key/value store).
     pub storage: StorageState,
+
+    /// PRNG for math_random functions.
+    pub rng: rand::rngs::StdRng,
+
+    /// Seed for noise functions.
+    pub noise_seed: u32,
+}
+
+impl Default for GlobalState {
+    fn default() -> Self {
+        use rand::SeedableRng;
+        Self {
+            memory_wasmtime: std::ptr::null(),
+            memory_owned: None,
+            video: VideoState::default(),
+            audio: AudioState::default(),
+            input: InputState::default(),
+            storage: StorageState::default(),
+            rng: rand::rngs::StdRng::from_entropy(),
+            noise_seed: 0,
+        }
+    }
 }
 
 // Raw pointers are used for `handle` and `memory`. We guard access with a mutex.

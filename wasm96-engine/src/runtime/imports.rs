@@ -951,6 +951,261 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
         |_caller: Caller<'_, ()>| -> u64 { crate::av::utils::system_millis() },
     )?;
 
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_DAY,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_day() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_HOUR,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_hour() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_MINUTE,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_minute() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_MONTH,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_month() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_SECOND,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_second() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_YEAR,
+        |_caller: Caller<'_, ()>| -> u32 { av::system_year() },
+    )?;
+
+    // --- Math ---
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ABS,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_abs(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_CEIL,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_ceil(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_CONSTRAIN,
+        |_caller: Caller<'_, ()>, n: f32, low: f32, high: f32| -> f32 {
+            av::math_constrain(n, low, high)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_DIST,
+        |_caller: Caller<'_, ()>, x1: f32, y1: f32, x2: f32, y2: f32| -> f32 {
+            av::math_dist(x1, y1, x2, y2)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_EXP,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_exp(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_FLOOR,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_floor(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_FRACT,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_fract(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_LERP,
+        |_caller: Caller<'_, ()>, start: f32, stop: f32, amt: f32| -> f32 {
+            av::math_lerp(start, stop, amt)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_LOG,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_log(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_MAG,
+        |_caller: Caller<'_, ()>, x: f32, y: f32| -> f32 { av::math_mag(x, y) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_MAP,
+        |_caller: Caller<'_, ()>,
+         value: f32,
+         start1: f32,
+         stop1: f32,
+         start2: f32,
+         stop2: f32|
+         -> f32 { av::math_map(value, start1, stop1, start2, stop2) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_MAX,
+        |_caller: Caller<'_, ()>, a: f32, b: f32| -> f32 { av::math_max(a, b) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_MIN,
+        |_caller: Caller<'_, ()>, a: f32, b: f32| -> f32 { av::math_min(a, b) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_NORM,
+        |_caller: Caller<'_, ()>, value: f32, start: f32, stop: f32| -> f32 {
+            av::math_norm(value, start, stop)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_POW,
+        |_caller: Caller<'_, ()>, n: f32, e: f32| -> f32 { av::math_pow(n, e) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ROUND,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_round(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_SQ,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_sq(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_SQRT,
+        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_sqrt(n) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ACOS,
+        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_acos(value) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ASIN,
+        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_asin(value) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ATAN,
+        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_atan(value) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_ATAN2,
+        |_caller: Caller<'_, ()>, y: f32, x: f32| -> f32 { av::math_atan2(y, x) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_COS,
+        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_cos(angle) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_SIN,
+        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_sin(angle) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_TAN,
+        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_tan(angle) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_DEGREES,
+        |_caller: Caller<'_, ()>, radians: f32| -> f32 { av::math_degrees(radians) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_RADIANS,
+        |_caller: Caller<'_, ()>, degrees: f32| -> f32 { av::math_radians(degrees) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_RANDOM,
+        |_caller: Caller<'_, ()>, min: f32, max: f32| -> f32 { av::math_random(min, max) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_RANDOM_SEED,
+        |_caller: Caller<'_, ()>, seed: u32| {
+            av::math_random_seed(seed);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_RANDOM_GAUSSIAN,
+        |_caller: Caller<'_, ()>, mean: f32, sd: f32| -> f32 { av::math_random_gaussian(mean, sd) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_NOISE,
+        |_caller: Caller<'_, ()>, x: f32, y: f32, z: f32| -> f32 { av::math_noise(x, y, z) },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_NOISE_SEED,
+        |_caller: Caller<'_, ()>, seed: u32| {
+            av::math_noise_seed(seed);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::MATH_NOISE_DETAIL,
+        |_caller: Caller<'_, ()>, lod: u32, falloff: f32| {
+            av::math_noise_detail(lod, falloff);
+        },
+    )?;
+
     // --- Storage ---
     linker.func_wrap(
         IMPORT_MODULE,

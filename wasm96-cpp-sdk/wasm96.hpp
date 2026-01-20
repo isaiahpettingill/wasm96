@@ -89,6 +89,17 @@ typedef struct {
     uint32_t height;
 } wasm96_text_size_t;
 
+typedef struct {
+    float x;
+    float y;
+} wasm96_vector2_t;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} wasm96_vector3_t;
+
 // Low-level raw ABI imports.
 extern void wasm96_graphics_set_size(uint32_t width, uint32_t height) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_size");
 extern void wasm96_graphics_set_color(uint32_t r, uint32_t g, uint32_t b, uint32_t a) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_set_color");
@@ -197,6 +208,51 @@ extern void wasm96_storage_free(const uint8_t* ptr, uint32_t len) WASM96_WASM_IM
 // System
 extern void wasm96_system_log(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_log");
 extern uint64_t wasm96_system_millis(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_millis");
+extern uint32_t wasm96_system_day(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_day");
+extern uint32_t wasm96_system_hour(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_hour");
+extern uint32_t wasm96_system_minute(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_minute");
+extern uint32_t wasm96_system_month(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_month");
+extern uint32_t wasm96_system_second(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_second");
+extern uint32_t wasm96_system_year(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_system_year");
+
+// Math - Calculation
+extern float wasm96_math_abs(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_abs");
+extern float wasm96_math_ceil(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_ceil");
+extern float wasm96_math_constrain(float n, float low, float high) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_constrain");
+extern float wasm96_math_dist(float x1, float y1, float x2, float y2) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_dist");
+extern float wasm96_math_exp(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_exp");
+extern float wasm96_math_floor(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_floor");
+extern float wasm96_math_fract(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_fract");
+extern float wasm96_math_lerp(float start, float stop, float amt) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_lerp");
+extern float wasm96_math_log(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_log");
+extern float wasm96_math_mag(float x, float y) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_mag");
+extern float wasm96_math_map(float value, float start1, float stop1, float start2, float stop2) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_map");
+extern float wasm96_math_max(float a, float b) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_max");
+extern float wasm96_math_min(float a, float b) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_min");
+extern float wasm96_math_norm(float value, float start, float stop) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_norm");
+extern float wasm96_math_pow(float n, float e) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_pow");
+extern float wasm96_math_round(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_round");
+extern float wasm96_math_sq(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_sq");
+extern float wasm96_math_sqrt(float n) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_sqrt");
+
+// Math - Trigonometry
+extern float wasm96_math_acos(float value) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_acos");
+extern float wasm96_math_asin(float value) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_asin");
+extern float wasm96_math_atan(float value) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_atan");
+extern float wasm96_math_atan2(float y, float x) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_atan2");
+extern float wasm96_math_cos(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_cos");
+extern float wasm96_math_sin(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_sin");
+extern float wasm96_math_tan(float angle) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_tan");
+extern float wasm96_math_degrees(float radians) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_degrees");
+extern float wasm96_math_radians(float degrees) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_radians");
+
+// Math - Random & Noise
+extern float wasm96_math_random(float min, float max) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_random");
+extern void wasm96_math_random_seed(uint32_t seed) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_random_seed");
+extern float wasm96_math_random_gaussian(float mean, float sd) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_random_gaussian");
+extern float wasm96_math_noise(float x, float y, float z) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_noise");
+extern void wasm96_math_noise_seed(uint32_t seed) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_noise_seed");
+extern void wasm96_math_noise_detail(uint32_t lod, float falloff) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_math_noise_detail");
 
 } // extern "C"
 
@@ -215,7 +271,59 @@ static inline uint64_t wasm96_hash_key(const char* key) {
 // Graphics API
 namespace wasm96 {
 
-class Graphics {
+    class Vector2 {
+    public:
+        float x, y;
+        Vector2(float x = 0, float y = 0) : x(x), y(y) {}
+        void add(Vector2 other) { x += other.x; y += other.y; }
+        void sub(Vector2 other) { x -= other.x; y -= other.y; }
+        void mult(float n) { x *= n; y *= n; }
+        void div(float n) { if (n != 0) { x /= n; y /= n; } }
+        float mag() const { return wasm96_math_mag(x, y); }
+        float dist(Vector2 other) const { return wasm96_math_dist(x, y, other.x, other.y); }
+        float dot(Vector2 other) const { return x * other.x + y * other.y; }
+        void normalize() { float m = mag(); if (m != 0) div(m); }
+        void limit(float max) { if (mag() > max) { normalize(); mult(max); } }
+        float heading() const { return wasm96_math_atan2(y, x); }
+        void rotate(float angle) {
+            float c = wasm96_math_cos(angle);
+            float s = wasm96_math_sin(angle);
+            float nx = x * c - y * s;
+            float ny = x * s + y * c;
+            x = nx; y = ny;
+        }
+        void lerp(Vector2 target, float amt) {
+            x = wasm96_math_lerp(x, target.x, amt);
+            y = wasm96_math_lerp(y, target.y, amt);
+        }
+    };
+
+    class Vector3 {
+    public:
+        float x, y, z;
+        Vector3(float x = 0, float y = 0, float z = 0) : x(x), y(y), z(z) {}
+        void add(Vector3 other) { x += other.x; y += other.y; z += other.z; }
+        void sub(Vector3 other) { x -= other.x; y -= other.y; z -= other.z; }
+        void mult(float n) { x *= n; y *= n; z *= n; }
+        void div(float n) { if (n != 0) { x /= n; y /= n; z /= n; } }
+        float mag() const { return wasm96_math_sqrt(x * x + y * y + z * z); }
+        float dot(Vector3 other) const { return x * other.x + y * other.y + z * other.z; }
+        Vector3 cross(Vector3 other) const {
+            return Vector3(
+                y * other.z - z * other.y,
+                z * other.x - x * other.z,
+                x * other.y - y * other.x
+            );
+        }
+        void normalize() { float m = mag(); if (m != 0) div(m); }
+        void lerp(Vector3 target, float amt) {
+            x = wasm96_math_lerp(x, target.x, amt);
+            y = wasm96_math_lerp(y, target.y, amt);
+            z = wasm96_math_lerp(z, target.z, amt);
+        }
+    };
+
+    class Graphics {
 public:
     static void setSize(uint32_t width, uint32_t height) { wasm96_graphics_set_size(width, height); }
     static void setColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) { wasm96_graphics_set_color(r, g, b, a); }
@@ -224,9 +332,6 @@ public:
     static void line(int32_t x1, int32_t y1, int32_t x2, int32_t y2) { wasm96_graphics_line(x1, y1, x2, y2); }
     static void rect(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_rect(x, y, w, h); }
     static void rectOutline(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_rect_outline(x, y, w, h); }
-    static void pill(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_pill(x, y, w, h); }
-    static void pillOutline(int32_t x, int32_t y, uint32_t w, uint32_t h) { wasm96_graphics_pill_outline(x, y, w, h); }
-
     static void applyMatrix(float m00, float m01, float m02, float m03, float m10, float m11, float m12, float m13, float m20, float m21, float m22, float m23, float m30, float m31, float m32, float m33) { wasm96_graphics_apply_matrix(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33); }
     static void resetMatrix() { wasm96_graphics_reset_matrix(); }
     static void rotate(float angle) { wasm96_graphics_rotate(angle); }
@@ -342,8 +447,51 @@ public:
 
 class Storage {
 public:
-    static void save(const char* key, const uint8_t* data, uint32_t len) { wasm96_storage_save(wasm96_hash_key(key), data, len); }
-    // load would need allocation, similar to Rust
+    static void save(const char* key, const uint8_t* data, uint32_t len) {
+        wasm96_storage_save(wasm96_hash_key(key), data, len);
+    }
+};
+
+class Math {
+public:
+    static float abs(float n) { return wasm96_math_abs(n); }
+    static float ceil(float n) { return wasm96_math_ceil(n); }
+    static float constrain(float n, float low, float high) { return wasm96_math_constrain(n, low, high); }
+    static float dist(float x1, float y1, float x2, float y2) { return wasm96_math_dist(x1, y1, x2, y2); }
+    static float exp(float n) { return wasm96_math_exp(n); }
+    static float floor(float n) { return wasm96_math_floor(n); }
+    static float fract(float n) { return wasm96_math_fract(n); }
+    static float lerp(float start, float stop, float amt) { return wasm96_math_lerp(start, stop, amt); }
+    static float log(float n) { return wasm96_math_log(n); }
+    static float mag(float x, float y) { return wasm96_math_mag(x, y); }
+    static float map(float value, float start1, float stop1, float start2, float stop2) { return wasm96_math_map(value, start1, stop1, start2, stop2); }
+    static float max(float a, float b) { return wasm96_math_max(a, b); }
+    static float min(float a, float b) { return wasm96_math_min(a, b); }
+    static float norm(float value, float start, float stop) { return wasm96_math_norm(value, start, stop); }
+    static float pow(float n, float e) { return wasm96_math_pow(n, e); }
+    static float round(float n) { return wasm96_math_round(n); }
+    static float sq(float n) { return wasm96_math_sq(n); }
+    static float sqrt(float n) { return wasm96_math_sqrt(n); }
+
+    static float acos(float value) { return wasm96_math_acos(value); }
+    static float asin(float value) { return wasm96_math_asin(value); }
+    static float atan(float value) { return wasm96_math_atan(value); }
+    static float atan2(float y, float x) { return wasm96_math_atan2(y, x); }
+    static float cos(float angle) { return wasm96_math_cos(angle); }
+    static float sin(float angle) { return wasm96_math_sin(angle); }
+    static float tan(float angle) { return wasm96_math_tan(angle); }
+    static float degrees(float radians) { return wasm96_math_degrees(radians); }
+    static float radians(float degrees) { return wasm96_math_radians(degrees); }
+
+    static float random(float min, float max) { return wasm96_math_random(min, max); }
+    static void randomSeed(uint32_t seed) { wasm96_math_random_seed(seed); }
+    static float randomGaussian(float mean, float sd) { return wasm96_math_random_gaussian(mean, sd); }
+    static float noise(float x, float y = 0, float z = 0) { return wasm96_math_noise(x, y, z); }
+    static void noiseSeed(uint32_t seed) { wasm96_math_noise_seed(seed); }
+    static void noiseDetail(uint32_t lod, float falloff) { wasm96_math_noise_detail(lod, falloff); }
+
+    static Vector2 createVector(float x, float y) { return Vector2(x, y); }
+    static Vector3 createVector3(float x, float y, float z) { return Vector3(x, y, z); }
 };
 
 class System {
@@ -353,6 +501,12 @@ public:
         wasm96_system_log((const uint8_t*)message, len);
     }
     static uint64_t millis() { return wasm96_system_millis(); }
+    static uint32_t day() { return wasm96_system_day(); }
+    static uint32_t hour() { return wasm96_system_hour(); }
+    static uint32_t minute() { return wasm96_system_minute(); }
+    static uint32_t month() { return wasm96_system_month(); }
+    static uint32_t second() { return wasm96_system_second(); }
+    static uint32_t year() { return wasm96_system_year(); }
 };
 
 } // namespace wasm96

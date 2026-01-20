@@ -123,6 +123,152 @@ pub struct TextSize {
     pub height: u32,
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Vector2 {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Vector2 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
+    pub fn add(&mut self, other: Vector2) {
+        self.x += other.x;
+        self.y += other.y;
+    }
+
+    pub fn sub(&mut self, other: Vector2) {
+        self.x -= other.x;
+        self.y -= other.y;
+    }
+
+    pub fn mult(&mut self, n: f32) {
+        self.x *= n;
+        self.y *= n;
+    }
+
+    pub fn div(&mut self, n: f32) {
+        if n != 0.0 {
+            self.x /= n;
+            self.y /= n;
+        }
+    }
+
+    pub fn mag(&self) -> f32 {
+        unsafe { sys::math_mag(self.x, self.y) }
+    }
+
+    pub fn dist(&self, other: Vector2) -> f32 {
+        unsafe { sys::math_dist(self.x, self.y, other.x, other.y) }
+    }
+
+    pub fn dot(&self, other: Vector2) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+
+    pub fn normalize(&mut self) {
+        let m = self.mag();
+        if m != 0.0 {
+            self.div(m);
+        }
+    }
+
+    pub fn limit(&mut self, max: f32) {
+        if self.mag() > max {
+            self.normalize();
+            self.mult(max);
+        }
+    }
+
+    pub fn heading(&self) -> f32 {
+        unsafe { sys::math_atan2(self.y, self.x) }
+    }
+
+    pub fn rotate(&mut self, angle: f32) {
+        let c = unsafe { sys::math_cos(angle) };
+        let s = unsafe { sys::math_sin(angle) };
+        let new_x = self.x * c - self.y * s;
+        let new_y = self.x * s + self.y * c;
+        self.x = new_x;
+        self.y = new_y;
+    }
+
+    pub fn lerp(&mut self, target: Vector2, amt: f32) {
+        self.x = unsafe { sys::math_lerp(self.x, target.x, amt) };
+        self.y = unsafe { sys::math_lerp(self.y, target.y, amt) };
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Vector3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl Vector3 {
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Self { x, y, z }
+    }
+
+    pub fn add(&mut self, other: Vector3) {
+        self.x += other.x;
+        self.y += other.y;
+        self.z += other.z;
+    }
+
+    pub fn sub(&mut self, other: Vector3) {
+        self.x -= other.x;
+        self.y -= other.y;
+        self.z -= other.z;
+    }
+
+    pub fn mult(&mut self, n: f32) {
+        self.x *= n;
+        self.y *= n;
+        self.z *= n;
+    }
+
+    pub fn div(&mut self, n: f32) {
+        if n != 0.0 {
+            self.x /= n;
+            self.y /= n;
+            self.z /= n;
+        }
+    }
+
+    pub fn mag(&self) -> f32 {
+        unsafe { sys::math_sqrt(self.x * self.x + self.y * self.y + self.z * self.z) }
+    }
+
+    pub fn dot(&self, other: Vector3) -> f32 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
+    pub fn cross(&self, other: Vector3) -> Vector3 {
+        Vector3 {
+            x: self.y * other.z - self.z * other.y,
+            y: self.z * other.x - self.x * other.z,
+            z: self.x * other.y - self.y * other.x,
+        }
+    }
+
+    pub fn normalize(&mut self) {
+        let m = self.mag();
+        if m != 0.0 {
+            self.div(m);
+        }
+    }
+
+    pub fn lerp(&mut self, target: Vector3, amt: f32) {
+        self.x = unsafe { sys::math_lerp(self.x, target.x, amt) };
+        self.y = unsafe { sys::math_lerp(self.y, target.y, amt) };
+        self.z = unsafe { sys::math_lerp(self.z, target.z, amt) };
+    }
+}
+
 /// Low-level raw ABI imports.
 #[allow(non_camel_case_types)]
 pub mod sys {
@@ -531,6 +677,90 @@ pub mod sys {
         pub fn system_log(ptr: u32, len: u32);
         #[link_name = "wasm96_system_millis"]
         pub fn system_millis() -> u64;
+        #[link_name = "wasm96_system_day"]
+        pub fn system_day() -> u32;
+        #[link_name = "wasm96_system_hour"]
+        pub fn system_hour() -> u32;
+        #[link_name = "wasm96_system_minute"]
+        pub fn system_minute() -> u32;
+        #[link_name = "wasm96_system_month"]
+        pub fn system_month() -> u32;
+        #[link_name = "wasm96_system_second"]
+        pub fn system_second() -> u32;
+        #[link_name = "wasm96_system_year"]
+        pub fn system_year() -> u32;
+
+        // Math - Calculation
+        #[link_name = "wasm96_math_abs"]
+        pub fn math_abs(n: f32) -> f32;
+        #[link_name = "wasm96_math_ceil"]
+        pub fn math_ceil(n: f32) -> f32;
+        #[link_name = "wasm96_math_constrain"]
+        pub fn math_constrain(n: f32, low: f32, high: f32) -> f32;
+        #[link_name = "wasm96_math_dist"]
+        pub fn math_dist(x1: f32, y1: f32, x2: f32, y2: f32) -> f32;
+        #[link_name = "wasm96_math_exp"]
+        pub fn math_exp(n: f32) -> f32;
+        #[link_name = "wasm96_math_floor"]
+        pub fn math_floor(n: f32) -> f32;
+        #[link_name = "wasm96_math_fract"]
+        pub fn math_fract(n: f32) -> f32;
+        #[link_name = "wasm96_math_lerp"]
+        pub fn math_lerp(start: f32, stop: f32, amt: f32) -> f32;
+        #[link_name = "wasm96_math_log"]
+        pub fn math_log(n: f32) -> f32;
+        #[link_name = "wasm96_math_mag"]
+        pub fn math_mag(x: f32, y: f32) -> f32;
+        #[link_name = "wasm96_math_map"]
+        pub fn math_map(value: f32, start1: f32, stop1: f32, start2: f32, stop2: f32) -> f32;
+        #[link_name = "wasm96_math_max"]
+        pub fn math_max(a: f32, b: f32) -> f32;
+        #[link_name = "wasm96_math_min"]
+        pub fn math_min(a: f32, b: f32) -> f32;
+        #[link_name = "wasm96_math_norm"]
+        pub fn math_norm(value: f32, start: f32, stop: f32) -> f32;
+        #[link_name = "wasm96_math_pow"]
+        pub fn math_pow(n: f32, e: f32) -> f32;
+        #[link_name = "wasm96_math_round"]
+        pub fn math_round(n: f32) -> f32;
+        #[link_name = "wasm96_math_sq"]
+        pub fn math_sq(n: f32) -> f32;
+        #[link_name = "wasm96_math_sqrt"]
+        pub fn math_sqrt(n: f32) -> f32;
+
+        // Math - Trigonometry
+        #[link_name = "wasm96_math_acos"]
+        pub fn math_acos(value: f32) -> f32;
+        #[link_name = "wasm96_math_asin"]
+        pub fn math_asin(value: f32) -> f32;
+        #[link_name = "wasm96_math_atan"]
+        pub fn math_atan(value: f32) -> f32;
+        #[link_name = "wasm96_math_atan2"]
+        pub fn math_atan2(y: f32, x: f32) -> f32;
+        #[link_name = "wasm96_math_cos"]
+        pub fn math_cos(angle: f32) -> f32;
+        #[link_name = "wasm96_math_sin"]
+        pub fn math_sin(angle: f32) -> f32;
+        #[link_name = "wasm96_math_tan"]
+        pub fn math_tan(angle: f32) -> f32;
+        #[link_name = "wasm96_math_degrees"]
+        pub fn math_degrees(radians: f32) -> f32;
+        #[link_name = "wasm96_math_radians"]
+        pub fn math_radians(degrees: f32) -> f32;
+
+        // Math - Random & Noise
+        #[link_name = "wasm96_math_random"]
+        pub fn math_random(min: f32, max: f32) -> f32;
+        #[link_name = "wasm96_math_random_seed"]
+        pub fn math_random_seed(seed: u32);
+        #[link_name = "wasm96_math_random_gaussian"]
+        pub fn math_random_gaussian(mean: f32, sd: f32) -> f32;
+        #[link_name = "wasm96_math_noise"]
+        pub fn math_noise(x: f32, y: f32, z: f32) -> f32;
+        #[link_name = "wasm96_math_noise_seed"]
+        pub fn math_noise_seed(seed: u32);
+        #[link_name = "wasm96_math_noise_detail"]
+        pub fn math_noise_detail(lod: u32, falloff: f32);
     }
 }
 
@@ -1362,15 +1592,185 @@ pub mod system {
     pub fn millis() -> u64 {
         unsafe { sys::system_millis() }
     }
+
+    pub fn day() -> u32 {
+        unsafe { sys::system_day() }
+    }
+
+    pub fn hour() -> u32 {
+        unsafe { sys::system_hour() }
+    }
+
+    pub fn minute() -> u32 {
+        unsafe { sys::system_minute() }
+    }
+
+    pub fn month() -> u32 {
+        unsafe { sys::system_month() }
+    }
+
+    pub fn second() -> u32 {
+        unsafe { sys::system_second() }
+    }
+
+    pub fn year() -> u32 {
+        unsafe { sys::system_year() }
+    }
 }
 
-/// Convenience prelude for guest apps.
+pub mod math {
+    use super::sys;
+
+    pub fn abs(n: f32) -> f32 {
+        unsafe { sys::math_abs(n) }
+    }
+
+    pub fn ceil(n: f32) -> f32 {
+        unsafe { sys::math_ceil(n) }
+    }
+
+    pub fn constrain(n: f32, low: f32, high: f32) -> f32 {
+        unsafe { sys::math_constrain(n, low, high) }
+    }
+
+    pub fn dist(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+        unsafe { sys::math_dist(x1, y1, x2, y2) }
+    }
+
+    pub fn exp(n: f32) -> f32 {
+        unsafe { sys::math_exp(n) }
+    }
+
+    pub fn floor(n: f32) -> f32 {
+        unsafe { sys::math_floor(n) }
+    }
+
+    pub fn fract(n: f32) -> f32 {
+        unsafe { sys::math_fract(n) }
+    }
+
+    pub fn lerp(start: f32, stop: f32, amt: f32) -> f32 {
+        unsafe { sys::math_lerp(start, stop, amt) }
+    }
+
+    pub fn log(n: f32) -> f32 {
+        unsafe { sys::math_log(n) }
+    }
+
+    pub fn mag(x: f32, y: f32) -> f32 {
+        unsafe { sys::math_mag(x, y) }
+    }
+
+    pub fn map(value: f32, start1: f32, stop1: f32, start2: f32, stop2: f32) -> f32 {
+        unsafe { sys::math_map(value, start1, stop1, start2, stop2) }
+    }
+
+    pub fn max(a: f32, b: f32) -> f32 {
+        unsafe { sys::math_max(a, b) }
+    }
+
+    pub fn min(a: f32, b: f32) -> f32 {
+        unsafe { sys::math_min(a, b) }
+    }
+
+    pub fn norm(value: f32, start: f32, stop: f32) -> f32 {
+        unsafe { sys::math_norm(value, start, stop) }
+    }
+
+    pub fn pow(n: f32, e: f32) -> f32 {
+        unsafe { sys::math_pow(n, e) }
+    }
+
+    pub fn round(n: f32) -> f32 {
+        unsafe { sys::math_round(n) }
+    }
+
+    pub fn sq(n: f32) -> f32 {
+        unsafe { sys::math_sq(n) }
+    }
+
+    pub fn sqrt(n: f32) -> f32 {
+        unsafe { sys::math_sqrt(n) }
+    }
+
+    pub fn acos(value: f32) -> f32 {
+        unsafe { sys::math_acos(value) }
+    }
+
+    pub fn asin(value: f32) -> f32 {
+        unsafe { sys::math_asin(value) }
+    }
+
+    pub fn atan(value: f32) -> f32 {
+        unsafe { sys::math_atan(value) }
+    }
+
+    pub fn atan2(y: f32, x: f32) -> f32 {
+        unsafe { sys::math_atan2(y, x) }
+    }
+
+    pub fn cos(angle: f32) -> f32 {
+        unsafe { sys::math_cos(angle) }
+    }
+
+    pub fn sin(angle: f32) -> f32 {
+        unsafe { sys::math_sin(angle) }
+    }
+
+    pub fn tan(angle: f32) -> f32 {
+        unsafe { sys::math_tan(angle) }
+    }
+
+    pub fn degrees(radians: f32) -> f32 {
+        unsafe { sys::math_degrees(radians) }
+    }
+
+    pub fn radians(degrees: f32) -> f32 {
+        unsafe { sys::math_radians(degrees) }
+    }
+
+    pub fn random(min: f32, max: f32) -> f32 {
+        unsafe { sys::math_random(min, max) }
+    }
+
+    pub fn random_seed(seed: u32) {
+        unsafe { sys::math_random_seed(seed) }
+    }
+
+    pub fn random_gaussian(mean: f32, sd: f32) -> f32 {
+        unsafe { sys::math_random_gaussian(mean, sd) }
+    }
+
+    pub fn noise(x: f32, y: f32, z: f32) -> f32 {
+        unsafe { sys::math_noise(x, y, z) }
+    }
+
+    pub fn noise_seed(seed: u32) {
+        unsafe { sys::math_noise_seed(seed) }
+    }
+
+    pub fn noise_detail(lod: u32, falloff: f32) {
+        unsafe { sys::math_noise_detail(lod, falloff) }
+    }
+
+    pub fn create_vector(x: f32, y: f32) -> crate::Vector2 {
+        crate::Vector2::new(x, y)
+    }
+
+    pub fn create_vector3(x: f32, y: f32, z: f32) -> crate::Vector3 {
+        crate::Vector3::new(x, y, z)
+    }
+}
+
 pub mod prelude {
     pub use crate::Button;
     pub use crate::TextSize;
+    pub use crate::Vector2;
+    pub use crate::Vector3;
     pub use crate::audio;
     pub use crate::graphics;
     pub use crate::input;
+    pub use crate::math;
     pub use crate::storage;
     pub use crate::system;
 }

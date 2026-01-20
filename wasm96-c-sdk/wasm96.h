@@ -63,6 +63,17 @@ typedef struct {
     uint32_t height;
 } wasm96_text_size_t;
 
+typedef struct {
+    float x;
+    float y;
+} wasm96_vector2_t;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} wasm96_vector3_t;
+
 // Low-level raw ABI imports.
 extern void wasm96_graphics_set_size(uint32_t width, uint32_t height) WASM96_WASM_IMPORT("env", "wasm96_graphics_set_size");
 extern void wasm96_graphics_set_color(uint32_t r, uint32_t g, uint32_t b, uint32_t a) WASM96_WASM_IMPORT("env", "wasm96_graphics_set_color");
@@ -168,9 +179,54 @@ extern void wasm96_storage_save(uint64_t key, const uint8_t* data_ptr, uint32_t 
 extern uint64_t wasm96_storage_load(uint64_t key) WASM96_WASM_IMPORT("env", "wasm96_storage_load");
 extern void wasm96_storage_free(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("env", "wasm96_storage_free");
 
+// Math - Calculation
+extern float wasm96_math_abs(float n) WASM96_WASM_IMPORT("env", "wasm96_math_abs");
+extern float wasm96_math_ceil(float n) WASM96_WASM_IMPORT("env", "wasm96_math_ceil");
+extern float wasm96_math_constrain(float n, float low, float high) WASM96_WASM_IMPORT("env", "wasm96_math_constrain");
+extern float wasm96_math_dist(float x1, float y1, float x2, float y2) WASM96_WASM_IMPORT("env", "wasm96_math_dist");
+extern float wasm96_math_exp(float n) WASM96_WASM_IMPORT("env", "wasm96_math_exp");
+extern float wasm96_math_floor(float n) WASM96_WASM_IMPORT("env", "wasm96_math_floor");
+extern float wasm96_math_fract(float n) WASM96_WASM_IMPORT("env", "wasm96_math_fract");
+extern float wasm96_math_lerp(float start, float stop, float amt) WASM96_WASM_IMPORT("env", "wasm96_math_lerp");
+extern float wasm96_math_log(float n) WASM96_WASM_IMPORT("env", "wasm96_math_log");
+extern float wasm96_math_mag(float x, float y) WASM96_WASM_IMPORT("env", "wasm96_math_mag");
+extern float wasm96_math_map(float value, float start1, float stop1, float start2, float stop2) WASM96_WASM_IMPORT("env", "wasm96_math_map");
+extern float wasm96_math_max(float a, float b) WASM96_WASM_IMPORT("env", "wasm96_math_max");
+extern float wasm96_math_min(float a, float b) WASM96_WASM_IMPORT("env", "wasm96_math_min");
+extern float wasm96_math_norm(float value, float start, float stop) WASM96_WASM_IMPORT("env", "wasm96_math_norm");
+extern float wasm96_math_pow(float n, float e) WASM96_WASM_IMPORT("env", "wasm96_math_pow");
+extern float wasm96_math_round(float n) WASM96_WASM_IMPORT("env", "wasm96_math_round");
+extern float wasm96_math_sq(float n) WASM96_WASM_IMPORT("env", "wasm96_math_sq");
+extern float wasm96_math_sqrt(float n) WASM96_WASM_IMPORT("env", "wasm96_math_sqrt");
+
+// Math - Trigonometry
+extern float wasm96_math_acos(float value) WASM96_WASM_IMPORT("env", "wasm96_math_acos");
+extern float wasm96_math_asin(float value) WASM96_WASM_IMPORT("env", "wasm96_math_asin");
+extern float wasm96_math_atan(float value) WASM96_WASM_IMPORT("env", "wasm96_math_atan");
+extern float wasm96_math_atan2(float y, float x) WASM96_WASM_IMPORT("env", "wasm96_math_atan2");
+extern float wasm96_math_cos(float angle) WASM96_WASM_IMPORT("env", "wasm96_math_cos");
+extern float wasm96_math_sin(float angle) WASM96_WASM_IMPORT("env", "wasm96_math_sin");
+extern float wasm96_math_tan(float angle) WASM96_WASM_IMPORT("env", "wasm96_math_tan");
+extern float wasm96_math_degrees(float radians) WASM96_WASM_IMPORT("env", "wasm96_math_degrees");
+extern float wasm96_math_radians(float degrees) WASM96_WASM_IMPORT("env", "wasm96_math_radians");
+
+// Math - Random & Noise
+extern float wasm96_math_random(float min, float max) WASM96_WASM_IMPORT("env", "wasm96_math_random");
+extern void wasm96_math_random_seed(uint32_t seed) WASM96_WASM_IMPORT("env", "wasm96_math_random_seed");
+extern float wasm96_math_random_gaussian(float mean, float sd) WASM96_WASM_IMPORT("env", "wasm96_math_random_gaussian");
+extern float wasm96_math_noise(float x, float y, float z) WASM96_WASM_IMPORT("env", "wasm96_math_noise");
+extern void wasm96_math_noise_seed(uint32_t seed) WASM96_WASM_IMPORT("env", "wasm96_math_noise_seed");
+extern void wasm96_math_noise_detail(uint32_t lod, float falloff) WASM96_WASM_IMPORT("env", "wasm96_math_noise_detail");
+
 // System
 extern void wasm96_system_log(const uint8_t* ptr, uint32_t len) WASM96_WASM_IMPORT("env", "wasm96_system_log");
 extern uint64_t wasm96_system_millis(void) WASM96_WASM_IMPORT("env", "wasm96_system_millis");
+extern uint32_t wasm96_system_day(void) WASM96_WASM_IMPORT("env", "wasm96_system_day");
+extern uint32_t wasm96_system_hour(void) WASM96_WASM_IMPORT("env", "wasm96_system_hour");
+extern uint32_t wasm96_system_minute(void) WASM96_WASM_IMPORT("env", "wasm96_system_minute");
+extern uint32_t wasm96_system_month(void) WASM96_WASM_IMPORT("env", "wasm96_system_month");
+extern uint32_t wasm96_system_second(void) WASM96_WASM_IMPORT("env", "wasm96_system_second");
+extern uint32_t wasm96_system_year(void) WASM96_WASM_IMPORT("env", "wasm96_system_year");
 
 // Hash function
 static inline uint64_t wasm96_hash_key(const char* key) {

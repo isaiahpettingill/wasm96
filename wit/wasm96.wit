@@ -276,11 +276,95 @@ world wasm96 {
     load: func(key: string) -> list<u8>;
   }
 
+  import math: interface {
+    /// Calculate the absolute value of a number.
+    abs: func(n: f32) -> f32;
+    /// Calculate the closest integer value that is greater than or equal to the value of the parameter.
+    ceil: func(n: f32) -> f32;
+    /// Constrains a value to not exceed a maximum and minimum value.
+    constrain: func(n: f32, low: f32, high: f32) -> f32;
+    /// Calculates the distance between two points.
+    dist: func(x1: f32, y1: f32, x2: f32, y2: f32) -> f32;
+    /// Returns Euler's number e raised to the power of the n parameter.
+    exp: func(n: f32) -> f32;
+    /// Calculates the closest integer value that is less than or equal to the value of the parameter.
+    floor: func(n: f32) -> f32;
+    /// Calculates the fractional part of a number.
+    fract: func(n: f32) -> f32;
+    /// Calculates a number between two numbers at a specific increment.
+    lerp: func(start: f32, stop: f32, amt: f32) -> f32;
+    /// Returns the natural logarithm (base-e) of a number.
+    log: func(n: f32) -> f32;
+    /// Calculates the magnitude (or length) of a vector.
+    mag: func(x: f32, y: f32) -> f32;
+    /// Re-maps a number from one range to another.
+    map: func(value: f32, start1: f32, stop1: f32, start2: f32, stop2: f32) -> f32;
+    /// Determines the largest value in a sequence of numbers.
+    max: func(a: f32, b: f32) -> f32;
+    /// Determines the smallest value in a sequence of numbers.
+    min: func(a: f32, b: f32) -> f32;
+    /// Normalizes a number from another range into a value between 0 and 1.
+    norm: func(value: f32, start: f32, stop: f32) -> f32;
+    /// Facilitates exponential expressions.
+    pow: func(n: f32, e: f32) -> f32;
+    /// Calculates the integer closest to the parameter.
+    round: func(n: f32) -> f32;
+    /// Calculates the square of a number.
+    sq: func(n: f32) -> f32;
+    /// Calculates the square root of a number.
+    sqrt: func(n: f32) -> f32;
+
+    /// The inverse of cos(), returns the arc cosine of a value.
+    acos: func(value: f32) -> f32;
+    /// The inverse of sin(), returns the arc sine of a value.
+    asin: func(value: f32) -> f32;
+    /// The inverse of tan(), returns the arc tangent of a value.
+    atan: func(value: f32) -> f32;
+    /// Calculates the angle (in radians) from a point to the coordinate origin.
+    atan2: func(y: f32, x: f32) -> f32;
+    /// Calculates the cosine of an angle.
+    cos: func(angle: f32) -> f32;
+    /// Calculates the sine of an angle.
+    sin: func(angle: f32) -> f32;
+    /// Calculates the tangent of an angle.
+    tan: func(angle: f32) -> f32;
+    /// Converts a radian measurement to its corresponding value in degrees.
+    degrees: func(radians: f32) -> f32;
+    /// Converts a degree measurement to its corresponding value in radians.
+    radians: func(degrees: f32) -> f32;
+
+    /// Returns a random floating-point number.
+    random: func(min: f32, max: f32) -> f32;
+    /// Sets the seed value for random().
+    random-seed: func(seed: u32);
+    /// Returns a random floating-point number with a Gaussian distribution.
+    random-gaussian: func(mean: f32, sd: f32) -> f32;
+    /// Returns the Perlin noise value at specified coordinates.
+    noise: func(x: f32, y: f32, z: f32) -> f32;
+    /// Sets the seed value for noise().
+    noise-seed: func(seed: u32);
+    /// Adjusts the character and level of detail produced by the Perlin noise function.
+    noise-detail: func(lod: u32, falloff: f32);
+  }
+
   import system: interface {
     /// Log a message to the host console.
     log: func(message: string);
 
     /// Get the number of milliseconds since the app started.
     millis: func() -> u64;
+
+    /// Get the current day (1-31).
+    day: func() -> u32;
+    /// Get the current hour (0-23).
+    hour: func() -> u32;
+    /// Get the current minute (0-59).
+    minute: func() -> u32;
+    /// Get the current month (1-12).
+    month: func() -> u32;
+    /// Get the current second (0-59).
+    second: func() -> u32;
+    /// Get the current year.
+    year: func() -> u32;
   }
 }

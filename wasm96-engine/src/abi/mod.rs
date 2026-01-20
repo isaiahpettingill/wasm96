@@ -285,6 +285,51 @@ pub mod host_imports {
     // System
     pub const SYSTEM_LOG: &str = "wasm96_system_log";
     pub const SYSTEM_MILLIS: &str = "wasm96_system_millis";
+    pub const SYSTEM_DAY: &str = "wasm96_system_day";
+    pub const SYSTEM_HOUR: &str = "wasm96_system_hour";
+    pub const SYSTEM_MINUTE: &str = "wasm96_system_minute";
+    pub const SYSTEM_MONTH: &str = "wasm96_system_month";
+    pub const SYSTEM_SECOND: &str = "wasm96_system_second";
+    pub const SYSTEM_YEAR: &str = "wasm96_system_year";
+
+    // Math - Calculation
+    pub const MATH_ABS: &str = "wasm96_math_abs";
+    pub const MATH_CEIL: &str = "wasm96_math_ceil";
+    pub const MATH_CONSTRAIN: &str = "wasm96_math_constrain";
+    pub const MATH_DIST: &str = "wasm96_math_dist";
+    pub const MATH_EXP: &str = "wasm96_math_exp";
+    pub const MATH_FLOOR: &str = "wasm96_math_floor";
+    pub const MATH_FRACT: &str = "wasm96_math_fract";
+    pub const MATH_LERP: &str = "wasm96_math_lerp";
+    pub const MATH_LOG: &str = "wasm96_math_log";
+    pub const MATH_MAG: &str = "wasm96_math_mag";
+    pub const MATH_MAP: &str = "wasm96_math_map";
+    pub const MATH_MAX: &str = "wasm96_math_max";
+    pub const MATH_MIN: &str = "wasm96_math_min";
+    pub const MATH_NORM: &str = "wasm96_math_norm";
+    pub const MATH_POW: &str = "wasm96_math_pow";
+    pub const MATH_ROUND: &str = "wasm96_math_round";
+    pub const MATH_SQ: &str = "wasm96_math_sq";
+    pub const MATH_SQRT: &str = "wasm96_math_sqrt";
+
+    // Math - Trigonometry
+    pub const MATH_ACOS: &str = "wasm96_math_acos";
+    pub const MATH_ASIN: &str = "wasm96_math_asin";
+    pub const MATH_ATAN: &str = "wasm96_math_atan";
+    pub const MATH_ATAN2: &str = "wasm96_math_atan2";
+    pub const MATH_COS: &str = "wasm96_math_cos";
+    pub const MATH_SIN: &str = "wasm96_math_sin";
+    pub const MATH_TAN: &str = "wasm96_math_tan";
+    pub const MATH_DEGREES: &str = "wasm96_math_degrees";
+    pub const MATH_RADIANS: &str = "wasm96_math_radians";
+
+    // Math - Random & Noise
+    pub const MATH_RANDOM: &str = "wasm96_math_random";
+    pub const MATH_RANDOM_SEED: &str = "wasm96_math_random_seed";
+    pub const MATH_RANDOM_GAUSSIAN: &str = "wasm96_math_random_gaussian";
+    pub const MATH_NOISE: &str = "wasm96_math_noise";
+    pub const MATH_NOISE_SEED: &str = "wasm96_math_noise_seed";
+    pub const MATH_NOISE_DETAIL: &str = "wasm96_math_noise_detail";
 }
 
 /// Joypad button ids.
