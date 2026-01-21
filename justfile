@@ -43,6 +43,9 @@ dist-examples:
 build-core:
     cargo build -p wasm96-libretro --release
 
+build-desktop:
+    cargo build -p wasm96-desktop --release
+
 # --- Release helpers (core) ---------------------------------------------------
 #
 # These targets help you:
@@ -93,6 +96,9 @@ run_command := if os_family() == "windows" { "/c/RetroArch-Win64/retroarch.exe -
 
 run content-path: build-core
     RUST_BACKTRACE=1 {{ run_command }} {{ content-path }} --verbose
+
+desktop:
+    cargo run -p wasm96-desktop
 
 build-example example:
     cargo build -p {{ example }} --release --target wasm32-unknown-unknown

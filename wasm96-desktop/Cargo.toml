@@ -1,0 +1,37 @@
+[package]
+name = "wasm96-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core engine
+wasm96-engine = { path = "../wasm96-engine" }
+
+# Error handling
+anyhow = "1.0.99"
+
+# UI and Windowing
+# eframe provides both egui for the UI and the windowing/graphics context.
+eframe = "0.28"
+egui = "0.28"
+
+# UI for the File Menu
+# rfd (Rust File Dialog) works well on Windows, Linux, and macOS.
+rfd = "0.14"
+
+# Input
+# gilrs for gamepad support (DragonRise, Xbox, etc.)
+gilrs = "0.10"
+
+# Audio
+# cpal for low-level audio output
+cpal = "0.15"
+ringbuf = "0.4"
+
+[features]
+default = []
+
+[[bin]]
+name = "wasm96"
+path = "src/main.rs"

@@ -96,6 +96,20 @@ If a guest calls `wasm96_graphics_text_key(...)` or `wasm96_graphics_text_measur
 
 This fallback exists so guests can render text “out of the box” without explicit font registration. Guests that need a specific font/size should still register and use their own keyed font.
 
+# Desktop Frontend
+
+A pure-Rust desktop frontend is available for running `wasm96` content without RetroArch. It features a file menu for loading games and supports keyboard and gamepad input (including DragonRise SNES-style and modern Xbox controllers).
+
+## Running the Desktop Frontend
+```bash
+just desktop
+```
+
+## Building the Desktop Frontend
+```bash
+cargo build -p wasm96-desktop --release
+```
+
 # Build the libretro core
 
 ## New Architecture (Recommended)

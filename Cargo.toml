@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "wasm96-engine",
   "wasm96-libretro",
+  "wasm96-desktop",
   "wasm96-sdk",
   "example/rust-guest",
   "example/rust-guest-mp-platformer",
