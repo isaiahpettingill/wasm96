@@ -13,8 +13,10 @@ anyhow = "1.0.99"
 
 # UI and Windowing
 # eframe provides both egui for the UI and the windowing/graphics context.
-eframe = "0.28"
+eframe = { version = "0.28", features = ["glow", "wgpu"] }
 egui = "0.28"
+gl = "0.14"
+wgpu = "0.20"
 
 # UI for the File Menu
 # rfd (Rust File Dialog) works well on Windows, Linux, and macOS.

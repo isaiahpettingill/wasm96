@@ -550,6 +550,11 @@ pub fn graphics_mesh_create(
         let vertices: &[Vertex] = bytemuck::cast_slice(v_slice);
         let indices: &[u32] = bytemuck::cast_slice(i_slice);
 
+        // Also notify wgpu backend
+        let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(v_slice);
+        let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
+        super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
         (vertices.to_vec(), indices.to_vec())
     };
 
@@ -628,10 +633,16 @@ pub fn graphics_mesh_create(
         key,
         Mesh {
             vao,
-            index_count: i_len as i32,
+            index_count: indices.len() as i32,
             texture_key: None,
         },
     );
+
+    // Also notify wgpu backend
+    let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(&vertices);
+    let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
+    super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
     1
 }
 
@@ -865,6 +876,11 @@ pub fn graphics_mesh_create_obj(
         },
     );
 
+    // Also notify wgpu backend
+    let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(&vertices);
+    let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
+    super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
     1
 }
 
@@ -898,6 +914,9 @@ pub fn graphics_mesh_create_stl(_env: &mut (), _key: u64, _ptr: u32, _len: u32) 
 ///
 /// Returns 1 on success, 0 on failure (missing mesh).
 pub fn graphics_mesh_set_texture(mesh_key: u64, image_key: u64) -> u32 {
+    // Notify wgpu backend
+    super::wgpu_backend::wgpu_mesh_set_texture(mesh_key, image_key);
+
     let mut store = MESH_STORE.lock().unwrap();
     let mesh = match store.get_mut(&mesh_key) {
         Some(m) => m,
@@ -920,6 +939,9 @@ pub fn graphics_mesh_draw(
     sy: f32,
     sz: f32,
 ) {
+    // Notify wgpu backend
+    super::wgpu_backend::wgpu_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {
         return;

@@ -610,30 +610,31 @@ pub fn graphics_end_clip() {
 
 /// Clear the screen to a specific color.
 pub fn graphics_background(r: u32, g: u32, b: u32) {
-    // On non-wasm32 targets we may have a 3D backend that renders into a GL framebuffer.
+    // On non-wasm32 targets we may have a 3D backend that renders into a GL or WGPU framebuffer.
     // On wasm32 the 3D backend may be disabled/implemented differently, so avoid referencing it.
     #[cfg(not(target_arch = "wasm32"))]
-    let gl_cleared = {
+    let hw_cleared = {
         let is_3d = super::graphics3d::STATE_3D.lock().unwrap().enabled;
         if is_3d {
-            super::graphics3d::clear_framebuffer(
-                r as f32 / 255.0,
-                g as f32 / 255.0,
-                b as f32 / 255.0,
-                1.0,
-            )
+            let r_f = r as f32 / 255.0;
+            let g_f = g as f32 / 255.0;
+            let b_f = b as f32 / 255.0;
+
+            let gl_cleared = super::graphics3d::clear_framebuffer(r_f, g_f, b_f, 1.0);
+            let wgpu_cleared = super::wgpu_backend::wgpu_clear_framebuffer(r_f, g_f, b_f, 1.0);
+            gl_cleared || wgpu_cleared
         } else {
             false
         }
     };
     #[cfg(target_arch = "wasm32")]
-    let gl_cleared = false;
+    let hw_cleared = false;
 
     let mut s = match global().lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    if gl_cleared {
+    if hw_cleared {
         // Clear software framebuffer to transparent so it doesn't occlude the 3D scene
         s.video.framebuffer.fill(0x00000000);
         return;

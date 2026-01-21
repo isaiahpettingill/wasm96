@@ -822,6 +822,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
          sy: f32,
          sz: f32| {
             av::graphics_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+            av::wgpu_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
         },
     )?;
 

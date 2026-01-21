@@ -100,6 +100,13 @@ run content-path: build-core
 desktop:
     cargo run -p wasm96-desktop
 
+desktop-run content-path:
+    cargo run -p wasm96-desktop -- {{ content-path }}
+
+desktop-3d:
+    cargo build -p rust-guest-3d --release --target wasm32-unknown-unknown
+    cargo run -p wasm96-desktop -- ./target/wasm32-unknown-unknown/release/rust_guest_3d.wasm
+
 build-example example:
     cargo build -p {{ example }} --release --target wasm32-unknown-unknown
 

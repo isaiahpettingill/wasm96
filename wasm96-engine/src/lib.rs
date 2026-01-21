@@ -34,6 +34,28 @@ pub trait PlatformGraphics {
         false
     }
 
+    /// Initialize wgpu rendering context (if supported).
+    ///
+    /// Frontends using wgpu should call this to provide the device and queue.
+    fn init_wgpu(
+        &mut self,
+        _device: std::sync::Arc<wgpu::Device>,
+        _queue: std::sync::Arc<wgpu::Queue>,
+        _format: wgpu::TextureFormat,
+    ) -> bool {
+        false
+    }
+
+    /// Get the wgpu texture view for the current frame.
+    fn get_wgpu_view(&mut self) -> Option<std::sync::Arc<wgpu::TextureView>> {
+        None
+    }
+
+    /// Get the size of the wgpu texture view.
+    fn get_wgpu_view_size(&mut self) -> Option<(u32, u32)> {
+        None
+    }
+
     /// Get the current hardware framebuffer object.
     ///
     /// # Returns
@@ -87,6 +109,14 @@ pub trait PlatformGraphics {
     /// * `width` - New visible width
     /// * `height` - New visible height
     fn notify_geometry_changed(&mut self, width: u32, height: u32);
+
+    /// Present a video frame using wgpu.
+    ///
+    /// # Arguments
+    /// * `view` - The texture view to render into
+    /// * `width` - Visible width
+    /// * `height` - Visible height
+    fn present_wgpu_frame(&mut self, _view: &wgpu::TextureView, _width: u32, _height: u32) {}
 
     /// Present a video frame (backward compatibility method).
     ///
@@ -294,6 +324,16 @@ impl Engine {
     ///
     /// # Returns
     /// `Ok(())` on success, `Err` with details on failure
+    /// Initialize the wgpu backend for hardware-accelerated 3D.
+    pub fn init_wgpu(
+        &mut self,
+        device: std::sync::Arc<wgpu::Device>,
+        queue: std::sync::Arc<wgpu::Queue>,
+        format: wgpu::TextureFormat,
+    ) {
+        av::init_wgpu(device, queue, format);
+    }
+
     pub fn load_game_from_bytes(&mut self, data: &[u8]) -> Result<(), anyhow::Error> {
         // Ensure runtime exists so we have an Engine to compile against.
         if self.ensure_runtime().is_err() {
@@ -369,7 +409,29 @@ impl Engine {
         self.call_guest_draw();
 
         // Present video and drain audio.
-        av::video_present_host(callbacks);
+        if let Some(view) = callbacks.get_wgpu_view() {
+            let (width, height, sw_fb) = {
+                let s = state::global().lock().unwrap();
+                (s.video.width, s.video.height, s.video.framebuffer.clone())
+            };
+
+            // Avoid wgpu panic if the view size doesn't match the engine resolution yet.
+            // This can happen during resolution changes.
+            let size_ok = if let Some((vw, vh)) = callbacks.get_wgpu_view_size() {
+                vw == width && vh == height
+            } else {
+                true
+            };
+
+            if size_ok {
+                av::wgpu_present(&view, width, height, &sw_fb);
+                callbacks.present_wgpu_frame(&view, width, height);
+            } else {
+                av::video_present_host(callbacks);
+            }
+        } else {
+            av::video_present_host(callbacks);
+        }
         av::audio_drain_host(callbacks);
 
         // Clear callbacks from thread-local storage

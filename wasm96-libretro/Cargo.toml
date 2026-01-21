@@ -29,7 +29,7 @@ wasm96-libretro-sys = { path = "../wasm96-libretro-sys" }
 # - Native: may use OpenGL via `gl` (symbols resolved through libretro HW render callback)
 # - wasm32 (RetroArch Web): use `wgpu` with the WebGL backend
 gl = "0.14"
-wgpu = "28.0.0"
+wgpu = "0.20"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # wgpu on web uses wasm-bindgen/web-sys to get the canvas + (WebGL) context surface.

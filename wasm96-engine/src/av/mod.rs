@@ -32,6 +32,7 @@ pub mod resources;
 pub mod storage;
 pub mod tests;
 pub mod utils;
+pub mod wgpu_backend;
 
 // Re-export all public functions
 pub use audio::*;
@@ -41,3 +42,4 @@ pub use graphics3d::*;
 pub use math::*;
 pub use resources::AvError;
 pub use storage::*;
+pub use wgpu_backend::*;

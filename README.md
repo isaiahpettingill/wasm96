@@ -98,11 +98,18 @@ This fallback exists so guests can render text “out of the box” without expl
 
 # Desktop Frontend
 
-A pure-Rust desktop frontend is available for running `wasm96` content without RetroArch. It features a file menu for loading games and supports keyboard and gamepad input (including DragonRise SNES-style and modern Xbox controllers).
+A pure-Rust desktop frontend is available for running `wasm96` content without RetroArch. It features hardware-accelerated 3D rendering via `wgpu` (Vulkan/Metal/D3D), a file menu for loading games, and supports keyboard and gamepad input (including DragonRise SNES-style and modern Xbox controllers).
 
 ## Running the Desktop Frontend
 ```bash
+# Start the frontend with a file picker
 just desktop
+
+# Run a specific game
+just desktop-run path/to/game.w96
+
+# Run the 3D showcase
+just desktop-3d
 ```
 
 ## Building the Desktop Frontend
@@ -544,6 +551,9 @@ Tip:
 - The repository `justfile` also contains helper recipes for these cross-build + zip steps. Use those to avoid typos and keep the release process consistent.
 
 ## Recent Fixes
+
+### WGPU Desktop Frontend Fixes (engine)
+Fixed 3D rendering in the desktop frontend by implementing a depth buffer, enabling alpha blending for the 2D overlay, and ensuring the background clear color is correctly applied to the WGPU pass.
 
 ### Background Rendering Fix (engine)
 Fixed an issue where `graphics::background()` would fail to render a solid color in 2D mode. The software fallback now correctly sets the alpha channel to opaque (0xFF) to ensure the background is visible. Additionally, the engine now only attempts to use hardware-accelerated clearing when 3D mode is explicitly enabled by the guest, ensuring consistent behavior across 2D and 3D titles.
