@@ -364,27 +364,25 @@ fn setupScene() void {
 
     // Load and render the two bird OBJ models in this example directory.
     // These are small/lightweight and should be easier to validate than a huge scene.
-    const bird1_bytes = @embedFile("12248_Bird_v1_L2.obj");
-    const bird2_bytes = @embedFile("12249_Bird_v1_L2.obj");
-    bird1_loaded = wasm96.graphics.meshCreateObj("bird_12248", bird1_bytes);
-    bird2_loaded = wasm96.graphics.meshCreateObj("bird_12249", bird2_bytes);
+    // Register the .mtl and texture files using their exact filenames as keys.
+    // The core's meshCreateObj will automatically look up these resources when
+    // parsing the OBJ's material library.
+    const bird1_obj = @embedFile("12248_Bird_v1_L2.obj");
+    const bird1_mtl = @embedFile("12248_Bird_v1_L2.mtl");
+    const bird1_tex = @embedFile("12248_Bird_v1_diff.jpg");
 
-    // Register textures and bind them to the OBJ meshes.
-    //
-    // The bird MTL files reference `*_diff.jpg` for map_Kd/map_Ka; the core doesn't
-    // currently auto-load MTL, so we bind the diffuse texture manually.
-    const bird1_diff_jpg = @embedFile("12248_Bird_v1_diff.jpg");
-    const bird2_diff_jpg = @embedFile("12249_Bird_v1_diff.jpg");
+    const bird2_obj = @embedFile("12249_Bird_v1_L2.obj");
+    const bird2_mtl = @embedFile("12249_Bird_v1_L2.mtl");
+    const bird2_tex = @embedFile("12249_Bird_v1_diff.jpg");
 
-    _ = wasm96.graphics.jpegRegister("tex_bird_12248_diff", bird1_diff_jpg);
-    _ = wasm96.graphics.jpegRegister("tex_bird_12249_diff", bird2_diff_jpg);
+    _ = wasm96.graphics.mtlRegister("12248_Bird_v1_L2.mtl", bird1_mtl);
+    _ = wasm96.graphics.jpegRegister("12248_Bird_v1_diff.jpg", bird1_tex);
 
-    if (bird1_loaded) {
-        _ = wasm96.graphics.meshSetTexture("bird_12248", "tex_bird_12248_diff");
-    }
-    if (bird2_loaded) {
-        _ = wasm96.graphics.meshSetTexture("bird_12249", "tex_bird_12249_diff");
-    }
+    _ = wasm96.graphics.mtlRegister("12249_Bird_v1_L2.mtl", bird2_mtl);
+    _ = wasm96.graphics.jpegRegister("12249_Bird_v1_diff.jpg", bird2_tex);
+
+    bird1_loaded = wasm96.graphics.meshCreateObj("bird_12248", bird1_obj);
+    bird2_loaded = wasm96.graphics.meshCreateObj("bird_12249", bird2_obj);
 
     // 2D-only fallback HUD primitives:
     // Create a tiny 2D "pixel" mesh (a 1x1 quad) so we can draw visible HUD blocks

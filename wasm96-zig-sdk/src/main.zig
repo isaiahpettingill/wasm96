@@ -230,6 +230,7 @@ pub const sys = struct {
     extern fn wasm96_graphics_gif_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) void;
     extern fn wasm96_graphics_gif_unregister(key: u64) void;
 
+    extern fn wasm96_graphics_mtl_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_png_register(key: u64, data_ptr: [*]const u8, data_len: usize) u32;
     extern fn wasm96_graphics_png_draw_key(key: u64, x: i32, y: i32) void;
     extern fn wasm96_graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32) void;
@@ -583,6 +584,10 @@ pub const graphics = struct {
     }
 
     /// Register a PNG resource under a string key.
+    pub fn mtlRegister(key: []const u8, data: []const u8) bool {
+        return sys.wasm96_graphics_mtl_register(hashKey(key), data.ptr, data.len) != 0;
+    }
+
     pub fn pngRegister(key: []const u8, data: []const u8) bool {
         return sys.wasm96_graphics_png_register(hashKey(key), data.ptr, data.len) != 0;
     }

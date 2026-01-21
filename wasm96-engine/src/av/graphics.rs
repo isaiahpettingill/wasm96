@@ -1165,6 +1165,36 @@ pub fn graphics_image_jpeg(
 ///   list, this is a no-op and returns 0.
 /// - This keeps the host stateless regarding filesystem paths while still enabling OBJ+MTL style
 ///   materials in a "ROM-bytes only" environment.
+/// Register raw MTL bytes under a string key.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn graphics_mtl_register(
+    env: &mut Caller<'_, ()>,
+    key: u64,
+    data_ptr: u32,
+    data_len: u32,
+) -> u32 {
+    let mtl_bytes = match super::utils::read_guest_bytes(env, data_ptr, data_len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_mtls.insert(key, mtl_bytes);
+    1
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mtl_register(key: u64, data_ptr: u32, data_len: u32) -> u32 {
+    let mtl_bytes = match super::utils::read_guest_bytes(data_ptr, data_len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    res.keyed_mtls.insert(key, mtl_bytes);
+    1
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mtl_register_texture(
     env: &mut Caller<'_, ()>,

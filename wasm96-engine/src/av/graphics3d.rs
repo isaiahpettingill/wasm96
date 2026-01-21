@@ -660,17 +660,21 @@ pub fn graphics_mesh_create(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn hash_key(key: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in key.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
 pub fn graphics_mesh_create_obj(
     env: &mut wasmtime::Caller<'_, ()>,
     key: u64,
     ptr: u32,
     len: u32,
 ) -> u32 {
-    // Ensure GL is initialized (we need a live context to create buffers).
-    if GL_STATE.get().is_none() {
-        return 0;
-    }
-
     // Read OBJ bytes from guest memory.
     let obj_bytes = match read_guest_bytes(env, ptr, len) {
         Ok(b) => b,
@@ -688,7 +692,7 @@ pub fn graphics_mesh_create_obj(
     // so `material_loader` can parse MTL and we can register textures automatically.
     let mut reader = Cursor::new(obj_bytes);
 
-    let (models, _materials) = match tobj::load_obj_buf(
+    let (models, materials) = match tobj::load_obj_buf(
         &mut reader,
         &tobj::LoadOptions {
             // Use tobj's standard behavior as much as possible:
@@ -698,10 +702,23 @@ pub fn graphics_mesh_create_obj(
             single_index: true,
             ..Default::default()
         },
-        |_p: &Path| -> tobj::MTLLoadResult {
-            // No filesystem access / no provided MTL bytes in this call.
-            // Return an empty material list (Ok) so model loading proceeds.
-            Ok((Vec::new(), ahash::AHashMap::new()))
+        |p: &Path| -> tobj::MTLLoadResult {
+            // Look up MTL in registered resources by filename (hashed as key).
+            let filename = p.to_str().unwrap_or("");
+            let mtl_key = hash_key(filename);
+
+            let mtl_bytes = {
+                let res = super::resources::RESOURCES.lock().unwrap();
+                res.keyed_mtls.get(&mtl_key).cloned()
+            };
+
+            if let Some(bytes) = mtl_bytes {
+                let mut mtl_reader = Cursor::new(bytes);
+                tobj::load_mtl_buf(&mut mtl_reader)
+            } else {
+                // Return an empty material list (Ok) so model loading proceeds.
+                Ok((Vec::new(), ahash::AHashMap::new()))
+            }
         },
     ) {
         Ok(r) => r,
@@ -799,71 +816,73 @@ pub fn graphics_mesh_create_obj(
         return 0;
     }
 
-    // Create GL buffers (same path as `graphics_mesh_create`, but we already own the vectors).
+    // Create GL buffers if GL is available.
     let mut vao = 0;
-    let mut vbo = 0;
-    let mut ebo = 0;
+    if GL_STATE.get().is_some() {
+        let mut vbo = 0;
+        let mut ebo = 0;
 
-    unsafe {
-        gl::GenVertexArrays(1, &mut vao);
-        gl::GenBuffers(1, &mut vbo);
-        gl::GenBuffers(1, &mut ebo);
+        unsafe {
+            gl::GenVertexArrays(1, &mut vao);
+            gl::GenBuffers(1, &mut vbo);
+            gl::GenBuffers(1, &mut ebo);
 
-        gl::BindVertexArray(vao);
+            gl::BindVertexArray(vao);
 
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl::BufferData(
-            gl::ARRAY_BUFFER,
-            (vertices.len() * std::mem::size_of::<Vertex>()) as isize,
-            vertices.as_ptr() as *const c_void,
-            gl::STATIC_DRAW,
-        );
+            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (vertices.len() * std::mem::size_of::<Vertex>()) as isize,
+                vertices.as_ptr() as *const c_void,
+                gl::STATIC_DRAW,
+            );
 
-        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-        gl::BufferData(
-            gl::ELEMENT_ARRAY_BUFFER,
-            (indices.len() * 4) as isize,
-            indices.as_ptr() as *const c_void,
-            gl::STATIC_DRAW,
-        );
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+            gl::BufferData(
+                gl::ELEMENT_ARRAY_BUFFER,
+                (indices.len() * 4) as isize,
+                indices.as_ptr() as *const c_void,
+                gl::STATIC_DRAW,
+            );
 
-        // Vertex attributes
-        // 0: Position (3 floats)
-        gl::VertexAttribPointer(
-            0,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            std::mem::size_of::<Vertex>() as i32,
-            0 as *const c_void,
-        );
-        gl::EnableVertexAttribArray(0);
+            // Vertex attributes
+            // 0: Position (3 floats)
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                std::mem::size_of::<Vertex>() as i32,
+                0 as *const c_void,
+            );
+            gl::EnableVertexAttribArray(0);
 
-        // 1: UV (2 floats)
-        gl::VertexAttribPointer(
-            1,
-            2,
-            gl::FLOAT,
-            gl::FALSE,
-            std::mem::size_of::<Vertex>() as i32,
-            12 as *const c_void,
-        );
-        gl::EnableVertexAttribArray(1);
+            // 1: UV (2 floats)
+            gl::VertexAttribPointer(
+                1,
+                2,
+                gl::FLOAT,
+                gl::FALSE,
+                std::mem::size_of::<Vertex>() as i32,
+                12 as *const c_void,
+            );
+            gl::EnableVertexAttribArray(1);
 
-        // 2: Normal (3 floats)
-        gl::VertexAttribPointer(
-            2,
-            3,
-            gl::FLOAT,
-            gl::FALSE,
-            std::mem::size_of::<Vertex>() as i32,
-            20 as *const c_void,
-        );
-        gl::EnableVertexAttribArray(2);
+            // 2: Normal (3 floats)
+            gl::VertexAttribPointer(
+                2,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                std::mem::size_of::<Vertex>() as i32,
+                20 as *const c_void,
+            );
+            gl::EnableVertexAttribArray(2);
 
-        gl::BindVertexArray(0);
+            gl::BindVertexArray(0);
 
-        check_gl_error("graphics_mesh_create_obj");
+            check_gl_error("graphics_mesh_create_obj");
+        }
     }
 
     let mut store = MESH_STORE.lock().unwrap();
@@ -880,6 +899,22 @@ pub fn graphics_mesh_create_obj(
     let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(&vertices);
     let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
     super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
+    // Automatically set texture if MTL diffuse texture is present
+    if let Ok(mats) = materials {
+        for mat in mats.iter() {
+            if let Some(ref tex_name) = mat.diffuse_texture {
+                if !tex_name.is_empty() {
+                    let tex_key = hash_key(tex_name);
+                    if let Some(mesh) = store.get_mut(&key) {
+                        mesh.texture_key = Some(tex_key);
+                    }
+                    super::wgpu_backend::wgpu_mesh_set_texture(key, tex_key);
+                    break;
+                }
+            }
+        }
+    }
 
     1
 }

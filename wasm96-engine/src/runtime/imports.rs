@@ -298,6 +298,14 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::GRAPHICS_MTL_REGISTER,
+        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
+            av::graphics_mtl_register(&mut caller, key, data_ptr, data_len)
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_REGISTER,
         |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
             av::graphics_png_register(&mut caller, key, data_ptr, data_len)

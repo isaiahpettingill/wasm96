@@ -44,6 +44,7 @@ pub mod host_imports {
     pub const GRAPHICS_ASEPRITE_PLAY_KEY: &str = "wasm96_graphics_aseprite_play_key";
     pub const GRAPHICS_ASEPRITE_PLAY_KEY_SCALED: &str = "wasm96_graphics_aseprite_play_key_scaled";
     pub const GRAPHICS_ASEPRITE_UNREGISTER: &str = "wasm96_graphics_aseprite_unregister";
+    pub const GRAPHICS_MTL_REGISTER: &str = "wasm96_graphics_mtl_register";
     pub const GRAPHICS_PNG_REGISTER: &str = "wasm96_graphics_png_register";
     pub const GRAPHICS_PNG_DRAW_KEY: &str = "wasm96_graphics_png_draw_key";
     pub const GRAPHICS_PNG_DRAW_KEY_SCALED: &str = "wasm96_graphics_png_draw_key_scaled";

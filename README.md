@@ -169,31 +169,34 @@ The wasm96 host API functions are treated as **WebAssembly imports** (provided b
 ## Materials (MTL) + textures (PNG/JPEG)
 The core supports an OBJ-style workflow where you can load a `.mtl` material file and register its referenced diffuse textures (`map_Kd`) as keyed images.
 
-This is designed for environments where you only have ROM bytes (no filesystem): the guest provides:
-- the `.mtl` bytes
-- a texture filename string (exactly as it appears in `map_Kd`)
-- the encoded texture bytes (`.png`, `.jpg`, `.jpeg`)
+### Automatic Material Loading (Recommended)
+You can register raw `.mtl` bytes and texture bytes using their filenames as keys. When you load an OBJ, the core will automatically resolve materials and textures:
 
-Then the host will decode and register the texture under a keyed image id so it can be used for:
-- 2D draw calls (`png_draw_key` / `jpeg_draw_key`)
-- 3D mesh texturing (`mesh_set_texture`)
+1. `graphics::mtl_register("model.mtl", mtl_bytes)`
+2. `graphics::png_register("albedo.png", png_bytes)`
+3. `graphics::mesh_create_obj("my_model", obj_bytes)`
 
-### Host import: `wasm96_graphics_mtl_register_texture`
-Signature (conceptual):
+The core parses the OBJ's `mtllib` and `usemtl` statements, looks up the registered MTL file, extracts the `map_Kd` (diffuse texture) filename, and binds the corresponding registered image to the mesh.
+
+### Manual Texture Binding
+Alternatively, you can manually bind a texture to a mesh:
+- Register the texture: `graphics::png_register("tex_key", png_bytes)`
+- Bind it: `graphics::mesh_set_texture("mesh_key", "tex_key")`
+
+### Host imports
+#### `wasm96_graphics_mtl_register`
+Registers raw MTL bytes under a keyed string (usually the filename). Used for automatic material resolution.
+- `key: u64` (hash of filename)
+- `data_ptr: u32, data_len: u32`
+- returns `u32` (1 = success)
+
+#### `wasm96_graphics_mtl_register_texture`
+Manual utility to register a texture only if it appears in a specific MTL file.
 - `texture_key: u64`
 - `mtl_ptr: u32, mtl_len: u32`
 - `tex_filename_ptr: u32, tex_filename_len: u32`
 - `tex_ptr: u32, tex_len: u32`
-- returns `u32` (1 = registered, 0 = not registered / failed)
-
-Behavior:
-- Parses the `.mtl` and extracts `map_Kd` entries (diffuse maps).
-- If `tex_filename` matches one of those `map_Kd` entries, the host decodes `tex_bytes` based on the filename extension and registers the decoded image to `texture_key`.
-
-Notes:
-- Only `map_Kd` is considered (diffuse/albedo).
-- Texture formats supported here: PNG, JPEG (`.jpg`/`.jpeg`).
-- The `tex_filename` must match exactly (including relative paths if present in the `.mtl`).
+- returns `u32` (1 = success)
 
 
 The core library will be at `target/release/libwasm96_core.so` (or equivalent for your platform).
@@ -301,12 +304,13 @@ JPEG is treated as **RGB** (opaque).
 - Bind a texture to a mesh (keyed image):
   - `graphics::mesh_set_texture("model", "model/tex")`
   - Register the image first using one of:
-    - Direct register:
-      - `graphics::png_register("model/tex", png_bytes)` (RGBA; alpha respected)
-      - `graphics::jpeg_register("model/tex", jpeg_bytes)` (RGB; opaque)
-    - Or, via MTL + referenced filename (`map_Kd`):
-      - `graphics::mtl_register_texture("model/tex", mtl_bytes, "albedo.png", albedo_png_bytes)`
-        - This only registers if `"albedo.png"` appears in the `.mtl` as a `map_Kd` entry.
+    - Automatic (via MTL):
+      - `graphics::mtl_register("bird.mtl", mtl_bytes)`
+      - `graphics::jpeg_register("bird_diff.jpg", tex_bytes)`
+      - `graphics::mesh_create_obj("bird", obj_bytes)` (Resolves textures automatically)
+    - Manual:
+      - `graphics::png_register("tex_key", png_bytes)`
+      - `graphics::mesh_set_texture("mesh_key", "tex_key")`
 - Draw meshes:
   - `graphics::mesh_draw("cube", pos, rot, scale)`
 

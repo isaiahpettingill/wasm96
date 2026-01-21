@@ -396,6 +396,9 @@ pub mod sys {
         pub fn graphics_gif_unregister(key: u64);
 
         // PNG
+        #[link_name = "wasm96_graphics_mtl_register"]
+        pub fn graphics_mtl_register(key: u64, data_ptr: u32, data_len: u32) -> u32;
+
         #[link_name = "wasm96_graphics_png_register"]
         pub fn graphics_png_register(key: u64, data_ptr: u32, data_len: u32) -> u32;
         #[link_name = "wasm96_graphics_png_draw_key"]
@@ -1254,6 +1257,18 @@ pub mod graphics {
 
     /// Register a PNG resource (encoded bytes) under a string key.
     /// Returns true on success.
+    /// Register raw MTL bytes with the host under a string key.
+    /// Returns true on success.
+    pub fn mtl_register(key: &str, mtl_bytes: &[u8]) -> bool {
+        unsafe {
+            sys::graphics_mtl_register(
+                hash_key(key),
+                mtl_bytes.as_ptr() as u32,
+                mtl_bytes.len() as u32,
+            ) != 0
+        }
+    }
+
     pub fn png_register(key: &str, png_bytes: &[u8]) -> bool {
         unsafe {
             sys::graphics_png_register(

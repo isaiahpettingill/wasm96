@@ -39,6 +39,9 @@ pub struct Resources {
     // New generalized keyed decoded images (RGBA8888), to be used for PNG/JPEG (and later other formats).
     pub keyed_images: HashMap<u64, ImageResource>,
 
+    // Raw bytes for MTL files, used by OBJ loader.
+    pub keyed_mtls: HashMap<u64, Vec<u8>>,
+
     pub keyed_fonts: HashMap<u64, u32>,
 
     pub next_id: u32,
@@ -55,6 +58,7 @@ impl Default for Resources {
             keyed_gifs: HashMap::new(),
             keyed_aseprites: HashMap::new(),
             keyed_images: HashMap::new(),
+            keyed_mtls: HashMap::new(),
             keyed_fonts: HashMap::new(),
             next_id: 1,
         }
