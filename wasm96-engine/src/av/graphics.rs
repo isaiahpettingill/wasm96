@@ -44,7 +44,12 @@ extern crate alloc;
 
 use crate::state::global;
 use glam::{Mat4, Vec3};
+
+#[cfg(not(target_arch = "wasm32"))]
 use wasmtime::Caller;
+#[cfg(target_arch = "wasm32")]
+#[allow(unused)]
+type Caller<'a, T> = core::marker::PhantomData<(&'a (), T)>;
 
 // External crates for rendering
 use fontdue::{Font, FontSettings};
@@ -61,7 +66,7 @@ use alloc::vec::Vec;
 use super::resources::{
     AsepriteResource, AvError, FontResource, GifResource, ImageResource, RESOURCES,
 };
-use super::utils::{graphics_image_from_host, read_guest_bytes, system_millis, tri_edge};
+use super::utils::{graphics_image_from_host, system_millis, tri_edge};
 
 // Material parsing (MTL)
 //
@@ -605,13 +610,24 @@ pub fn graphics_end_clip() {
 
 /// Clear the screen to a specific color.
 pub fn graphics_background(r: u32, g: u32, b: u32) {
-    // Try to clear GL framebuffer first (returns false if GL not available/ready)
-    let gl_cleared = super::graphics3d::clear_framebuffer(
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        1.0,
-    );
+    // On non-wasm32 targets we may have a 3D backend that renders into a GL framebuffer.
+    // On wasm32 the 3D backend may be disabled/implemented differently, so avoid referencing it.
+    #[cfg(not(target_arch = "wasm32"))]
+    let gl_cleared = {
+        let is_3d = super::graphics3d::STATE_3D.lock().unwrap().enabled;
+        if is_3d {
+            super::graphics3d::clear_framebuffer(
+                r as f32 / 255.0,
+                g as f32 / 255.0,
+                b as f32 / 255.0,
+                1.0,
+            )
+        } else {
+            false
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    let gl_cleared = false;
 
     let mut s = match global().lock() {
         Ok(g) => g,
@@ -620,9 +636,10 @@ pub fn graphics_background(r: u32, g: u32, b: u32) {
     if gl_cleared {
         // Clear software framebuffer to transparent so it doesn't occlude the 3D scene
         s.video.framebuffer.fill(0x00000000);
+        return;
     } else {
         // Fallback: software-only rendering - clear to requested color
-        let color = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+        let color = (0xFF << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
         s.video.framebuffer.fill(color);
     }
 }
@@ -982,6 +999,7 @@ pub fn graphics_quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i
 
 /// Draw an image from guest memory.
 /// `ptr` points to RGBA bytes (4 bytes per pixel).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image(
     caller: &mut Caller<'_, ()>,
     x: i32,
@@ -1022,9 +1040,35 @@ pub fn graphics_image(
     Ok(())
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_image(
+    _env: &mut (),
+    x: i32,
+    y: i32,
+    img_w: u32,
+    img_h: u32,
+    ptr: u32,
+    len: u32,
+) -> Result<(), AvError> {
+    // Basic validation
+    let expected_len = img_w.checked_mul(img_h).and_then(|s| s.checked_mul(4));
+    if let Some(req) = expected_len {
+        if len < req {
+            return Ok(());
+        }
+    } else {
+        return Ok(());
+    }
+
+    let img_data = super::utils::read_guest_bytes(ptr, len)?;
+    graphics_image_from_host(x, y, img_w, img_h, &img_data);
+    Ok(())
+}
+
 /// Decode PNG bytes from guest memory and draw at (x, y) at the image's natural size.
 ///
 /// If decoding fails, this is a no-op.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image_png(
     env: &mut Caller<'_, ()>,
     x: i32,
@@ -1032,7 +1076,26 @@ pub fn graphics_image_png(
     ptr: u32,
     len: u32,
 ) -> Result<(), AvError> {
-    let png_bytes = read_guest_bytes(env, ptr, len)?;
+    let png_bytes = super::utils::read_guest_bytes(env, ptr, len)?;
+
+    let decoded = match decode_png_to_rgba(&png_bytes) {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+
+    graphics_image_from_host(x, y, decoded.width, decoded.height, &decoded.rgba);
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_image_png(
+    _env: &mut (),
+    x: i32,
+    y: i32,
+    ptr: u32,
+    len: u32,
+) -> Result<(), AvError> {
+    let png_bytes = super::utils::read_guest_bytes(ptr, len)?;
 
     let decoded = match decode_png_to_rgba(&png_bytes) {
         Some(d) => d,
@@ -1046,6 +1109,7 @@ pub fn graphics_image_png(
 /// Decode JPEG bytes from guest memory and draw at (x, y) at the image's natural size.
 ///
 /// If decoding fails, this is a no-op.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image_jpeg(
     env: &mut Caller<'_, ()>,
     x: i32,
@@ -1053,7 +1117,26 @@ pub fn graphics_image_jpeg(
     ptr: u32,
     len: u32,
 ) -> Result<(), AvError> {
-    let jpeg_bytes = read_guest_bytes(env, ptr, len)?;
+    let jpeg_bytes = super::utils::read_guest_bytes(env, ptr, len)?;
+
+    let decoded = match decode_jpeg_to_rgba(&jpeg_bytes) {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+
+    graphics_image_from_host(x, y, decoded.width, decoded.height, &decoded.rgba);
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_image_jpeg(
+    _env: &mut (),
+    x: i32,
+    y: i32,
+    ptr: u32,
+    len: u32,
+) -> Result<(), AvError> {
+    let jpeg_bytes = super::utils::read_guest_bytes(ptr, len)?;
 
     let decoded = match decode_jpeg_to_rgba(&jpeg_bytes) {
         Some(d) => d,
@@ -1081,6 +1164,7 @@ pub fn graphics_image_jpeg(
 ///   list, this is a no-op and returns 0.
 /// - This keeps the host stateless regarding filesystem paths while still enabling OBJ+MTL style
 ///   materials in a "ROM-bytes only" environment.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mtl_register_texture(
     env: &mut Caller<'_, ()>,
     texture_key: u64,
@@ -1091,27 +1175,68 @@ pub fn graphics_mtl_register_texture(
     tex_ptr: u32,
     tex_len: u32,
 ) -> u32 {
-    let mtl_bytes = match read_guest_bytes(env, mtl_ptr, mtl_len) {
+    let mtl_bytes = match super::utils::read_guest_bytes(env, mtl_ptr, mtl_len) {
         Ok(b) => b,
         Err(_) => return 0,
     };
 
-    let tex_filename_bytes = match read_guest_bytes(env, tex_filename_ptr, tex_filename_len) {
-        Ok(b) => b,
-        Err(_) => return 0,
-    };
+    let tex_filename_bytes =
+        match super::utils::read_guest_bytes(env, tex_filename_ptr, tex_filename_len) {
+            Ok(b) => b,
+            Err(_) => return 0,
+        };
 
     let tex_filename = match core::str::from_utf8(&tex_filename_bytes) {
         Ok(s) => s,
         Err(_) => return 0,
     };
 
-    let tex_bytes = match read_guest_bytes(env, tex_ptr, tex_len) {
+    let tex_bytes = match super::utils::read_guest_bytes(env, tex_ptr, tex_len) {
         Ok(b) => b,
         Err(_) => return 0,
     };
 
     // Only register if the MTL actually references this filename as a diffuse map.
+    let diffuse_files = mtl_diffuse_map_filenames(&mtl_bytes);
+    if !diffuse_files.iter().any(|f| f == tex_filename) {
+        return 0;
+    }
+
+    register_encoded_texture_by_extension(texture_key, tex_filename, &tex_bytes)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mtl_register_texture(
+    _env: &mut (),
+    texture_key: u64,
+    mtl_ptr: u32,
+    mtl_len: u32,
+    tex_filename_ptr: u32,
+    tex_filename_len: u32,
+    tex_ptr: u32,
+    tex_len: u32,
+) -> u32 {
+    let mtl_bytes = match super::utils::read_guest_bytes(mtl_ptr, mtl_len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    let tex_filename_bytes =
+        match super::utils::read_guest_bytes(tex_filename_ptr, tex_filename_len) {
+            Ok(b) => b,
+            Err(_) => return 0,
+        };
+
+    let tex_filename = match core::str::from_utf8(&tex_filename_bytes) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let tex_bytes = match super::utils::read_guest_bytes(tex_ptr, tex_len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
     let diffuse_files = mtl_diffuse_map_filenames(&mtl_bytes);
     if !diffuse_files.iter().any(|f| f == tex_filename) {
         return 0;
@@ -1216,13 +1341,14 @@ fn decode_jpeg_to_rgba(jpeg_bytes: &[u8]) -> Option<ImageResource> {
 }
 
 /// Register a PNG under a string key (bytes are encoded PNG).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_png_register(
     env: &mut Caller<'_, ()>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
 ) -> u32 {
-    let png_bytes = match read_guest_bytes(env, data_ptr, data_len) {
+    let png_bytes = match super::utils::read_guest_bytes(env, data_ptr, data_len) {
         Ok(b) => b,
         Err(_) => return 0,
     };
@@ -1280,13 +1406,14 @@ pub fn graphics_png_unregister(key: u64) {
 }
 
 /// Register a JPEG under a string key (bytes are encoded JPEG).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_jpeg_register(
     env: &mut Caller<'_, ()>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
 ) -> u32 {
-    let jpeg_bytes = match read_guest_bytes(env, data_ptr, data_len) {
+    let jpeg_bytes = match super::utils::read_guest_bytes(env, data_ptr, data_len) {
         Ok(b) => b,
         Err(_) => return 0,
     };
@@ -1571,14 +1698,15 @@ pub fn graphics_pill_outline(x: i32, y: i32, w: u32, h: u32) {
 
 /// Create SVG resource.
 /// Register SVG resource under a string key.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_svg_register(
     caller: &mut Caller<'_, ()>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
 ) -> u32 {
-    let data = match read_guest_bytes(caller, data_ptr, data_len) {
-        Ok(d) => d,
+    let data = match super::utils::read_guest_bytes(caller, data_ptr, data_len) {
+        Ok(b) => b,
         Err(_) => return 0,
     };
 
@@ -1654,8 +1782,95 @@ pub fn graphics_svg_destroy(id: u32) {
 }
 
 /// Create GIF resource.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_gif_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
-    let data = match read_guest_bytes(env, ptr, len) {
+    let data = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    let cursor = std::io::Cursor::new(&data);
+    let mut decoder = match gif::DecodeOptions::new().read_info(cursor) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    // Decode all frames up-front and store in `GifResource` (frames = RGBA bytes per frame).
+    // NOTE: This is a minimal decoder path that ignores disposal/blending; it matches
+    // the simple resource model used elsewhere in this crate.
+    let width = decoder.width();
+    let height = decoder.height();
+
+    // Cache the global palette up-front so we never need to borrow `decoder` while a `frame`
+    // (which borrows from `decoder`) is alive.
+    let global_palette_bytes: Option<Vec<u8>> = decoder.global_palette().map(|p| p.to_vec());
+
+    let mut frames: Vec<Vec<u8>> = Vec::new();
+    let mut delays: Vec<u16> = Vec::new();
+
+    loop {
+        match decoder.read_next_frame() {
+            Ok(Some(frame)) => {
+                // GIF frame buffer is indexed color; map through the active palette.
+                // `decoder.read_next_frame()` returns a frame that borrows from `decoder`,
+                // so we must not call back into `decoder` (even immutably) while `frame`
+                // is alive. Copy the palette bytes we need first.
+                let palette_bytes: Vec<u8> = if let Some(p) = frame.palette.as_deref() {
+                    p.to_vec()
+                } else if let Some(p) = global_palette_bytes.as_deref() {
+                    p.to_vec()
+                } else {
+                    return 0;
+                };
+
+                let w = width as usize;
+                let h = height as usize;
+
+                // Expand indices -> RGBA8888.
+                let mut rgba = vec![0u8; w * h * 4];
+                for (i, &idx) in frame.buffer.iter().enumerate() {
+                    let pi = (idx as usize) * 3;
+                    if pi + 2 >= palette_bytes.len() {
+                        return 0;
+                    }
+                    let r = palette_bytes[pi];
+                    let g = palette_bytes[pi + 1];
+                    let b = palette_bytes[pi + 2];
+
+                    let out = i * 4;
+                    rgba[out] = r;
+                    rgba[out + 1] = g;
+                    rgba[out + 2] = b;
+                    rgba[out + 3] = 255;
+                }
+
+                frames.push(rgba);
+                delays.push(frame.delay);
+            }
+            Ok(None) => break,
+            Err(_) => return 0,
+        }
+    }
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.gifs.insert(
+        id,
+        GifResource {
+            frames,
+            delays,
+            width,
+            height,
+        },
+    );
+    id
+}
+
+/// Create GIF resource (wasm32/web).
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_gif_create(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
     };
@@ -2000,8 +2215,33 @@ pub(crate) fn aseprite_build_resource_safe(data: &[u8]) -> Option<AsepriteResour
 }
 
 /// Create an Aseprite resource from guest memory.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_aseprite_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
-    let data = match read_guest_bytes(env, ptr, len) {
+    let data = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    if data.is_empty() {
+        return 0;
+    }
+
+    let aseprite_resource = match aseprite_build_resource_safe(&data) {
+        Some(r) => r,
+        None => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.aseprites.insert(id, aseprite_resource);
+    id
+}
+
+/// Create an Aseprite resource from guest memory (wasm32/web).
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_aseprite_create(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
     };
@@ -2229,8 +2469,9 @@ pub fn graphics_aseprite_unregister(key: u64) {
 /// Notes:
 /// - The host stores the parsed `Font` in `RESOURCES.fonts` under the returned id.
 /// - The guest never sees this id; guests use the original `key` (u64) when drawing/measuring text.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
-    let data = match read_guest_bytes(env, ptr, len) {
+    let data = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
     };
@@ -2247,8 +2488,54 @@ pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
     id
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_font_upload_ttf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    let font = match Font::from_bytes(data, FontSettings::default()) {
+        Ok(f) => f,
+        Err(_) => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.fonts.insert(id, FontResource::Ttf(font));
+    id
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_font_upload_bdf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
-    let data = match read_guest_bytes(env, ptr, len) {
+    let data = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
+
+    let (glyphs, width, height) = match parse_bdf(&data) {
+        Some(res) => res,
+        None => return 0,
+    };
+
+    let mut res = RESOURCES.lock().unwrap();
+    let id = res.next_id;
+    res.next_id += 1;
+    res.fonts.insert(
+        id,
+        FontResource::Bdf {
+            width,
+            height,
+            glyphs,
+        },
+    );
+    id
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_font_upload_bdf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+    let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
     };
@@ -2414,6 +2701,7 @@ pub fn graphics_font_unregister(key: u64) {
 /// - If the host cannot access guest memory or cannot resolve a font id (including fallback),
 ///   this function becomes a no-op.
 /// - Rendering is alpha-blended in the host (TTF/OTF smoothing + proper blending are handled by host).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_text_key(
     x: i32,
     y: i32,
@@ -2442,6 +2730,113 @@ pub fn graphics_text_key(
     graphics_text(x, y, font_id, env, text_ptr, text_len);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: u32, text_len: u32) {
+    let font_id = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_fonts.get(&font_key).copied()
+    };
+
+    let font_id = match font_id {
+        Some(id) => id,
+        None => graphics_font_use_spleen(16),
+    };
+
+    if font_id == 0 {
+        return;
+    }
+
+    let text = match super::utils::read_guest_string(text_ptr, text_len) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    // Reuse the existing font rendering paths by looking up the font resource.
+    let res = RESOURCES.lock().unwrap();
+    if let Some(font) = res.fonts.get(&font_id) {
+        match font {
+            FontResource::Ttf(f) => {
+                // Mirror the simple TTF text rendering logic used by the native path,
+                // but source the string from web memory.
+                let mut s = match global().lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                let width = s.video.width as i32;
+                let height = s.video.height as i32;
+                let draw_color = s.video.draw_color;
+                let r_fg = ((draw_color >> 16) & 0xFF) as f32;
+                let g_fg = ((draw_color >> 8) & 0xFF) as f32;
+                let b_fg = (draw_color & 0xFF) as f32;
+                let r_fg_sq = r_fg * r_fg;
+                let g_fg_sq = g_fg * g_fg;
+                let b_fg_sq = b_fg * b_fg;
+
+                let mut px = x as f32;
+                for ch in text.chars() {
+                    let (metrics, bitmap) = f.rasterize(ch, 16.0); // fixed size
+                    let start_x = px.round() as i32;
+                    for (i, &alpha) in bitmap.iter().enumerate() {
+                        if alpha > 0 {
+                            let gx = start_x + (i % metrics.width) as i32;
+                            let gy = y + (i / metrics.width) as i32;
+
+                            if gx >= 0 && gx < width && gy >= 0 && gy < height {
+                                let stride = s.video.stride_pixels as i32;
+                                let idx = (gy * stride + gx) as usize;
+                                let bg = s.video.framebuffer[idx];
+
+                                let a = alpha as f32 / 255.0;
+                                let inv_a = 1.0 - a;
+
+                                let r_bg = ((bg >> 16) & 0xFF) as f32;
+                                let g_bg = ((bg >> 8) & 0xFF) as f32;
+                                let b_bg = (bg & 0xFF) as f32;
+
+                                let r = (r_fg_sq * a + r_bg * r_bg * inv_a).sqrt() as u32;
+                                let g = (g_fg_sq * a + g_bg * g_bg * inv_a).sqrt() as u32;
+                                let b = (b_fg_sq * a + b_bg * b_bg * inv_a).sqrt() as u32;
+
+                                s.video.framebuffer[idx] = (r << 16) | (g << 8) | b;
+                            }
+                        }
+                    }
+                    px += metrics.advance_width;
+                }
+            }
+            FontResource::Bdf {
+                width,
+                height,
+                glyphs,
+            } => {
+                let stride = (*width + 7) / 8;
+                let mut px = x;
+                for ch in text.chars() {
+                    if let Some(bitmap) = glyphs.get(&ch) {
+                        for row in 0..*height as usize {
+                            for byte_idx in 0..stride as usize {
+                                let idx = row * stride as usize + byte_idx;
+                                if idx < bitmap.len() {
+                                    let byte = bitmap[idx];
+                                    for bit in 0..8 {
+                                        let col = byte_idx * 8 + bit;
+                                        if col < *width as usize {
+                                            if (byte & (1 << (7 - bit))) != 0 {
+                                                graphics_point(px + col as i32, y + row as i32);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    px += *width as i32;
+                }
+            }
+        }
+    }
+}
+
 /// Measure UTF-8 text using a keyed font.
 ///
 /// This is intended for layout (centering, right-align, UI sizing).
@@ -2461,6 +2856,7 @@ pub fn graphics_text_key(
 ///
 /// Notes:
 /// - Like draw, measurement reads the string bytes immediately from guest memory.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_text_measure_key(
     env: &mut Caller<'_, ()>,
     font_key: u64,
@@ -2484,6 +2880,51 @@ pub fn graphics_text_measure_key(
     }
 
     graphics_text_measure(font_id, env, text_ptr, text_len)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_text_measure_key(font_key: u64, text_ptr: u32, text_len: u32) -> u64 {
+    let font_id = {
+        let res = RESOURCES.lock().unwrap();
+        res.keyed_fonts.get(&font_key).copied()
+    };
+
+    let font_id = match font_id {
+        Some(id) => id,
+        None => graphics_font_use_spleen(16),
+    };
+
+    if font_id == 0 {
+        return 0;
+    }
+
+    let text = match super::utils::read_guest_string(text_ptr, text_len) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let res = RESOURCES.lock().unwrap();
+    let Some(font) = res.fonts.get(&font_id) else {
+        return 0;
+    };
+
+    match font {
+        FontResource::Ttf(f) => {
+            // Very close to the native measurement: sum advance widths; height fixed.
+            let mut w = 0.0f32;
+            for ch in text.chars() {
+                let (metrics, _bitmap) = f.rasterize(ch, 16.0);
+                w += metrics.advance_width;
+            }
+            let width = w.ceil().max(0.0) as u32;
+            let height = 16u32;
+            ((width as u64) << 32) | (height as u64)
+        }
+        FontResource::Bdf { width, height, .. } => {
+            let width_px = (*width as u64) * (text.chars().count() as u64);
+            ((width_px as u64) << 32) | (*height as u64)
+        }
+    }
 }
 
 /// Parse BDF font data into glyph map.
@@ -2556,8 +2997,8 @@ mod tests {
         s.video.draw_color = 0xFFFFFFFF;
         s.video.fill_color = 0xFFFFFFFF;
         s.video.stroke_color = 0xFFFFFFFF;
-        s.video.fill_enabled = true;
-        s.video.stroke_enabled = true;
+        s.video.fill_enabled = false;
+        s.video.stroke_enabled = false;
         s.video.erase_mode_enabled = false;
         s.video.color_mode = crate::state::ColorMode::RGB;
         s.video.clip_rect = None;
@@ -2656,6 +3097,7 @@ pub fn graphics_font_use_spleen(size: u32) -> u32 {
 }
 
 /// Draw text.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     let memory_ptr = {
         let s = global().lock().unwrap();
@@ -2763,6 +3205,7 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
 }
 
 /// Measure text.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u64 {
     let memory_ptr = {
         let s = global().lock().unwrap();
@@ -2812,8 +3255,13 @@ pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, l
 
 /// Present the framebuffer to the platform frontend.
 pub fn video_present_host(callbacks: &mut dyn crate::PlatformCallbacks) {
-    // Flush any 3D content to the framebuffer before presenting
-    let _ = super::graphics3d::flush_to_host();
+    // Flush any 3D content to the framebuffer before presenting (native-only).
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if super::graphics3d::STATE_3D.lock().unwrap().enabled {
+            let _ = super::graphics3d::flush_to_host();
+        }
+    }
 
     let (width, height, stride_pixels, fb) = {
         let s = match global().lock() {

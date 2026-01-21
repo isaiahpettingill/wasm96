@@ -16,7 +16,12 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use glam::Mat4;
+
+#[cfg(not(target_arch = "wasm32"))]
 use wasmtime::Memory as WasmtimeMemory;
+
+#[cfg(target_arch = "wasm32")]
+use js_sys::WebAssembly::Memory as WebMemory;
 
 // MIDI synthesizer
 use midly::{MidiMessage, Smf};
@@ -242,10 +247,16 @@ pub struct GlobalState {
     ///
     /// Stored as a raw pointer because the rest of the codebase accesses global state
     /// through a mutex-protected singleton and expects a stable address once set.
+    #[cfg(not(target_arch = "wasm32"))]
     pub memory_wasmtime: *const WasmtimeMemory,
 
     /// Owned copy of the memory handle to ensure the pointer above remains valid.
+    #[cfg(not(target_arch = "wasm32"))]
     pub memory_owned: Option<Box<WasmtimeMemory>>,
+
+    /// Guest linear memory export for the web runtime.
+    #[cfg(target_arch = "wasm32")]
+    pub memory_web: Option<WebMemory>,
 
     /// Host-owned video state (system memory).
     pub video: VideoState,
@@ -270,8 +281,12 @@ impl Default for GlobalState {
     fn default() -> Self {
         use rand::SeedableRng;
         Self {
+            #[cfg(not(target_arch = "wasm32"))]
             memory_wasmtime: std::ptr::null(),
+            #[cfg(not(target_arch = "wasm32"))]
             memory_owned: None,
+            #[cfg(target_arch = "wasm32")]
+            memory_web: None,
             video: VideoState::default(),
             audio: AudioState::default(),
             input: InputState::default(),
@@ -450,11 +465,19 @@ pub struct InputState {
 }
 
 /// Set the guest memory for the Wasmtime runtime.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn set_guest_memory_wasmtime(memory: &WasmtimeMemory) {
     let mut s = global().lock().unwrap();
     let boxed = Box::new(*memory);
     s.memory_wasmtime = &*boxed as *const _;
     s.memory_owned = Some(boxed);
+}
+
+/// Set the guest memory for the web runtime.
+#[cfg(target_arch = "wasm32")]
+pub fn set_guest_memory_web(memory: WebMemory) {
+    let mut s = global().lock().unwrap();
+    s.memory_web = Some(memory);
 }
 
 pub fn clear_on_unload() {
@@ -465,8 +488,16 @@ pub fn clear_on_unload() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    s.memory_wasmtime = std::ptr::null();
-    s.memory_owned = None;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        s.memory_wasmtime = std::ptr::null();
+        s.memory_owned = None;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        s.memory_web = None;
+    }
 
     s.video = VideoState::default();
     s.audio = AudioState::default();

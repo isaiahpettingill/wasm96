@@ -531,6 +531,18 @@ Tip:
 
 ## Recent Fixes
 
+### Background Rendering Fix (engine)
+Fixed an issue where `graphics::background()` would fail to render a solid color in 2D mode. The software fallback now correctly sets the alpha channel to opaque (0xFF) to ensure the background is visible. Additionally, the engine now only attempts to use hardware-accelerated clearing when 3D mode is explicitly enabled by the guest, ensuring consistent behavior across 2D and 3D titles.
+
+### 3D Rendering Lifecycle Fix (engine)
+Fixed an issue where 3D graphics were not rendering because the hardware context was not being prepared before guest execution. The engine now explicitly calls `prepare_frame` to bind the FBO and set the viewport, ensuring the OpenGL state is ready for guest drawing commands.
+
+### WASM Web Compatibility (engine)
+Improved compatibility for WASM modules running in the browser by adding stubs for 3D APIs and full support for matrix transformation imports in the web runtime. This ensures that games using 3D or advanced 2D transformations can load and run on the web without "missing import" errors.
+
+### GL Context Reset Support (engine)
+Improved 3D stability by allowing `init_gl_context` to re-initialize the internal GL state. This ensures that when a frontend (like libretro) resets the hardware context, the engine can correctly refresh its shaders and buffer objects instead of relying on stale handles.
+
 ### Aseprite decode crash guard (host/core)
 Aseprite decoding now runs behind a panic-safe guard so malformed or unexpected `.aseprite` bytes cannot crash the core; failed decodes return 0 from `graphics_aseprite_register` and skip rendering.
 

@@ -77,7 +77,7 @@ struct GlState {
 
 // --- Global State ---
 
-static STATE_3D: Mutex<State3d> = Mutex::new(State3d {
+pub(crate) static STATE_3D: Mutex<State3d> = Mutex::new(State3d {
     enabled: false,
     view: Mat4::IDENTITY,
     projection: Mat4::IDENTITY,
@@ -406,7 +406,12 @@ where
         output_fbo: 0,
     };
 
-    GL_STATE.get_or_init(|| Mutex::new(state));
+    if let Some(lock) = GL_STATE.get() {
+        let mut gl_state = lock.lock().unwrap();
+        *gl_state = state;
+    } else {
+        let _ = GL_STATE.set(Mutex::new(state));
+    }
 
     // Initial GL setup
     unsafe {
@@ -512,6 +517,7 @@ pub fn graphics_camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32) 
     s.projection = Mat4::perspective_rh(fovy, aspect, near, far);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create(
     env: &mut wasmtime::Caller<'_, ()>,
     key: u64,
@@ -629,6 +635,20 @@ pub fn graphics_mesh_create(
     1
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mesh_create(
+    _env: &mut (),
+    _key: u64,
+    _v_ptr: u32,
+    _v_len: u32,
+    _i_ptr: u32,
+    _i_len: u32,
+) -> u32 {
+    // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
+    0
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create_obj(
     env: &mut wasmtime::Caller<'_, ()>,
     key: u64,
@@ -848,12 +868,25 @@ pub fn graphics_mesh_create_obj(
     1
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create_stl(
     _env: &mut wasmtime::Caller<'_, ()>,
     _key: u64,
     _ptr: u32,
     _len: u32,
 ) -> u32 {
+    0
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mesh_create_obj(_env: &mut (), _key: u64, _ptr: u32, _len: u32) -> u32 {
+    // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
+    0
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mesh_create_stl(_env: &mut (), _key: u64, _ptr: u32, _len: u32) -> u32 {
+    // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
     0
 }
 

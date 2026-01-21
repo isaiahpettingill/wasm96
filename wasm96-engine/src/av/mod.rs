@@ -25,6 +25,7 @@ extern crate alloc;
 
 pub mod audio;
 pub mod graphics;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod graphics3d;
 pub mod math;
 pub mod resources;
@@ -35,6 +36,7 @@ pub mod utils;
 // Re-export all public functions
 pub use audio::*;
 pub use graphics::*;
+#[cfg(not(target_arch = "wasm32"))]
 pub use graphics3d::*;
 pub use math::*;
 pub use resources::AvError;

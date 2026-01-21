@@ -3,17 +3,16 @@ extern crate alloc;
 
 use crate::state::global;
 use glam::{Mat4, Vec3};
+
+#[cfg(not(target_arch = "wasm32"))]
 use wasmtime::Caller;
-
-// External crates for rendering
-
-// External crates for asset decoding
 
 // Storage ABI helpers
 use alloc::vec::Vec;
 
 use super::AvError;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_guest_bytes(
     caller: &mut Caller<'_, ()>,
     ptr: u32,
@@ -31,12 +30,30 @@ pub fn read_guest_bytes(
     Ok(data)
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn read_guest_bytes(ptr: u32, len: u32) -> Result<Vec<u8>, AvError> {
+    let s = global().lock().unwrap();
+    let memory = s.memory_web.as_ref().ok_or(AvError::MissingMemory)?;
+    let buffer = memory.buffer();
+    let array = js_sys::Uint8Array::new_with_byte_offset_and_length(&buffer, ptr, len);
+    Ok(array.to_vec())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_guest_string(
     caller: &mut Caller<'_, ()>,
     ptr: u32,
     len: u32,
 ) -> Result<String, AvError> {
     let bytes = read_guest_bytes(caller, ptr, len)?;
+    core::str::from_utf8(&bytes)
+        .map(|s| s.to_string())
+        .map_err(|_| AvError::MemoryReadFailed)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn read_guest_string(ptr: u32, len: u32) -> Result<String, AvError> {
+    let bytes = read_guest_bytes(ptr, len)?;
     core::str::from_utf8(&bytes)
         .map(|s| s.to_string())
         .map_err(|_| AvError::MemoryReadFailed)
@@ -132,11 +149,18 @@ pub fn graphics_image_from_host(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
 
 // Get current time in milliseconds
 pub fn system_millis() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() as u64
+    }
 }
 
 #[inline]
@@ -151,6 +175,7 @@ pub fn sat_add_i16(a: i16, b: i16) -> i16 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn guest_alloc(env: &mut Caller<'_, ()>, len: u32) -> Option<u32> {
     let _ = env;
     let _ = len;
@@ -159,9 +184,22 @@ pub fn guest_alloc(env: &mut Caller<'_, ()>, len: u32) -> Option<u32> {
     None
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn guest_alloc(len: u32) -> Option<u32> {
+    let _ = len;
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn guest_free(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     let _ = env;
     let _ = ptr;
     let _ = len;
     // No-op unless core wires guest free export.
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn guest_free(ptr: u32, len: u32) {
+    let _ = ptr;
+    let _ = len;
 }

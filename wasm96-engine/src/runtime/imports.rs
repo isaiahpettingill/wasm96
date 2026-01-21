@@ -1,22 +1,31 @@
-//! Host import definitions for the Wasmtime runtime.
+//! Host import definitions for the Wasmtime and Web runtimes.
 //!
 //! This module defines all the host functions imported by guest modules under the "env" module.
-//!
-//! NOTE: Keep this file in a **single-pass**/single `define_imports` implementation to avoid
-//! accidentally registering imports twice (or returning early and leaving dead code below).
 
 use crate::{
     abi::{IMPORT_MODULE, host_imports},
     av, input,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
 use wasmtime::{Caller, Linker};
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(not(target_arch = "wasm32"))]
 fn read_guest_string(caller: &mut Caller<'_, ()>, ptr: u32, len: u32) -> Result<String, String> {
     av::utils::read_guest_string(caller, ptr, len)
         .map_err(|_| String::from("Failed to read guest string"))
 }
 
-/// Define all host imports expected by guests under module `"env"`.
+#[cfg(target_arch = "wasm32")]
+fn read_guest_string_web(ptr: u32, len: u32) -> Result<String, String> {
+    av::utils::read_guest_string(ptr, len).map_err(|_| String::from("Failed to read guest string"))
+}
+
+/// Define all host imports expected by guests under module `"env"` for Wasmtime.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     // --- Graphics ---
     linker.func_wrap(
@@ -1228,6 +1237,438 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
             av::storage_free(&mut caller, ptr, len);
         },
     )?;
+
+    Ok(())
+}
+
+/// Define all host imports expected by guests under module `"env"` for the Web runtime.
+#[cfg(target_arch = "wasm32")]
+pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
+    let env = js_sys::Object::new();
+
+    macro_rules! reg {
+        ($name:expr, $func:expr) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 2) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 3) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 4) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 5) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 6) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut() -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 1, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 2, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 3, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 4, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 8) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 9) => {{
+            let closure =
+                Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 10) => {{
+            let closure =
+                Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 16) => {{
+            let closure =
+                Closure::wrap(Box::new($func)
+                    as Box<dyn FnMut(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+    }
+
+    // --- Graphics ---
+    reg!(
+        host_imports::GRAPHICS_SET_SIZE,
+        |w, h| av::graphics_set_size(w, h),
+        2
+    );
+    reg!(
+        host_imports::GRAPHICS_APPLY_MATRIX,
+        |m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33| {
+            av::graphics_apply_matrix(
+                m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33,
+            );
+        },
+        16
+    );
+    reg!(
+        host_imports::GRAPHICS_RESET_MATRIX,
+        || av::graphics_reset_matrix(),
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_ROTATE,
+        |angle| av::graphics_rotate(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_ROTATE_X,
+        |angle| av::graphics_rotate_x(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_ROTATE_Y,
+        |angle| av::graphics_rotate_y(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_ROTATE_Z,
+        |angle| av::graphics_rotate_z(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_SCALE,
+        |sx, sy, sz| av::graphics_scale(sx, sy, sz),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_SHEAR_X,
+        |angle| av::graphics_shear_x(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_SHEAR_Y,
+        |angle| av::graphics_shear_y(angle),
+        1
+    );
+    reg!(
+        host_imports::GRAPHICS_TRANSLATE,
+        |x, y, z| av::graphics_translate(x, y, z),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_PUSH_MATRIX,
+        || av::graphics_push_matrix(),
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_POP_MATRIX,
+        || av::graphics_pop_matrix(),
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_SET_COLOR,
+        |r, g, b, a| av::graphics_set_color(r, g, b, a),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_BACKGROUND,
+        |r, g, b| av::graphics_background(r, g, b),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_POINT,
+        |x, y| av::graphics_point(x, y),
+        2
+    );
+    reg!(
+        host_imports::GRAPHICS_LINE,
+        |x1, y1, x2, y2| av::graphics_line(x1, y1, x2, y2),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_RECT,
+        |x, y, w, h| av::graphics_rect(x, y, w, h),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_RECT_OUTLINE,
+        |x, y, w, h| av::graphics_rect_outline(x, y, w, h),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_CIRCLE,
+        |x, y, r| av::graphics_circle(x, y, r),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_CIRCLE_OUTLINE,
+        |x, y, r| av::graphics_circle_outline(x, y, r),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_ELLIPSE,
+        |cx, cy, w, h| av::graphics_ellipse(cx, cy, w, h),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_ARC,
+        |cx, cy, w, h, start, end| av::graphics_arc(cx, cy, w, h, start, end),
+        6
+    );
+    reg!(
+        host_imports::GRAPHICS_QUAD,
+        |x1, y1, x2, y2, x3, y3, x4, y4| av::graphics_quad(x1, y1, x2, y2, x3, y3, x4, y4),
+        8
+    );
+    reg!(
+        host_imports::GRAPHICS_TRIANGLE,
+        |x1, y1, x2, y2, x3, y3| av::graphics_triangle(x1, y1, x2, y2, x3, y3),
+        6
+    );
+    reg!(
+        host_imports::GRAPHICS_TRIANGLE_OUTLINE,
+        |x1, y1, x2, y2, x3, y3| av::graphics_triangle_outline(x1, y1, x2, y2, x3, y3),
+        6
+    );
+    reg!(
+        host_imports::GRAPHICS_PILL,
+        |x, y, w, h| av::graphics_pill(x, y, w, h),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_PILL_OUTLINE,
+        |x, y, w, h| av::graphics_pill_outline(x, y, w, h),
+        4
+    );
+
+    reg!(
+        host_imports::GRAPHICS_IMAGE,
+        |x, y, w, h, ptr, len| {
+            if let Ok(data) = av::utils::read_guest_bytes(ptr, len) {
+                av::utils::graphics_image_from_host(x, y, w, h, &data);
+            }
+        },
+        6
+    );
+
+    // --- 3D Stubs (not yet supported on Web) ---
+    reg!(host_imports::GRAPHICS_SET_3D, |_enable| { /* stub */ }, 1);
+    reg!(
+        host_imports::GRAPHICS_CAMERA_LOOK_AT,
+        |_ex, _ey, _ez, _tx, _ty, _tz, _ux, _uy, _uz| { /* stub */ },
+        9
+    );
+    reg!(
+        host_imports::GRAPHICS_CAMERA_PERSPECTIVE,
+        |_fovy, _aspect, _near, _far| { /* stub */ },
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_MESH_CREATE,
+        |_key, _vptr, _vlen, _iptr, _ilen| 0u32,
+        5,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_MESH_CREATE_OBJ,
+        |_key, _ptr, _len| 0u32,
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_MESH_CREATE_STL,
+        |_key, _ptr, _len| 0u32,
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_MESH_SET_TEXTURE,
+        |_mkey, _ikey| 0u32,
+        2,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_MESH_DRAW,
+        |_key, _x, _y, _z, _rx, _ry, _rz, _sx, _sy, _sz| { /* stub */ },
+        10
+    );
+
+    reg!(host_imports::GRAPHICS_CLEAR, || av::graphics_clear(), RET);
+    reg!(
+        host_imports::GRAPHICS_FILL,
+        |r, g, b, a| av::graphics_fill(r, g, b, a),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_NO_FILL,
+        || av::graphics_no_fill(),
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_STROKE,
+        |r, g, b, a| av::graphics_stroke(r, g, b, a),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_NO_STROKE,
+        || av::graphics_no_stroke(),
+        RET
+    );
+
+    reg!(
+        host_imports::GRAPHICS_FONT_REGISTER_SPLEEN,
+        |key, size| -> u32 { av::graphics_font_register_spleen(key, size) },
+        2,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_TEXT_KEY,
+        |x, y, font_key, ptr, len| {
+            // wasm32/web: text is read from the globally-registered WebAssembly memory.
+            av::graphics_text_key(x, y, font_key, ptr, len);
+        },
+        5
+    );
+
+    // --- Input ---
+    reg!(
+        host_imports::INPUT_IS_BUTTON_DOWN,
+        |p, b| -> u32 { input::joypad_button_pressed(p, b) as u32 },
+        2,
+        RET
+    );
+    reg!(
+        host_imports::INPUT_IS_KEY_DOWN,
+        |k| -> u32 { input::key_pressed(k) as u32 },
+        1,
+        RET
+    );
+    reg!(host_imports::INPUT_GET_MOUSE_X, || input::mouse_x(), RET);
+    reg!(host_imports::INPUT_GET_MOUSE_Y, || input::mouse_y(), RET);
+    reg!(
+        host_imports::INPUT_IS_MOUSE_DOWN,
+        |b: u32| -> u32 {
+            let mask: u32 = input::mouse_buttons();
+            let requested: u32 = 1u32 << b;
+            if (mask & requested) != 0 { 1 } else { 0 }
+        },
+        1,
+        RET
+    );
+
+    // --- Audio ---
+    reg!(
+        host_imports::AUDIO_INIT,
+        |sr| -> u32 { av::audio_init(sr) },
+        1,
+        RET
+    );
+    reg!(
+        host_imports::AUDIO_PLAY_WAV,
+        |ptr, len| {
+            // wasm32/web: `audio_play_wav` reads bytes from the globally-registered WebAssembly memory.
+            av::audio_play_wav(ptr, len);
+        },
+        2
+    );
+
+    // --- System ---
+    reg!(
+        host_imports::SYSTEM_LOG,
+        |ptr, len| {
+            if let Ok(msg) = read_guest_string_web(ptr, len) {
+                web_sys::console::log_1(&msg.into());
+            }
+        },
+        2
+    );
+    reg!(
+        host_imports::SYSTEM_MILLIS,
+        || av::utils::system_millis(),
+        RET
+    );
+
+    // --- Math ---
+    reg!(
+        host_imports::MATH_RANDOM,
+        |min, max| av::math_random(min, max),
+        2,
+        RET
+    );
+    reg!(
+        host_imports::MATH_NOISE,
+        |x, y, z| av::math_noise(x, y, z),
+        3,
+        RET
+    );
+
+    // --- Storage ---
+    reg!(
+        host_imports::STORAGE_SAVE,
+        |key, ptr, len| {
+            if let Ok(data) = av::utils::read_guest_bytes(ptr, len) {
+                av::storage_save_raw(key, &data);
+            }
+        },
+        3
+    );
+    reg!(
+        host_imports::STORAGE_LOAD,
+        |key| -> u64 { av::storage_load_raw(key) },
+        1,
+        RET
+    );
+
+    js_sys::Reflect::set(imports, &IMPORT_MODULE.into(), &env.into())
+        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     Ok(())
 }

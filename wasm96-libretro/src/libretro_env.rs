@@ -17,7 +17,7 @@
 
 use core::ffi::c_void;
 
-use libretro_sys::{
+use wasm96_libretro_sys::{
     ENVIRONMENT_SET_GEOMETRY, ENVIRONMENT_SET_PIXEL_FORMAT, EnvironmentFn, GameGeometry,
 };
 

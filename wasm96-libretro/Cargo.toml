@@ -4,7 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# This crate is the libretro core, so it must be built as a cdylib.
+# This crate is the libretro core.
+#
+# It supports:
+# - native builds (cdylib) for RetroArch/other libretro frontends
+# - wasm32 builds (cdylib) for RetroArch Web, using the standard libretro HW render
+#   callback path to obtain a WebGL-backed GL context.
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -12,15 +18,32 @@ crate-type = ["cdylib", "rlib"]
 # Platform-agnostic engine
 wasm96-engine = { path = "../wasm96-engine" }
 
-# Libretro bindings
-libretro-backend = { workspace = true }
-libretro-sys = "0.1.1"
-
-# GL for hardware rendering
-gl = "0.14"
-
 # Error handling
 anyhow = "1.0.99"
+
+# Libretro API bindings (wasm-compatible local crate)
+wasm96-libretro-sys = { path = "../wasm96-libretro-sys" }
+
+# Graphics backends
+#
+# - Native: may use OpenGL via `gl` (symbols resolved through libretro HW render callback)
+# - wasm32 (RetroArch Web): use `wgpu` with the WebGL backend
+gl = "0.14"
+wgpu = "28.0.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# wgpu on web uses wasm-bindgen/web-sys to get the canvas + (WebGL) context surface.
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3.77", features = [
+  "Window",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "console",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libretro-backend = { workspace = true }
 
 [profile.dev]
 panic = "abort"

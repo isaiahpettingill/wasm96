@@ -8,8 +8,6 @@
 //!
 //! The ABI surface is defined in `crate::abi` and mirrored by `wasm96-sdk`.
 //!
-//! Runtime backend: Wasmtime (see `crate::runtime`).
-//!
 //! This crate is platform-agnostic and does not contain any libretro-specific code.
 //! It can be used by various frontends: libretro, desktop, web, etc.
 
@@ -21,6 +19,7 @@ pub mod runtime;
 pub mod state;
 
 use crate::abi::GuestEntrypoints;
+use crate::runtime::{BackendRuntime, Instance, Module, Runtime};
 
 /// Platform-agnostic graphics callbacks.
 ///
@@ -170,9 +169,9 @@ pub trait PlatformCallbacks: PlatformGraphics + PlatformAudio + PlatformInput {}
 
 /// The core engine instance.
 pub struct Engine {
-    rt: Option<runtime::WasmtimeRuntime>,
-    module: Option<wasmtime::Module>,
-    instance: Option<wasmtime::Instance>,
+    rt: Option<BackendRuntime>,
+    module: Option<Module>,
+    instance: Option<Instance>,
     entrypoints: Option<GuestEntrypoints>,
     setup_called: bool,
 }
@@ -210,7 +209,7 @@ impl Engine {
 
         let (instance, entrypoints) = rt
             .instantiate(module)
-            .map_err(|e| anyhow::anyhow!("Wasmtime instantiate failed: {e:?}"))?;
+            .map_err(|e| anyhow::anyhow!("instantiate failed: {e:?}"))?;
 
         self.instance = Some(instance);
         self.entrypoints = Some(entrypoints);
@@ -222,7 +221,7 @@ impl Engine {
             return Ok(());
         }
 
-        let mut rt = runtime::WasmtimeRuntime::new().map_err(|_| ())?;
+        let mut rt = BackendRuntime::new().map_err(|_| ())?;
         rt.define_imports().map_err(|_| ())?;
         self.rt = Some(rt);
         Ok(())
@@ -234,9 +233,15 @@ impl Engine {
             return;
         };
 
-        // Wasmtime's `Func::call` requires an output buffer even if there are no returns.
-        let mut results: [wasmtime::Val; 0] = [];
-        let _ = entry.setup.call(&mut rt.store, &[], &mut results);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = entry.setup.call(&mut rt.store, &[], &mut results);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = entry.setup.call0(&js_sys::Object::new());
+        }
     }
 
     fn call_guest_update(&mut self) {
@@ -246,8 +251,15 @@ impl Engine {
         };
         let Some(update) = &entry.update else { return };
 
-        let mut results: [wasmtime::Val; 0] = [];
-        let _ = update.call(&mut rt.store, &[], &mut results);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = update.call(&mut rt.store, &[], &mut results);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = update.call0(&js_sys::Object::new());
+        }
     }
 
     fn call_guest_draw(&mut self) {
@@ -257,15 +269,22 @@ impl Engine {
         };
         let Some(draw) = &entry.draw else { return };
 
-        let mut results: [wasmtime::Val; 0] = [];
-        let _ = draw.call(&mut rt.store, &[], &mut results);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = draw.call(&mut rt.store, &[], &mut results);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = draw.call0(&js_sys::Object::new());
+        }
     }
 
     fn clear_guest(&mut self) {
         self.module = None;
         self.instance = None;
         self.entrypoints = None;
-        // Keep `rt` allocated so subsequent loads are faster; it's safe because imports are pure host fns.
+        // Keep `rt` allocated so subsequent loads are faster.
     }
 
     /// Load a game from raw bytes (WASM or WAT).
@@ -284,8 +303,8 @@ impl Engine {
 
         let rt = self.rt.as_ref().unwrap();
 
-        // Compile module (WASM or WAT) using Wasmtime Engine.
-        let module = match loader::compile_module(&rt.engine, data) {
+        // Compile module using the runtime's compile_module implementation.
+        let module = match rt.compile_module(data) {
             Ok(m) => m,
             Err(e) => {
                 return Err(anyhow::anyhow!("Failed to compile module: {:?}", e));
@@ -294,7 +313,7 @@ impl Engine {
 
         self.module = Some(module);
 
-        // Instantiate module + resolve entrypoints/memory (with detailed errors).
+        // Instantiate module + resolve entrypoints/memory.
         if let Err(e) = self.instantiate_with_details() {
             state::clear_on_unload();
             self.clear_guest();
@@ -319,6 +338,21 @@ impl Engine {
     pub fn run_frame(&mut self, callbacks: &mut dyn PlatformCallbacks) {
         // Set callbacks in thread-local storage so WASM imports can access them
         state::set_callbacks(callbacks);
+
+        // Prepare rendering context (FBO, viewport, etc.) before guest code runs.
+        let (width, height, fbo) = {
+            let s = state::global().lock().unwrap();
+            (
+                s.video.width,
+                s.video.height,
+                callbacks.get_hardware_framebuffer(),
+            )
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        av::prepare_frame(fbo);
+
+        callbacks.prepare_frame(width, height);
 
         if !self.setup_called {
             self.call_guest_setup();
@@ -359,6 +393,7 @@ impl Engine {
     }
 
     /// Get the Wasmtime engine (for pre-compiling modules).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn wasmtime_engine(&self) -> Option<&wasmtime::Engine> {
         self.rt.as_ref().map(|rt| &rt.engine)
     }

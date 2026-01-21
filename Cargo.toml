@@ -16,7 +16,9 @@ members = [
   "example/rust-guest-transform",
 ]
 
-# Optional: allows `cargo build` at the workspace root to default to building the libretro core.
+# Default-members note:
+# - Keep the native default as the libretro core.
+# - When building for wasm32, explicitly select the package you want (e.g. `-p wasm96-engine`).
 default-members = ["wasm96-libretro"]
 
 [workspace.package]

@@ -4,7 +4,9 @@
 //! translating between the engine's platform-agnostic API and libretro's specific
 //! callback functions.
 
-use libretro_sys::{
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
+use wasm96_libretro_sys::{
     AudioSampleBatchFn, AudioSampleFn, DEVICE_ID_JOYPAD_A, DEVICE_ID_JOYPAD_B,
     DEVICE_ID_JOYPAD_DOWN, DEVICE_ID_JOYPAD_L, DEVICE_ID_JOYPAD_L2, DEVICE_ID_JOYPAD_L3,
     DEVICE_ID_JOYPAD_LEFT, DEVICE_ID_JOYPAD_R, DEVICE_ID_JOYPAD_R2, DEVICE_ID_JOYPAD_R3,
@@ -14,11 +16,10 @@ use libretro_sys::{
     DEVICE_MOUSE, ENVIRONMENT_SET_GEOMETRY, EnvironmentFn, HW_FRAME_BUFFER_VALID, InputPollFn,
     InputStateFn, VideoRefreshFn,
 };
-use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use wasm96_engine::{PlatformAudio, PlatformCallbacks, PlatformGraphics, PlatformInput};
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::gl_renderer;
 
 static LOG_ONCE_SW: AtomicBool = AtomicBool::new(false);
@@ -87,20 +88,29 @@ impl LibretroCallbacks {
 
 impl PlatformGraphics for LibretroCallbacks {
     fn prepare_frame(&mut self, width: u32, height: u32) {
-        // Prepare GL rendering if hardware framebuffer is available.
-        if self.current_framebuffer != 0 {
-            if !LOG_ONCE_PREP.swap(true, Ordering::Relaxed) {
+        // Native: prepare GL rendering if hardware framebuffer is available.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.current_framebuffer != 0 {
+                if !LOG_ONCE_PREP.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "(wasm96-libretro) prepare_frame: using HW FBO={} size={}x{}",
+                        self.current_framebuffer, width, height
+                    );
+                }
+                gl_renderer::prepare_frame(self.current_framebuffer as u32, width, height);
+            } else if !LOG_ONCE_PREP.swap(true, Ordering::Relaxed) {
                 eprintln!(
-                    "(wasm96-libretro) prepare_frame: using HW FBO={} size={}x{}",
-                    self.current_framebuffer, width, height
+                    "(wasm96-libretro) prepare_frame: no HW FBO (software path) size={}x{}",
+                    width, height
                 );
             }
-            gl_renderer::prepare_frame(self.current_framebuffer as u32, width, height);
-        } else if !LOG_ONCE_PREP.swap(true, Ordering::Relaxed) {
-            eprintln!(
-                "(wasm96-libretro) prepare_frame: no HW FBO (software path) size={}x{}",
-                width, height
-            );
+        }
+
+        // wasm32 (RetroArch Web): wgpu handles per-frame setup internally.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (width, height);
         }
     }
 
@@ -123,20 +133,16 @@ impl PlatformGraphics for LibretroCallbacks {
             );
         }
 
-        // Engine behavior: when GL is available, `graphics_background()` clears GL and then
-        // clears the *software* framebuffer to transparent so it doesn't occlude 3D.
-        //
-        // If we're in "software present" mode but a HW FBO exists, make sure we still run the
-        // GL clear step so 3D + overlay transparency behaves the same.
-        if self.current_framebuffer != 0 {
-            // If this returns false (renderer not ready / no valid FBO yet), we still fall back
-            // to regular software presentation below.
-            let ok = gl_renderer::clear_framebuffer(0.0, 0.0, 0.0, 1.0);
-            if !ok && LOG_ONCE_SW.load(Ordering::Relaxed) {
-                // keep it minimal/noisy only once: LOG_ONCE_SW is already true after first log
-                eprintln!(
-                    "(wasm96-libretro) present_software_frame: gl clear failed (renderer not ready / invalid FBO)"
-                );
+        // Native-only: keep GL clear behavior consistent when a HW FBO exists.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.current_framebuffer != 0 {
+                let ok = gl_renderer::clear_framebuffer(0.0, 0.0, 0.0, 1.0);
+                if !ok && LOG_ONCE_SW.load(Ordering::Relaxed) {
+                    eprintln!(
+                        "(wasm96-libretro) present_software_frame: gl clear failed (renderer not ready / invalid FBO)"
+                    );
+                }
             }
         }
 
@@ -169,24 +175,30 @@ impl PlatformGraphics for LibretroCallbacks {
             );
         }
 
-        // Ensure the GL renderer targets the *current* libretro HW FBO.
-        //
-        // Even if `prepare_frame()` was skipped or ordering differs between frontends,
-        // we must set the output FBO here or composites can end up targeting FBO=0.
-        if self.current_framebuffer != 0 {
-            gl_renderer::prepare_frame(self.current_framebuffer as u32, width, height);
+        // Native: upload framebuffer to GL texture and composite to the libretro-provided FBO.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.current_framebuffer != 0 {
+                gl_renderer::prepare_frame(self.current_framebuffer as u32, width, height);
+            }
+
+            let ok = gl_renderer::composite_frame(framebuffer, width, height, stride_pixels);
+            if !ok && LOG_ONCE_HW.load(Ordering::Relaxed) {
+                eprintln!(
+                    "(wasm96-libretro) present_hardware_frame: composite_frame returned false (renderer not ready / invalid FBO)"
+                );
+            }
         }
 
-        // Upload framebuffer to GL texture and composite to the libretro-provided FBO.
-        let ok = gl_renderer::composite_frame(framebuffer, width, height, stride_pixels);
-        if !ok && LOG_ONCE_HW.load(Ordering::Relaxed) {
-            eprintln!(
-                "(wasm96-libretro) present_hardware_frame: composite_frame returned false (renderer not ready / invalid FBO)"
-            );
+        // wasm32 (RetroArch Web): wgpu path (stub for now).
+        // This file is updated to route away from the native GL compositor on wasm32; the actual
+        // wgpu renderer will be introduced behind a crate module and invoked here.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (framebuffer, width, height, stride_pixels);
         }
 
         if let Some(cb) = self.video_refresh {
-            // Tell libretro to present the HW framebuffer we've been rendering to.
             unsafe {
                 cb(HW_FRAME_BUFFER_VALID as *const c_void, width, height, 0);
             }
@@ -202,7 +214,7 @@ impl PlatformGraphics for LibretroCallbacks {
     fn notify_geometry_changed(&mut self, width: u32, height: u32) {
         // Notify libretro frontend of geometry change.
         if let Some(env) = self.env {
-            use libretro_sys::GameGeometry;
+            use wasm96_libretro_sys::GameGeometry;
 
             let mut geom = GameGeometry {
                 base_width: width,

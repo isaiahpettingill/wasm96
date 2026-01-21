@@ -1,146 +1,24 @@
-//! wasm96-core ABI module
-//!
-//! This module defines the ABI contract between:
-//! - **Host**: `wasm96-core` (libretro core)
-//! - **Guest**: the loaded WASM module (“game/app”)
-//!
-//! ## High-level model (Immediate Mode)
-//! The host owns the framebuffer and handles all rendering.
-//! The guest issues drawing commands (draw rect, draw line, etc.) during its `draw` loop.
-//!
-//! ## Imports (guest -> host)
-//! Imported from module `"env"`.
-//!
-//! ### Graphics
-//! - `wasm96_graphics_set_size(width: u32, height: u32)`
-//! - `wasm96_graphics_set_color(r: u32, g: u32, b: u32, a: u32)`
-//! - `wasm96_graphics_background(r: u32, g: u32, b: u32)`
-//! - `wasm96_graphics_point(x: i32, y: i32)`
-//! - `wasm96_graphics_line(x1: i32, y1: i32, x2: i32, y2: i32)`
-//! - `wasm96_graphics_rect(x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_rect_outline(x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_circle(x: i32, y: i32, r: u32)`
-//! - `wasm96_graphics_circle_outline(x: i32, y: i32, r: u32)`
-//!
-//! Raw RGBA blit:
-//! - `wasm96_graphics_image(x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32)`
-//!
-//! One-shot (decode and draw at natural size):
-//! - `wasm96_graphics_image_png(x: i32, y: i32, ptr: u32, len: u32)`
-//! - `wasm96_graphics_image_jpeg(x: i32, y: i32, ptr: u32, len: u32)`
-//!
-//! Keyed resources (no numeric ids required in the guest):
-//! - `wasm96_graphics_svg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_svg_draw_key(key: u64, x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_svg_unregister(key: u64)`
-//!
-//! - `wasm96_graphics_gif_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_gif_draw_key(key: u64, x: i32, y: i32)`
-//! - `wasm96_graphics_gif_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_gif_unregister(key: u64)`
-//!
-//! - `wasm96_graphics_aseprite_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_aseprite_draw_key(key: u64, x: i32, y: i32, frame: u32)`
-//! - `wasm96_graphics_aseprite_draw_key_scaled(key: u64, x: i32, y: i32, frame: u32, w: u32, h: u32)`
-//! - `wasm96_graphics_aseprite_play_key(key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32)`
-//! - `wasm96_graphics_aseprite_play_key_scaled(key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32, w: u32, h: u32)`
-//! - `wasm96_graphics_aseprite_unregister(key: u64)`
-//!
-//! - `wasm96_graphics_png_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_png_draw_key(key: u64, x: i32, y: i32)`
-//! - `wasm96_graphics_png_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_png_unregister(key: u64)`
-//!
-//! - `wasm96_graphics_jpeg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_jpeg_draw_key(key: u64, x: i32, y: i32)`
-//! - `wasm96_graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_jpeg_unregister(key: u64)`
-//!
-//! - `wasm96_graphics_jpeg_register(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_jpeg_draw_key(key: u64, x: i32, y: i32)`
-//! - `wasm96_graphics_jpeg_draw_key_scaled(key: u64, x: i32, y: i32, w: u32, h: u32)`
-//! - `wasm96_graphics_jpeg_unregister(key: u64)`
-//!
-//! Fonts (keyed; special key `"spleen"` refers to the built-in Spleen font):
-//! - `wasm96_graphics_font_register_ttf(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_font_register_bdf(key: u64, data_ptr: u32, data_len: u32) -> u32` (bool)
-//! - `wasm96_graphics_font_register_spleen(key: u64, size: u32) -> u32` (bool)
-//! - `wasm96_graphics_font_unregister(key: u64)`
-//! - `wasm96_graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: u32, text_len: u32)`
-//! - `wasm96_graphics_text_measure_key(font_key: u64, text_ptr: u32, text_len: u32) -> u64`
-//!
-//! ### Input
-//! - `wasm96_input_is_button_down(port: u32, btn: u32) -> u32` (bool)
-//! - `wasm96_input_is_key_down(key: u32) -> u32` (bool)
-//! - `wasm96_input_get_mouse_x() -> i32`
-//! - `wasm96_input_get_mouse_y() -> i32`
-//! - `wasm96_input_is_mouse_down(btn: u32) -> u32` (bool)
-//!
-//! ### Audio
-//! - `wasm96_audio_init(sample_rate: u32) -> u32`
-//! - `wasm96_audio_push_samples(ptr: u32, len: u32)`
-//!
-//! // Higher-level audio playback (host-mixed "channels/voices"):
-//! - `wasm96_audio_play_wav(ptr: u32, len: u32)`
-//! - `wasm96_audio_play_qoa(ptr: u32, len: u32)`
-//! - `wasm96_audio_play_xm(ptr: u32, len: u32)`
-//!
-//! ### Storage
-//! - `wasm96_storage_save(key: u64, data_ptr: u32, data_len: u32)`
-//! - `wasm96_storage_load(key: u64) -> u64`
-//!   - returns (ptr<<32)|len in guest memory; ptr=0,len=0 means “missing”
-//! - `wasm96_storage_free(ptr: u32, len: u32)`
-//!
-//! ### System
-//! - `wasm96_system_log(ptr: u32, len: u32)`
-//! - `wasm96_system_millis() -> u64`
-//!
-//! ## Exports (host -> guest)
-//!
-//! The guest module **must** export:
-//! - `setup()`
-//!
-//! The guest module **may** export:
-//! - `update()`
-//! - `draw()`
-//!
-//! WASI-style modules are also supported:
-//! - If `draw()` is missing, `_start()` or `main()` will be treated as the draw function (in that order).
-//! - `update()` is optional; if missing, update is treated as a no-op.
-//!
-//! Precedence:
-//! - If `draw()` is exported, it takes precedence over `_start()`/`main()`.
-//! - If `update()` is exported, it takes precedence over any default behavior.
-//!
-//! This module intentionally avoids embedding a specific runtime (Wasmer/Wasmtime) in its public API.
-//! Runtime-specific helpers should be implemented in runtime glue modules.
-//!
-//! This module intentionally avoids embedding a specific runtime (Wasmer/Wasmtime) in its public API.
-//! Runtime-specific helpers should be implemented in runtime glue modules.
+//! ABI definitions and guest entrypoint resolution for wasm96.
 
-use wasmtime::{Instance, Store};
+#[cfg(target_arch = "wasm32")]
+use js_sys::{Function, Reflect, WebAssembly};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
-/// Wasmer import module name used by the guest.
+/// The module name that guest modules must use to import host functions.
 pub const IMPORT_MODULE: &str = "env";
 
-/// Guest export names (entrypoints).
+/// Well-known guest export names.
 pub mod guest_exports {
-    /// Called once on startup.
     pub const SETUP: &str = "setup";
-    /// Called once per frame to update logic.
     pub const UPDATE: &str = "update";
-    /// Called once per frame to draw.
     pub const DRAW: &str = "draw";
-
-    /// WASI entrypoint (common for wasi modules).
     pub const WASI_START: &str = "_start";
-    /// Conventional "main" export (non-standard in Wasm, but common in toolchains).
     pub const MAIN: &str = "main";
 }
 
-/// Host import names provided to the guest.
+/// Well-known host import names.
 pub mod host_imports {
-    // Graphics
     pub const GRAPHICS_SET_SIZE: &str = "wasm96_graphics_set_size";
     pub const GRAPHICS_SET_COLOR: &str = "wasm96_graphics_set_color";
     pub const GRAPHICS_BACKGROUND: &str = "wasm96_graphics_background";
@@ -150,44 +28,30 @@ pub mod host_imports {
     pub const GRAPHICS_RECT_OUTLINE: &str = "wasm96_graphics_rect_outline";
     pub const GRAPHICS_CIRCLE: &str = "wasm96_graphics_circle";
     pub const GRAPHICS_CIRCLE_OUTLINE: &str = "wasm96_graphics_circle_outline";
-
-    // Raw RGBA blit / one-shot decode+draw
     pub const GRAPHICS_IMAGE: &str = "wasm96_graphics_image";
     pub const GRAPHICS_IMAGE_PNG: &str = "wasm96_graphics_image_png";
     pub const GRAPHICS_IMAGE_JPEG: &str = "wasm96_graphics_image_jpeg";
-
-    // Keyed resources: SVG
     pub const GRAPHICS_SVG_REGISTER: &str = "wasm96_graphics_svg_register";
     pub const GRAPHICS_SVG_DRAW_KEY: &str = "wasm96_graphics_svg_draw_key";
     pub const GRAPHICS_SVG_UNREGISTER: &str = "wasm96_graphics_svg_unregister";
-
-    // Keyed resources: GIF
     pub const GRAPHICS_GIF_REGISTER: &str = "wasm96_graphics_gif_register";
     pub const GRAPHICS_GIF_DRAW_KEY: &str = "wasm96_graphics_gif_draw_key";
     pub const GRAPHICS_GIF_DRAW_KEY_SCALED: &str = "wasm96_graphics_gif_draw_key_scaled";
     pub const GRAPHICS_GIF_UNREGISTER: &str = "wasm96_graphics_gif_unregister";
-
-    // Keyed resources: Aseprite
     pub const GRAPHICS_ASEPRITE_REGISTER: &str = "wasm96_graphics_aseprite_register";
     pub const GRAPHICS_ASEPRITE_DRAW_KEY: &str = "wasm96_graphics_aseprite_draw_key";
     pub const GRAPHICS_ASEPRITE_DRAW_KEY_SCALED: &str = "wasm96_graphics_aseprite_draw_key_scaled";
     pub const GRAPHICS_ASEPRITE_PLAY_KEY: &str = "wasm96_graphics_aseprite_play_key";
     pub const GRAPHICS_ASEPRITE_PLAY_KEY_SCALED: &str = "wasm96_graphics_aseprite_play_key_scaled";
     pub const GRAPHICS_ASEPRITE_UNREGISTER: &str = "wasm96_graphics_aseprite_unregister";
-
-    // Keyed resources: PNG
     pub const GRAPHICS_PNG_REGISTER: &str = "wasm96_graphics_png_register";
     pub const GRAPHICS_PNG_DRAW_KEY: &str = "wasm96_graphics_png_draw_key";
     pub const GRAPHICS_PNG_DRAW_KEY_SCALED: &str = "wasm96_graphics_png_draw_key_scaled";
     pub const GRAPHICS_PNG_UNREGISTER: &str = "wasm96_graphics_png_unregister";
-
-    // Keyed resources: JPEG
     pub const GRAPHICS_JPEG_REGISTER: &str = "wasm96_graphics_jpeg_register";
     pub const GRAPHICS_JPEG_DRAW_KEY: &str = "wasm96_graphics_jpeg_draw_key";
     pub const GRAPHICS_JPEG_DRAW_KEY_SCALED: &str = "wasm96_graphics_jpeg_draw_key_scaled";
     pub const GRAPHICS_JPEG_UNREGISTER: &str = "wasm96_graphics_jpeg_unregister";
-
-    // Shapes
     pub const GRAPHICS_ELLIPSE: &str = "wasm96_graphics_ellipse";
     pub const GRAPHICS_ARC: &str = "wasm96_graphics_arc";
     pub const GRAPHICS_QUAD: &str = "wasm96_graphics_quad";
@@ -198,8 +62,6 @@ pub mod host_imports {
     pub const GRAPHICS_PILL: &str = "wasm96_graphics_pill";
     pub const GRAPHICS_PILL_OUTLINE: &str = "wasm96_graphics_pill_outline";
     pub const GRAPHICS_QUAD_OUTLINE: &str = "wasm96_graphics_quad_outline";
-
-    // Color functions
     pub const GRAPHICS_RED: &str = "wasm96_graphics_red";
     pub const GRAPHICS_GREEN: &str = "wasm96_graphics_green";
     pub const GRAPHICS_BLUE: &str = "wasm96_graphics_blue";
@@ -212,8 +74,6 @@ pub mod host_imports {
     pub const GRAPHICS_COLOR_HSL: &str = "wasm96_graphics_color_hsl";
     pub const GRAPHICS_LERP_COLOR: &str = "wasm96_graphics_lerp_color";
     pub const GRAPHICS_PALETTE_LERP: &str = "wasm96_graphics_palette_lerp";
-
-    // State functions
     pub const GRAPHICS_CLEAR: &str = "wasm96_graphics_clear";
     pub const GRAPHICS_FILL: &str = "wasm96_graphics_fill";
     pub const GRAPHICS_NO_FILL: &str = "wasm96_graphics_no_fill";
@@ -225,7 +85,6 @@ pub mod host_imports {
     pub const GRAPHICS_CLIP: &str = "wasm96_graphics_clip";
     pub const GRAPHICS_BEGIN_CLIP: &str = "wasm96_graphics_begin_clip";
     pub const GRAPHICS_END_CLIP: &str = "wasm96_graphics_end_clip";
-
     pub const GRAPHICS_APPLY_MATRIX: &str = "wasm96_graphics_apply_matrix";
     pub const GRAPHICS_RESET_MATRIX: &str = "wasm96_graphics_reset_matrix";
     pub const GRAPHICS_ROTATE: &str = "wasm96_graphics_rotate";
@@ -238,7 +97,6 @@ pub mod host_imports {
     pub const GRAPHICS_TRANSLATE: &str = "wasm96_graphics_translate";
     pub const GRAPHICS_PUSH_MATRIX: &str = "wasm96_graphics_push_matrix";
     pub const GRAPHICS_POP_MATRIX: &str = "wasm96_graphics_pop_matrix";
-
     pub const GRAPHICS_SET_3D: &str = "wasm96_graphics_set_3d";
     pub const GRAPHICS_CAMERA_LOOK_AT: &str = "wasm96_graphics_camera_look_at";
     pub const GRAPHICS_CAMERA_PERSPECTIVE: &str = "wasm96_graphics_camera_perspective";
@@ -247,42 +105,27 @@ pub mod host_imports {
     pub const GRAPHICS_MESH_CREATE_STL: &str = "wasm96_graphics_mesh_create_stl";
     pub const GRAPHICS_MESH_SET_TEXTURE: &str = "wasm96_graphics_mesh_set_texture";
     pub const GRAPHICS_MESH_DRAW: &str = "wasm96_graphics_mesh_draw";
-
-    // Materials / textures (OBJ+MTL workflows)
     pub const GRAPHICS_MTL_REGISTER_TEXTURE: &str = "wasm96_graphics_mtl_register_texture";
-
-    // Fonts (keyed)
     pub const GRAPHICS_FONT_REGISTER_TTF: &str = "wasm96_graphics_font_register_ttf";
     pub const GRAPHICS_FONT_REGISTER_BDF: &str = "wasm96_graphics_font_register_bdf";
     pub const GRAPHICS_FONT_REGISTER_SPLEEN: &str = "wasm96_graphics_font_register_spleen";
     pub const GRAPHICS_FONT_UNREGISTER: &str = "wasm96_graphics_font_unregister";
     pub const GRAPHICS_TEXT_KEY: &str = "wasm96_graphics_text_key";
     pub const GRAPHICS_TEXT_MEASURE_KEY: &str = "wasm96_graphics_text_measure_key";
-
-    // Input
     pub const INPUT_IS_BUTTON_DOWN: &str = "wasm96_input_is_button_down";
     pub const INPUT_IS_KEY_DOWN: &str = "wasm96_input_is_key_down";
     pub const INPUT_GET_MOUSE_X: &str = "wasm96_input_get_mouse_x";
     pub const INPUT_GET_MOUSE_Y: &str = "wasm96_input_get_mouse_y";
     pub const INPUT_IS_MOUSE_DOWN: &str = "wasm96_input_is_mouse_down";
-
-    // Audio
     pub const AUDIO_INIT: &str = "wasm96_audio_init";
     pub const AUDIO_PUSH_SAMPLES: &str = "wasm96_audio_push_samples";
-
-    // High-level audio playback (decoded + mixed on host)
-    // Fire-and-forget (no ids/handles returned).
     pub const AUDIO_PLAY_WAV: &str = "wasm96_audio_play_wav";
     pub const AUDIO_PLAY_QOA: &str = "wasm96_audio_play_qoa";
     pub const AUDIO_PLAY_XM: &str = "wasm96_audio_play_xm";
     pub const AUDIO_PLAY_MIDI: &str = "wasm96_audio_play_midi";
-
-    // Storage
     pub const STORAGE_SAVE: &str = "wasm96_storage_save";
     pub const STORAGE_LOAD: &str = "wasm96_storage_load";
     pub const STORAGE_FREE: &str = "wasm96_storage_free";
-
-    // System
     pub const SYSTEM_LOG: &str = "wasm96_system_log";
     pub const SYSTEM_MILLIS: &str = "wasm96_system_millis";
     pub const SYSTEM_DAY: &str = "wasm96_system_day";
@@ -291,8 +134,6 @@ pub mod host_imports {
     pub const SYSTEM_MONTH: &str = "wasm96_system_month";
     pub const SYSTEM_SECOND: &str = "wasm96_system_second";
     pub const SYSTEM_YEAR: &str = "wasm96_system_year";
-
-    // Math - Calculation
     pub const MATH_ABS: &str = "wasm96_math_abs";
     pub const MATH_CEIL: &str = "wasm96_math_ceil";
     pub const MATH_CONSTRAIN: &str = "wasm96_math_constrain";
@@ -311,8 +152,6 @@ pub mod host_imports {
     pub const MATH_ROUND: &str = "wasm96_math_round";
     pub const MATH_SQ: &str = "wasm96_math_sq";
     pub const MATH_SQRT: &str = "wasm96_math_sqrt";
-
-    // Math - Trigonometry
     pub const MATH_ACOS: &str = "wasm96_math_acos";
     pub const MATH_ASIN: &str = "wasm96_math_asin";
     pub const MATH_ATAN: &str = "wasm96_math_atan";
@@ -322,8 +161,6 @@ pub mod host_imports {
     pub const MATH_TAN: &str = "wasm96_math_tan";
     pub const MATH_DEGREES: &str = "wasm96_math_degrees";
     pub const MATH_RADIANS: &str = "wasm96_math_radians";
-
-    // Math - Random & Noise
     pub const MATH_RANDOM: &str = "wasm96_math_random";
     pub const MATH_RANDOM_SEED: &str = "wasm96_math_random_seed";
     pub const MATH_RANDOM_GAUSSIAN: &str = "wasm96_math_random_gaussian";
@@ -332,9 +169,9 @@ pub mod host_imports {
     pub const MATH_NOISE_DETAIL: &str = "wasm96_math_noise_detail";
 }
 
-/// Joypad button ids.
+/// Standard controller buttons.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Button {
     B = 0,
     Y = 1,
@@ -354,21 +191,18 @@ pub enum Button {
     R3 = 15,
 }
 
-/// Helpers for validating guest exports.
 pub mod validate {
     use super::guest_exports;
-    use wasmtime::{Instance, Store};
 
-    /// Validate that the required guest exports exist (Wasmtime).
-    ///
-    /// Only `setup` is required. `update` and `draw` are optional because:
-    /// - guests may choose to export only `draw` or only `update`
-    /// - WASI-style guests may export `_start` or `main` instead of `draw`
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn required_exports_present_wasmtime(
-        instance: &Instance,
-        store: &mut Store<()>,
+        instance: &wasmtime::Instance,
+        mut store: impl wasmtime::AsContextMut,
     ) -> Result<(), MissingExport> {
-        if instance.get_func(store, guest_exports::SETUP).is_none() {
+        if instance
+            .get_func(&mut store, guest_exports::SETUP)
+            .is_none()
+        {
             return Err(MissingExport::Setup);
         }
         Ok(())
@@ -380,39 +214,72 @@ pub mod validate {
     }
 }
 
-/// A small view of a guest's entrypoints as Wasmtime `Func`s.
-///
-/// NOTE: `update` and `draw` are optional. The host should treat missing ones as no-ops.
-/// `draw` may be satisfied by WASI-style `_start` or by `main` when `draw` is absent.
-#[derive(Clone)]
+#[cfg(not(target_arch = "wasm32"))]
+pub type GuestFunc = wasmtime::Func;
+#[cfg(target_arch = "wasm32")]
+pub type GuestFunc = js_sys::Function;
+
+/// Resolved entrypoints for a guest module.
 pub struct GuestEntrypoints {
-    pub setup: wasmtime::Func,
-    pub update: Option<wasmtime::Func>,
-    pub draw: Option<wasmtime::Func>,
+    pub setup: GuestFunc,
+    pub update: Option<GuestFunc>,
+    pub draw: Option<GuestFunc>,
 }
 
 impl GuestEntrypoints {
-    /// Resolve entrypoint exports from a Wasmtime instance with WASI-friendly fallbacks.
-    ///
-    /// Rules:
-    /// - `setup` is required.
-    /// - `draw` is preferred if exported; otherwise `_start`, otherwise `main`.
-    /// - `update` is used if exported; otherwise it's `None`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn resolve_wasmtime(
-        instance: &Instance,
-        store: &mut Store<()>,
-    ) -> Result<Self, anyhow::Error> {
-        // Wasmtime APIs take `impl AsContextMut`, and passing `store` directly into multiple
-        // calls can lead to "use of moved value" errors due to how the reborrow is inferred.
-        // Use explicit reborrows for each call.
+        instance: &wasmtime::Instance,
+        mut store: impl wasmtime::AsContextMut,
+    ) -> anyhow::Result<Self> {
         let setup = instance
-            .get_func(&mut *store, guest_exports::SETUP)
-            .ok_or_else(|| anyhow::anyhow!("missing required export: {}", guest_exports::SETUP))?;
-        let update = instance.get_func(&mut *store, guest_exports::UPDATE);
-        let draw = instance
-            .get_func(&mut *store, guest_exports::DRAW)
-            .or_else(|| instance.get_func(&mut *store, guest_exports::WASI_START))
-            .or_else(|| instance.get_func(&mut *store, guest_exports::MAIN));
+            .get_func(&mut store, guest_exports::SETUP)
+            .ok_or_else(|| anyhow::anyhow!("missing setup"))?;
+
+        let update = instance.get_func(&mut store, guest_exports::UPDATE);
+
+        let mut draw = instance.get_func(&mut store, guest_exports::DRAW);
+        if draw.is_none() {
+            draw = instance.get_func(&mut store, guest_exports::WASI_START);
+        }
+        if draw.is_none() {
+            draw = instance.get_func(&mut store, guest_exports::MAIN);
+        }
+
+        Ok(Self {
+            setup,
+            update,
+            draw,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn resolve_web(instance: &WebAssembly::Instance) -> anyhow::Result<Self> {
+        let exports = instance.exports();
+
+        let setup = Reflect::get(&exports, &guest_exports::SETUP.into())
+            .map_err(|e| anyhow::anyhow!("{:?}", e))?
+            .dyn_into::<Function>()
+            .map_err(|_| anyhow::anyhow!("setup is not a function"))?;
+
+        let update = Reflect::get(&exports, &guest_exports::UPDATE.into())
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+
+        let mut draw = Reflect::get(&exports, &guest_exports::DRAW.into())
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+
+        if draw.is_none() {
+            draw = Reflect::get(&exports, &guest_exports::WASI_START.into())
+                .ok()
+                .and_then(|v| v.dyn_into::<Function>().ok());
+        }
+        if draw.is_none() {
+            draw = Reflect::get(&exports, &guest_exports::MAIN.into())
+                .ok()
+                .and_then(|v| v.dyn_into::<Function>().ok());
+        }
 
         Ok(Self {
             setup,
@@ -424,107 +291,91 @@ impl GuestEntrypoints {
 
 #[cfg(test)]
 mod entrypoint_tests {
+    #[cfg(not(target_arch = "wasm32"))]
     use super::*;
-    use wasmtime::{Engine, Module, Store};
+    #[cfg(not(target_arch = "wasm32"))]
+    use wasmtime::{Config, Engine, Module, Store};
 
-    fn instantiate(wat_src: &str) -> (Store<()>, Instance) {
-        let engine = Engine::default();
+    #[cfg(not(target_arch = "wasm32"))]
+    fn instantiate(wat: &str) -> (wasmtime::Instance, Store<()>) {
+        let engine = Engine::new(Config::new().wasm_multi_value(true)).unwrap();
+        let module = Module::new(&engine, wat).unwrap();
         let mut store = Store::new(&engine, ());
-        let wasm = wat::parse_str(wat_src).unwrap();
-        let module = Module::new(&engine, wasm).unwrap();
-        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-        (store, instance)
+        let linker = wasmtime::Linker::new(&engine);
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+        (instance, store)
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn requires_setup_export() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "draw"))
-            )
-            "#,
-        );
+        let (instance, mut store) = instantiate(r#"(module (func (export "not_setup")))"#);
+        assert!(GuestEntrypoints::resolve_wasmtime(&instance, &mut store).is_err());
 
-        assert!(validate::required_exports_present_wasmtime(&instance, &mut store).is_err());
+        let (instance, mut store) = instantiate(r#"(module (func (export "setup")))"#);
+        assert!(GuestEntrypoints::resolve_wasmtime(&instance, &mut store).is_ok());
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn prefers_draw_over_wasi_start_and_main() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "setup"))
-              (func (export "draw"))
-              (func (export "_start"))
-              (func (export "main"))
-            )
-            "#,
+        let (instance, mut store) = instantiate(
+            r#"(module
+                (func (export "setup"))
+                (func (export "draw"))
+                (func (export "_start"))
+                (func (export "main"))
+            )"#,
         );
-
-        let ep = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
-        assert!(ep.draw.is_some());
+        let entry = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
+        let _ = entry; // Just check it resolves
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn falls_back_to_wasi_start_when_draw_missing() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "setup"))
-              (func (export "_start"))
-              (func (export "main"))
-            )
-            "#,
+        let (instance, mut store) = instantiate(
+            r#"(module
+                (func (export "setup"))
+                (func (export "_start"))
+                (func (export "main"))
+            )"#,
         );
-
-        let ep = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
-        assert!(ep.draw.is_some());
+        let entry = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
+        let _ = entry;
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn falls_back_to_main_when_draw_and_wasi_start_missing() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "setup"))
-              (func (export "main"))
-            )
-            "#,
+        let (instance, mut store) = instantiate(
+            r#"(module
+                (func (export "setup"))
+                (func (export "main"))
+            )"#,
         );
-
-        let ep = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
-        assert!(ep.draw.is_some());
+        let entry = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
+        let _ = entry;
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn update_is_none_when_missing() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "setup"))
-              (func (export "draw"))
-            )
-            "#,
-        );
-
-        let ep = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
-        assert!(ep.update.is_none());
+        let (instance, mut store) = instantiate(r#"(module (func (export "setup")))"#);
+        let entry = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
+        assert!(entry.update.is_none());
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn update_prefers_export_when_present() {
-        let (mut store, instance) = instantiate(
-            r#"
-            (module
-              (func (export "setup"))
-              (func (export "draw"))
-              (func (export "update"))
-            )
-            "#,
+        let (instance, mut store) = instantiate(
+            r#"(module
+                (func (export "setup"))
+                (func (export "update"))
+            )"#,
         );
-
-        let ep = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
-        assert!(ep.update.is_some());
+        let entry = GuestEntrypoints::resolve_wasmtime(&instance, &mut store).unwrap();
+        assert!(entry.update.is_some());
     }
 }

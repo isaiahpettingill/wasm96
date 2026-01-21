@@ -5,13 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-crate-type = ["lib"]
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
-# Runtime: Wasmtime (broader feature support + WASI integration)
-wasmtime = { version = "39.0.1", features = ["cranelift", "pooling-allocator", "profiling"] }
-wasmtime-wasi = { version = "39.0.1" }
-
 # Error handling
 anyhow = "1.0.99"
 
@@ -54,6 +50,21 @@ chrono = "0.4.38"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 noise = "0.9.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Runtime: Wasmtime (broader feature support + WASI integration)
+wasmtime = { version = "39.0.1", features = ["cranelift", "pooling-allocator", "profiling"] }
+wasmtime-wasi = { version = "39.0.1" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Web Runtime: js-sys / web-sys
+js-sys = "0.3.77"
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3.77", features = ["console"] }
+# Both getrandom v0.2 and v0.3 are needed because different dependencies transitively use different versions.
+# We enable the "js" and "wasm_js" features to allow them to work in a browser environment.
+getrandom_v2 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_v3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 [profile.dev]
 panic = "abort"

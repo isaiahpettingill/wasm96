@@ -1056,8 +1056,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "335ff9f135e4384c8150d6f27c6daed433577f86b4750418338c01a1a2528592"
 dependencies = [
  "cfg-if 1.0.4",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1067,9 +1069,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if 1.0.4",
+ "js-sys",
  "libc",
  "r-efi",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3351,12 +3355,15 @@ dependencies = [
  "bytemuck",
  "chrono",
  "fontdue",
+ "getrandom 0.2.16",
+ "getrandom 0.3.4",
  "gif",
  "gl",
  "glam",
  "hound",
  "image",
  "jpeg-decoder",
+ "js-sys",
  "lazy_static",
  "midly",
  "noise",
@@ -3368,9 +3375,11 @@ dependencies = [
  "resvg",
  "tiny-skia",
  "tobj",
+ "wasm-bindgen",
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "web-sys",
  "wgpu",
  "xmrs",
  "xmrsplayer",
@@ -3383,9 +3392,16 @@ dependencies = [
  "anyhow",
  "gl",
  "libretro-backend",
- "libretro-sys",
+ "wasm-bindgen",
  "wasm96-engine",
+ "wasm96-libretro-sys",
+ "web-sys",
+ "wgpu",
 ]
+
+[[package]]
+name = "wasm96-libretro-sys"
+version = "0.1.0"
 
 [[package]]
 name = "wasm96-sdk"

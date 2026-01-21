@@ -9,7 +9,7 @@
 //! The intent is to keep `libretro_glue.rs` and the rendering/audio code free of
 //! scattered `#[cfg]` blocks and magic constants.
 
-use libretro_sys::{HwContextType, PixelFormat};
+use wasm96_libretro_sys::{HwContextType, PixelFormat};
 
 /// libretro HW context selection (value + version pair).
 #[derive(Debug, Clone, Copy)]
@@ -61,11 +61,10 @@ pub fn preferred_audio_sample_rate_hz() -> f64 {
 
 /// Returns the pixel format the core should request for *software* frames.
 ///
-/// We standardize on 32-bit XRGB8888. In `libretro-sys 0.1.1`, the equivalent
-/// value is `PixelFormat::ARGB8888` (alpha is ignored by libretro for this format).
+/// We standardize on 32-bit XRGB8888.
 #[inline]
 pub fn preferred_pixel_format() -> PixelFormat {
-    PixelFormat::ARGB8888
+    PixelFormat::XRGB8888
 }
 
 /// Whether software frames should use an aligned pitch on the current target.

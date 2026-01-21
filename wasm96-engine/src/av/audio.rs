@@ -2,6 +2,7 @@
 extern crate alloc;
 
 use crate::state::global;
+#[cfg(not(target_arch = "wasm32"))]
 use wasmtime::Caller;
 
 // External crates for rendering
@@ -42,28 +43,25 @@ pub fn audio_init(sample_rate: u32) -> u32 {
 //
 // Fire-and-forget: no ids/handles are returned.
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
-    let memory_ptr = {
-        let s = match crate::state::global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        s.memory_wasmtime
+    let wav_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
     };
+    audio_play_wav_inner(wav_bytes);
+}
 
-    if memory_ptr.is_null() {
-        return;
-    }
+#[cfg(target_arch = "wasm32")]
+pub fn audio_play_wav(ptr: u32, len: u32) {
+    let wav_bytes = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    audio_play_wav_inner(wav_bytes);
+}
 
-    // SAFETY: memory pointer checked.
-    let mem = unsafe { &*memory_ptr };
-
-    // Read WAV bytes from guest memory.
-    let mut wav_bytes = vec![0u8; len as usize];
-    if mem.read(env, ptr as usize, &mut wav_bytes).is_err() {
-        return;
-    }
-
+fn audio_play_wav_inner(wav_bytes: Vec<u8>) {
     // Decode WAV using hound.
     let cursor = std::io::Cursor::new(wav_bytes);
     let reader = match hound::WavReader::new(cursor) {
@@ -111,28 +109,25 @@ pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     s.audio.channels.push(channel);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
-    let memory_ptr = {
-        let s = match crate::state::global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        s.memory_wasmtime
+    let qoa_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
     };
+    audio_play_qoa_inner(qoa_bytes);
+}
 
-    if memory_ptr.is_null() {
-        return;
-    }
+#[cfg(target_arch = "wasm32")]
+pub fn audio_play_qoa(ptr: u32, len: u32) {
+    let qoa_bytes = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    audio_play_qoa_inner(qoa_bytes);
+}
 
-    // SAFETY: memory pointer checked.
-    let mem = unsafe { &*memory_ptr };
-
-    // Read QOA bytes from guest memory.
-    let mut qoa_bytes = vec![0u8; len as usize];
-    if mem.read(env, ptr as usize, &mut qoa_bytes).is_err() {
-        return;
-    }
-
+fn audio_play_qoa_inner(qoa_bytes: Vec<u8>) {
     // Decode QOA using qoaudio crate.
     let decoder = match qoaudio::QoaDecoder::new(&qoa_bytes) {
         Ok(d) => d,
@@ -174,28 +169,25 @@ pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     s.audio.channels.push(channel);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
-    let memory_ptr = {
-        let s = match crate::state::global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        s.memory_wasmtime
+    let xm_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
     };
+    audio_play_xm_inner(xm_bytes);
+}
 
-    if memory_ptr.is_null() {
-        return;
-    }
+#[cfg(target_arch = "wasm32")]
+pub fn audio_play_xm(ptr: u32, len: u32) {
+    let xm_bytes = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    audio_play_xm_inner(xm_bytes);
+}
 
-    // SAFETY: memory pointer checked.
-    let mem = unsafe { &*memory_ptr };
-
-    // Read XM bytes from guest memory.
-    let mut xm_bytes = vec![0u8; len as usize];
-    if mem.read(env, ptr as usize, &mut xm_bytes).is_err() {
-        return;
-    }
-
+fn audio_play_xm_inner(xm_bytes: Vec<u8>) {
     // Load XM module using xmrs.
     let xm = match xmrs::import::xm::xmmodule::XmModule::load(&xm_bytes) {
         Ok(xm) => xm,
@@ -252,28 +244,25 @@ pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     s.audio.channels.push(channel);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn audio_play_midi(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
-    let memory_ptr = {
-        let s = match crate::state::global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        s.memory_wasmtime
+    let midi_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
     };
+    audio_play_midi_inner(midi_bytes);
+}
 
-    if memory_ptr.is_null() {
-        return;
-    }
+#[cfg(target_arch = "wasm32")]
+pub fn audio_play_midi(ptr: u32, len: u32) {
+    let midi_bytes = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    audio_play_midi_inner(midi_bytes);
+}
 
-    // SAFETY: memory pointer checked.
-    let mem = unsafe { &*memory_ptr };
-
-    // Read MIDI bytes from guest memory.
-    let mut midi_bytes = vec![0u8; len as usize];
-    if mem.read(env, ptr as usize, &mut midi_bytes).is_err() {
-        return;
-    }
-
+fn audio_play_midi_inner(midi_bytes: Vec<u8>) {
     // Parse MIDI using midly.
     let smf = match Smf::parse(&midi_bytes) {
         Ok(smf) => smf,
@@ -302,29 +291,23 @@ pub fn audio_play_midi(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Result<(), AvError> {
-    let memory_ptr = {
-        let s = match global().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        s.memory_wasmtime
-    };
-
-    if memory_ptr.is_null() {
-        return Err(AvError::MissingMemory);
-    }
-
-    // SAFETY: memory pointer checked.
-    let mem = unsafe { &*memory_ptr };
-
     // Read i16 samples. count is number of i16 elements.
     let byte_len = count.checked_mul(2).ok_or(AvError::MemoryReadFailed)?;
-    let mut tmp_bytes = vec![0u8; byte_len as usize];
+    let tmp_bytes = super::utils::read_guest_bytes(env, ptr, byte_len)?;
+    audio_push_samples_inner(tmp_bytes, count)
+}
 
-    mem.read(env, ptr as usize, &mut tmp_bytes)
-        .map_err(|_| AvError::MemoryReadFailed)?;
+#[cfg(target_arch = "wasm32")]
+pub fn audio_push_samples(ptr: u32, count: u32) -> Result<(), AvError> {
+    // Read i16 samples. count is number of i16 elements.
+    let byte_len = count.checked_mul(2).ok_or(AvError::MemoryReadFailed)?;
+    let tmp_bytes = super::utils::read_guest_bytes(ptr, byte_len)?;
+    audio_push_samples_inner(tmp_bytes, count)
+}
 
+fn audio_push_samples_inner(tmp_bytes: Vec<u8>, count: u32) -> Result<(), AvError> {
     // Convert bytes to i16
     let mut samples = Vec::with_capacity(count as usize);
     for chunk in tmp_bytes.chunks_exact(2) {

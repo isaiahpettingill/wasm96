@@ -1,19 +1,13 @@
 //! Wasmtime-backed runtime glue for wasm96-core.
-//!
-//! Responsibilities:
-//! - Create a Wasmtime `Engine`/`Store` with feature flags enabled.
-//! - Define host imports under module `"env"` matching the guest ABI.
-//! - Instantiate a compiled `wasmtime::Module`.
-//! - Register the guest memory export into global state for host-side helpers.
-//!
-//! Guest ABI is unchanged: imports are still `"env"` + `wasm96_*` symbols.
-//!
-//! Entrypoint resolution (setup/update/draw + WASI `_start`/`main` fallback) lives in
-//! `crate::abi::GuestEntrypoints::resolve_wasmtime`.
 
 use crate::{abi, state};
+use anyhow::Result;
+use wasmtime::{Extern, Linker, Store};
 
-use wasmtime::{Extern, Instance, Linker, Module, Store};
+/// Wasmtime Module type.
+pub type Module = wasmtime::Module;
+/// Wasmtime Instance type.
+pub type Instance = wasmtime::Instance;
 
 /// Host-side runtime container.
 pub struct WasmtimeRuntime {
@@ -22,15 +16,12 @@ pub struct WasmtimeRuntime {
     pub linker: Linker<()>,
 }
 
-impl WasmtimeRuntime {
+impl super::Runtime for WasmtimeRuntime {
+    type Module = Module;
+    type Instance = Instance;
+
     /// Create a new Wasmtime runtime with a broad set of WebAssembly features enabled.
-    ///
-    /// Notes:
-    /// - We enable a wide range of Wasm proposal features to maximize guest compatibility.
-    /// - Some proposals (notably threads/shared-memory) still require host-side integration
-    ///   beyond flipping a config bit; we enable them here so modules can at least validate,
-    ///   but guests must still be written with the embedding constraints in mind.
-    pub fn new() -> Result<Self, anyhow::Error> {
+    fn new() -> Result<Self> {
         let mut cfg = wasmtime::Config::new();
 
         // Broadly supported/expected features for "modern" Wasm modules.
@@ -48,7 +39,6 @@ impl WasmtimeRuntime {
         cfg.wasm_gc(true);
 
         // Conservative but enabled, so guests using shared memories / atomics can at least load.
-        // Full correctness/performance may require more embedding work (threads, shared memory limits, etc).
         cfg.wasm_threads(true);
 
         // Exception handling proposal is useful for some toolchains.
@@ -66,17 +56,23 @@ impl WasmtimeRuntime {
     }
 
     /// Define all host imports expected by guests under module `"env"`.
-    ///
-    /// Must be called before `instantiate`.
-    pub fn define_imports(&mut self) -> Result<(), anyhow::Error> {
+    fn define_imports(&mut self) -> Result<()> {
         super::imports::define_imports(&mut self.linker)
     }
 
+    /// Compile raw WASM/WAT bytes into a module.
+    fn compile_module(&self, bytes: &[u8]) -> Result<Self::Module> {
+        let normalized = crate::loader::normalize_to_wasm(bytes)
+            .map_err(|e| anyhow::anyhow!("Normalization failed: {}", e))?;
+        wasmtime::Module::new(&self.engine, normalized.wasm_bytes.as_slice())
+            .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+    }
+
     /// Instantiate a module and wire up exports/memory.
-    pub fn instantiate(
+    fn instantiate(
         &mut self,
-        module: &Module,
-    ) -> Result<(Instance, abi::GuestEntrypoints), anyhow::Error> {
+        module: &Self::Module,
+    ) -> Result<(Self::Instance, abi::GuestEntrypoints)> {
         let instance = self.linker.instantiate(&mut self.store, module)?;
 
         // Register memory in global state (best-effort).

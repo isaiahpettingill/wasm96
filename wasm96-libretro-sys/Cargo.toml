@@ -1,0 +1,17 @@
+[package]
+name = "wasm96-libretro-sys"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Minimal wasm-compatible libretro C ABI bindings used by wasm96-libretro"
+repository = "https://github.com/isaiahpettingill/wasm96"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Avoid `libc` to keep this crate wasm32-friendly. Use core/std C types instead.
+# (No deps needed.)
+
+[features]
+default = []
