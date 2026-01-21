@@ -44,6 +44,15 @@ The core runs guest modules using **Wasmtime**.
 
 Wasmtime configuration is set up to enable a broad set of WebAssembly feature flags (in both Cargo features and `wasmtime::Config`) for maximum guest compatibility.
 
+### WASI and Virtual File System (VFS)
+wasm96 includes a built-in Virtual File System (FAT-formatted) and supports **WASI Preview 1**. This allows guests to use standard library file I/O.
+
+- **Persistence**: 
+  - **Libretro**: The filesystem is automatically persisted to the libretro SRAM object.
+  - **Desktop**: Disks can be created, mounted from `.img` files, or exported.
+- **Micro OS Support**: You can pack a host folder into a disk image to distribute "micro OSes" where WASM is the native assembly.
+- **WASI Integration**: Guest WASI calls are mapped to an in-memory directory that synchronizes with the Virtual FAT disk upon loading and unloading.
+
 ## Example guests
 
 ### Shapes demo (ellipse/arc/quad)
@@ -99,6 +108,13 @@ This fallback exists so guests can render text “out of the box” without expl
 # Desktop Frontend
 
 A pure-Rust desktop frontend is available for running `wasm96` content without RetroArch. It features hardware-accelerated 3D rendering via `wgpu` (Vulkan/Metal/D3D), a file menu for loading games, and supports keyboard and gamepad input (including DragonRise SNES-style and modern Xbox controllers).
+
+### Features
+- **Cartridge Slots**: Support for up to 10 cartridge slots (`CART0` to `CART9`). `CART0` is the default boot cartridge.
+- **Virtual Disks**: Support for up to 5 virtual disks (up to 4GB each). `DISK0` is the primary system/save disk.
+- **Persistent Storage**: Game saves are stored in `.sav` files keyed by the cartridge name.
+- **Disk Execution**: Run `.w96`, `.wasm`, or `.wat` programs directly from any mounted virtual disk.
+- **SRAM Support**: `DISK0.img` acts as the persistent game memory (SRAM) for the runtime.
 
 ## Running the Desktop Frontend
 ```bash

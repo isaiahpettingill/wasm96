@@ -239,6 +239,17 @@ impl Default for AudioChannel {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+/// Context for Wasmtime, including WASI state and the host-backed root.
+pub struct Wasm96Ctx {
+    pub wasi: wasmtime_wasi::p1::WasiP1Ctx,
+    pub temp_dir: tempfile::TempDir,
+}
+
+#[cfg(target_arch = "wasm32")]
+/// Dummy context for the web runtime.
+pub struct Wasm96Ctx;
+
 /// Global core state accessed from:
 /// - `Engine::run_frame` (to set the current `RuntimeHandle`)
 /// - host import functions
@@ -275,6 +286,9 @@ pub struct GlobalState {
 
     /// Seed for noise functions.
     pub noise_seed: u32,
+
+    /// Virtual File System state.
+    pub vfs: crate::vfs::VfsState,
 }
 
 impl Default for GlobalState {
@@ -293,6 +307,7 @@ impl Default for GlobalState {
             storage: StorageState::default(),
             rng: rand::rngs::StdRng::from_entropy(),
             noise_seed: 0,
+            vfs: crate::vfs::VfsState::default(),
         }
     }
 }

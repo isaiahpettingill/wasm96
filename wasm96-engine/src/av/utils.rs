@@ -1,7 +1,7 @@
 // Needed for `alloc::` in this crate.
 extern crate alloc;
 
-use crate::state::global;
+use crate::state::{Wasm96Ctx, global};
 use glam::{Mat4, Vec3};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -14,13 +14,13 @@ use super::AvError;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn read_guest_bytes(
-    caller: &mut Caller<'_, ()>,
+    caller: &mut Caller<'_, Wasm96Ctx>,
     ptr: u32,
     len: u32,
 ) -> Result<Vec<u8>, AvError> {
     let memory = caller
         .get_export("memory")
-        .and_then(|e| e.into_memory())
+        .and_then(wasmtime::Extern::into_memory)
         .ok_or(AvError::MissingMemory)?;
 
     let mut data = vec![0u8; len as usize];
@@ -41,7 +41,7 @@ pub fn read_guest_bytes(ptr: u32, len: u32) -> Result<Vec<u8>, AvError> {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn read_guest_string(
-    caller: &mut Caller<'_, ()>,
+    caller: &mut Caller<'_, Wasm96Ctx>,
     ptr: u32,
     len: u32,
 ) -> Result<String, AvError> {
@@ -176,7 +176,7 @@ pub fn sat_add_i16(a: i16, b: i16) -> i16 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn guest_alloc(env: &mut Caller<'_, ()>, len: u32) -> Option<u32> {
+pub fn guest_alloc(env: &mut Caller<'_, Wasm96Ctx>, len: u32) -> Option<u32> {
     let _ = env;
     let _ = len;
     // We don't have direct access to the instance here; allocation exports must be wired
@@ -191,7 +191,7 @@ pub fn guest_alloc(len: u32) -> Option<u32> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn guest_free(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn guest_free(env: &mut Caller<'_, Wasm96Ctx>, ptr: u32, len: u32) {
     let _ = env;
     let _ = ptr;
     let _ = len;

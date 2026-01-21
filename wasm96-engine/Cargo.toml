@@ -45,6 +45,11 @@ wat = "1.243.0"
 # MIDI parsing
 midly = "0.5"
 
+# Filesystem
+fatfs = "0.3"
+fscommon = "0.1"
+tempfile = "3.10.1"
+
 # Math / Random / Time
 chrono = "0.4.38"
 rand = "0.8.5"
@@ -54,7 +59,7 @@ noise = "0.9.0"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Runtime: Wasmtime (broader feature support + WASI integration)
 wasmtime = { version = "39.0.1", features = ["cranelift", "pooling-allocator", "profiling"] }
-wasmtime-wasi = { version = "39.0.1" }
+wasmtime-wasi = { version = "39.0.1", features = ["p1"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Web Runtime: js-sys / web-sys

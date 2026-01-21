@@ -17,6 +17,7 @@ pub mod input;
 pub mod loader;
 pub mod runtime;
 pub mod state;
+pub mod vfs;
 
 use crate::abi::GuestEntrypoints;
 use crate::runtime::{BackendRuntime, Instance, Module, Runtime};
@@ -367,6 +368,11 @@ impl Engine {
 
     /// Unload the current game and reset state.
     pub fn unload(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(rt) = self.rt.as_mut() {
+            let _ = rt.sync_wasi_to_vfs();
+        }
+
         self.clear_guest();
         state::clear_on_unload();
     }

@@ -97,6 +97,10 @@ run_command := if os_family() == "windows" { "/c/RetroArch-Win64/retroarch.exe -
 run content-path: build-core
     RUST_BACKTRACE=1 {{ run_command }} {{ content-path }} --verbose
 
+run-rust-wasi:
+    cargo build -p rust-guest-wasi --target wasm32-wasip1 --release
+    just run example/rust-guest-wasi/target/wasm32-wasip1/release/rust_guest_wasi.wasm
+
 desktop:
     cargo run -p wasm96-desktop
 

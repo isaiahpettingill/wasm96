@@ -519,7 +519,7 @@ pub fn graphics_camera_perspective(fovy: f32, aspect: f32, near: f32, far: f32) 
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create(
-    env: &mut wasmtime::Caller<'_, ()>,
+    env: &mut wasmtime::Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     v_ptr: u32,
     v_len: u32,
@@ -670,7 +670,7 @@ pub(crate) fn hash_key(key: &str) -> u64 {
 }
 
 pub fn graphics_mesh_create_obj(
-    env: &mut wasmtime::Caller<'_, ()>,
+    env: &mut wasmtime::Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     ptr: u32,
     len: u32,
@@ -921,7 +921,7 @@ pub fn graphics_mesh_create_obj(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create_stl(
-    _env: &mut wasmtime::Caller<'_, ()>,
+    _env: &mut wasmtime::Caller<'_, crate::state::Wasm96Ctx>,
     _key: u64,
     _ptr: u32,
     _len: u32,

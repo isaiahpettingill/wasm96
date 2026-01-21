@@ -1,42 +1,24 @@
-//! Libretro glue layer for wasm96-engine.
-//!
-//! This module provides the libretro C API entry points and manages the bridge
-//! between libretro callbacks and the platform-agnostic wasm96-engine.
-
-use std::ffi::{CString, c_char, c_void};
-use std::ptr;
-use std::sync::OnceLock;
-
-use wasm96_libretro_sys::*;
-
-use wasm96_engine::Engine;
-
-#[cfg(target_arch = "wasm32")]
-use std::cell::RefCell;
+//! wasm96-libretro: Libretro frontend for wasm96-engine.
 
 use crate::libretro_callbacks::LibretroCallbacks;
 use crate::libretro_env;
 use crate::platform;
+use std::ffi::{CString, c_char, c_uint, c_void};
+use std::ptr;
+use std::sync::{Mutex, OnceLock};
+use wasm96_engine::Engine;
+use wasm96_libretro_sys::*;
+
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
 
 /// All libretro glue state.
-///
-/// NOTE (wasm32):
-/// RetroArch Web runs the core on the browser’s main thread; we avoid `static Mutex<T>`
-/// because the engine’s wasm runtime contains JS values that are not `Send`/`Sync`.
-/// We instead use a `static mut` singleton that is only accessed from the libretro
-/// callbacks (single-threaded in practice for RA Web).
 struct LibretroGlueState {
     engine: Option<Engine>,
     callbacks: LibretroCallbacks,
-
-    // HW render callback struct (passed to frontend).
     hw_render: HwRenderCallback,
-
-    // Prevent spamming warnings if HW render is rejected.
-    printed_hw_render_warn: bool,
-
-    // Track whether HW render has been initialized (to avoid duplicate setup).
     hw_render_initialized: bool,
+    sram: Vec<u8>,
 }
 
 impl LibretroGlueState {
@@ -45,19 +27,12 @@ impl LibretroGlueState {
             engine: None,
             callbacks: LibretroCallbacks::new(),
             hw_render: HwRenderCallback {
-                // Will be overridden in `retro_set_environment` based on platform policy.
                 context_type: 3, // HwContextType::OpenGLCore
                 context_reset: context_reset,
-
-                // IMPORTANT:
-                // These MUST be set by the frontend when HW render is accepted via
-                // `RETRO_ENVIRONMENT_SET_HW_RENDER`. We keep dummy placeholders here so
-                // we never call null function pointers before negotiation succeeds.
                 get_current_framebuffer: dummy_get_current_framebuffer,
                 get_proc_address: dummy_get_proc_address,
-
-                depth: true,
-                stencil: true,
+                depth: false,
+                stencil: false,
                 bottom_left_origin: false,
                 version_major: 3,
                 version_minor: 3,
@@ -65,14 +40,11 @@ impl LibretroGlueState {
                 context_destroy: context_destroy,
                 debug_context: false,
             },
-            printed_hw_render_warn: false,
             hw_render_initialized: false,
+            sram: vec![0u8; 4 * 1024 * 1024], // 4MB default
         }
     }
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Mutex;
 
 #[cfg(not(target_arch = "wasm32"))]
 static GLUE: OnceLock<Mutex<LibretroGlueState>> = OnceLock::new();
@@ -87,13 +59,19 @@ thread_local! {
     static GLUE_STATE: RefCell<LibretroGlueState> = RefCell::new(LibretroGlueState::new());
 }
 
-#[cfg(target_arch = "wasm32")]
 #[inline]
 fn with_glue_mut<R>(f: impl FnOnce(&mut LibretroGlueState) -> R) -> R {
-    GLUE_STATE.with(|cell| f(&mut *cell.borrow_mut()))
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut g = glue().lock().unwrap();
+        f(&mut *g)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        GLUE_STATE.with(|cell| f(&mut *cell.borrow_mut()))
+    }
 }
 
-// Dummies for HW_RENDER bootstrap. Frontend overwrites these when HW render is accepted.
 unsafe extern "C" fn dummy_get_current_framebuffer() -> usize {
     0
 }
@@ -102,110 +80,40 @@ unsafe extern "C" fn dummy_get_proc_address(_: *const c_char) -> unsafe extern "
     dummy_proc
 }
 
-/// Small helper used by GL init code to resolve GL symbols through the libretro HW callback.
+/// Helper to resolve GL symbols
 fn get_proc_address_wrapper(symbol: &str) -> *const c_void {
     let c_str = CString::new(symbol).unwrap();
-
-    #[cfg(not(target_arch = "wasm32"))]
-    let get_proc = {
-        let g = glue().lock().unwrap();
-        g.hw_render.get_proc_address
-    };
-
-    #[cfg(target_arch = "wasm32")]
     let get_proc = with_glue_mut(|g| g.hw_render.get_proc_address);
-
     unsafe { get_proc(c_str.as_ptr()) as *const c_void }
 }
 
-/// Called by frontend when the HW context is created/reset.
 unsafe extern "C" fn context_reset() {
-    eprintln!("(wasm96) context_reset called - initializing GL context");
-
-    // Load GL function pointers (used by both the libretro compositor and the engine's 3D subsystem).
-    gl::load_with(get_proc_address_wrapper);
-
-    // Determine whether the frontend gave us a GLES context.
-    #[cfg(not(target_arch = "wasm32"))]
-    let use_gles = {
-        let g = glue().lock().unwrap();
-        matches!(
-            g.hw_render.context_type,
-            x if x == HwContextType::OpenGLES2 as u32
-                || x == HwContextType::OpenGLES3 as u32
-                || x == HwContextType::OpenGLESVersion as u32
-        )
-    };
-
-    #[cfg(target_arch = "wasm32")]
-    let use_gles = with_glue_mut(|g| {
-        matches!(
-            g.hw_render.context_type,
-            x if x == HwContextType::OpenGLES2 as u32
-                || x == HwContextType::OpenGLES3 as u32
-                || x == HwContextType::OpenGLESVersion as u32
-        )
-    });
-
-    // Native-only: initialize the GL compositor and engine 3D GL subsystem.
-    // wasm32 (RetroArch Web): we will use wgpu for compositing/presentation, so do not touch gl_renderer here.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        // Initialize GL renderer (libretro owns GL compositing of the software framebuffer now).
+        gl::load_with(get_proc_address_wrapper);
+        let use_gles = with_glue_mut(|g| {
+            matches!(
+                g.hw_render.context_type,
+                x if x == HwContextType::OpenGLES2 as u32
+                    || x == HwContextType::OpenGLES3 as u32
+                    || x == HwContextType::OpenGLESVersion as u32
+            )
+        });
         if !crate::gl_renderer::init_gl_renderer(use_gles) {
-            eprintln!("(wasm96) Failed to initialize GL renderer");
             return;
         }
-
-        // Disable engine-side overlay compositing; libretro compositor handles the 2D framebuffer.
-        wasm96_engine::av::graphics3d::set_overlay_compositing_enabled(false);
-
-        // Initialize the engine's 3D GL subsystem so 3D APIs (meshCreateObj, meshCreate, meshDraw, etc.)
-        // are fully supported under libretro.
         wasm96_engine::av::graphics3d::init_gl_context(get_proc_address_wrapper);
     }
-
-    eprintln!(
-        "(wasm96) GL initialized (use_gles={}, context_type={})",
-        use_gles,
-        {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let g = glue().lock().unwrap();
-                g.hw_render.context_type
-            }
-            #[cfg(target_arch = "wasm32")]
-            {
-                with_glue_mut(|g| g.hw_render.context_type)
-            }
-        }
-    );
-
-    // Reset engine state (guest may depend on GL resources).
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
+    with_glue_mut(|g| {
         if let Some(e) = g.engine.as_mut() {
             e.reset();
         }
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            if let Some(e) = g.engine.as_mut() {
-                e.reset();
-            }
-        });
-    }
-
-    eprintln!("(wasm96) context_reset complete");
+        g.hw_render_initialized = true;
+    });
 }
 
-/// Called by frontend when the HW context is destroyed.
-/// We currently keep this as a no-op; add resource teardown if needed.
 unsafe extern "C" fn context_destroy() {
-    // No explicit teardown yet; the frontend may cache/reuse contexts.
-    // If we add GL resource teardown later, it should live in `gl_renderer`.
+    with_glue_mut(|g| g.hw_render_initialized = false);
 }
 
 #[unsafe(no_mangle)]
@@ -215,361 +123,94 @@ pub unsafe extern "C" fn retro_api_version() -> c_uint {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_init() {
-    eprintln!("(wasm96) retro_init called");
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
+    with_glue_mut(|g| {
         g.engine = Some(Engine::new());
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.engine = Some(Engine::new());
-        });
-    }
-
-    eprintln!("(wasm96) Engine initialized");
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_deinit() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
+    with_glue_mut(|g| {
         g.engine = None;
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.engine = None;
-        });
-    }
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
-    eprintln!("(wasm96) retro_set_environment called");
-
-    // wasm32 path: use thread-local glue state and return early, so we don't reference
-    // the native-only `g` binding below.
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.env = cb;
-
-            eprintln!(
-                "(wasm96) platform profile: {}",
-                platform::platform_profile_name()
-            );
-
-            // Apply platform-specific HW context request (OpenGL core vs GLES3).
-            let req = platform::preferred_hw_context();
-            g.hw_render.context_type = req.context_type;
-            g.hw_render.version_major = req.version_major;
-            g.hw_render.version_minor = req.version_minor;
-
-            // Request a bottom-left origin for the HW framebuffer.
-            g.hw_render.bottom_left_origin = true;
-
-            // Enable HW Render (only on first call)
-            if g.hw_render_initialized {
-                eprintln!("(wasm96) HW render already initialized, skipping");
-                return;
-            }
-
-            if let Some(env) = g.callbacks.env {
-                let preferred_context_type = g.hw_render.context_type;
-                let preferred_major = g.hw_render.version_major;
-                let preferred_minor = g.hw_render.version_minor;
-
-                let alt = if preferred_context_type == 2 {
-                    // Preferred: OpenGLES3 -> Alternate: OpenGLCore 3.3
-                    (3, 3, 3)
-                } else {
-                    // Preferred: OpenGLCore -> Alternate: OpenGLES3 3.0
-                    (2, 3, 0)
-                };
-
-                let ret = unsafe {
-                    env(
-                        ENVIRONMENT_SET_HW_RENDER,
-                        (&raw mut g.hw_render) as *mut _ as *mut c_void,
-                    )
-                };
-
-                let ret = if ret {
-                    true
-                } else {
-                    // Retry HW context negotiation once with the alternate context type.
-                    g.hw_render.context_type = alt.0;
-                    g.hw_render.version_major = alt.1;
-                    g.hw_render.version_minor = alt.2;
-
-                    eprintln!(
-                        "(wasm96) HW render request rejected; retrying with alternate context_type={} version={}.{}",
-                        g.hw_render.context_type,
-                        g.hw_render.version_major,
-                        g.hw_render.version_minor
-                    );
-
-                    unsafe {
-                        env(
-                            ENVIRONMENT_SET_HW_RENDER,
-                            (&raw mut g.hw_render) as *mut _ as *mut c_void,
-                        )
-                    }
-                };
-
-                if !ret {
-                    // Restore preferred request parameters (best-effort) so later logging/state reflects policy.
-                    g.hw_render.context_type = preferred_context_type;
-                    g.hw_render.version_major = preferred_major;
-                    g.hw_render.version_minor = preferred_minor;
-
-                    if !g.printed_hw_render_warn {
-                        eprintln!(
-                            "(wasm96) HW render environment not available; continuing without it"
-                        );
-                        g.printed_hw_render_warn = true;
-                    }
-                } else {
-                    // Validate that the frontend is actually going to call back through *real* functions.
-                    let got_real_fbo = g.hw_render.get_current_framebuffer as usize
-                        != dummy_get_current_framebuffer as usize;
-                    let got_real_proc =
-                        g.hw_render.get_proc_address as usize != dummy_get_proc_address as usize;
-
-                    if got_real_fbo && got_real_proc {
-                        eprintln!("(wasm96) HW render enabled successfully");
-                        g.hw_render_initialized = true;
-                    } else {
-                        if !g.printed_hw_render_warn {
-                            eprintln!(
-                                "(wasm96) HW render accepted but callbacks were not provided (get_current_framebuffer/get_proc_address still dummy); falling back to software"
-                            );
-                            g.printed_hw_render_warn = true;
-                        }
-                        g.hw_render_initialized = false;
-                    }
-                }
-            }
-        });
-
-        return;
-    }
-
-    // native path: keep the existing mutex-guarded state behavior.
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let g = &mut *glue().lock().unwrap();
+    with_glue_mut(|g| {
         g.callbacks.env = cb;
-
-        eprintln!(
-            "(wasm96) platform profile: {}",
-            platform::platform_profile_name()
-        );
-
-        // Apply platform-specific HW context request (OpenGL core vs GLES3).
         let req = platform::preferred_hw_context();
         g.hw_render.context_type = req.context_type;
         g.hw_render.version_major = req.version_major;
         g.hw_render.version_minor = req.version_minor;
-
-        // Request a bottom-left origin for the HW framebuffer.
         g.hw_render.bottom_left_origin = true;
 
-        // Enable HW Render (only on first call)
-        if g.hw_render_initialized {
-            eprintln!("(wasm96) HW render already initialized, skipping");
-            return;
-        }
-
         if let Some(env) = g.callbacks.env {
-            let preferred_context_type = g.hw_render.context_type;
-            let preferred_major = g.hw_render.version_major;
-            let preferred_minor = g.hw_render.version_minor;
-
-            let alt = if preferred_context_type == 2 {
-                // Preferred: OpenGLES3 -> Alternate: OpenGLCore 3.3
-                (3, 3, 3)
-            } else {
-                // Preferred: OpenGLCore -> Alternate: OpenGLES3 3.0
-                (2, 3, 0)
-            };
-
-            let ret = unsafe {
+            unsafe {
                 env(
                     ENVIRONMENT_SET_HW_RENDER,
                     (&raw mut g.hw_render) as *mut _ as *mut c_void,
-                )
-            };
-
-            let ret = if ret {
-                true
-            } else {
-                // Retry HW context negotiation once with the alternate context type.
-                g.hw_render.context_type = alt.0;
-                g.hw_render.version_major = alt.1;
-                g.hw_render.version_minor = alt.2;
-
-                eprintln!(
-                    "(wasm96) HW render request rejected; retrying with alternate context_type={} version={}.{}",
-                    g.hw_render.context_type, g.hw_render.version_major, g.hw_render.version_minor
                 );
-
-                unsafe {
-                    env(
-                        ENVIRONMENT_SET_HW_RENDER,
-                        (&raw mut g.hw_render) as *mut _ as *mut c_void,
-                    )
-                }
-            };
-
-            if !ret {
-                // Restore preferred request parameters (best-effort) so later logging/state reflects policy.
-                g.hw_render.context_type = preferred_context_type;
-                g.hw_render.version_major = preferred_major;
-                g.hw_render.version_minor = preferred_minor;
-
-                if !g.printed_hw_render_warn {
-                    eprintln!(
-                        "(wasm96) HW render environment not available; continuing without it"
-                    );
-                    g.printed_hw_render_warn = true;
-                }
-            } else {
-                // Validate that the frontend is actually going to call back through *real* functions.
-                let got_real_fbo = g.hw_render.get_current_framebuffer as usize
-                    != dummy_get_current_framebuffer as usize;
-                let got_real_proc =
-                    g.hw_render.get_proc_address as usize != dummy_get_proc_address as usize;
-
-                if got_real_fbo && got_real_proc {
-                    eprintln!("(wasm96) HW render enabled successfully");
-                    g.hw_render_initialized = true;
-                } else {
-                    if !g.printed_hw_render_warn {
-                        eprintln!(
-                            "(wasm96) HW render accepted but callbacks were not provided (get_current_framebuffer/get_proc_address still dummy); falling back to software"
-                        );
-                        g.printed_hw_render_warn = true;
-                    }
-                    g.hw_render_initialized = false;
-                }
             }
         }
-    }
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_video_refresh(cb: Option<VideoRefreshFn>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        g.callbacks.video_refresh = cb;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.video_refresh = cb;
-        });
-    }
+    with_glue_mut(|g| g.callbacks.video_refresh = cb);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_audio_sample(cb: Option<AudioSampleFn>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        g.callbacks.audio_sample = cb;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.audio_sample = cb;
-        });
-    }
+    with_glue_mut(|g| g.callbacks.audio_sample = cb);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_audio_sample_batch(cb: Option<AudioSampleBatchFn>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        g.callbacks.audio_sample_batch = cb;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.audio_sample_batch = cb;
-        });
-    }
+    with_glue_mut(|g| g.callbacks.audio_sample_batch = cb);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_input_poll(cb: Option<InputPollFn>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        g.callbacks.input_poll = cb;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.input_poll = cb;
-        });
-    }
+    with_glue_mut(|g| g.callbacks.input_poll = cb);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_input_state(cb: Option<InputStateFn>) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        g.callbacks.input_state = cb;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            g.callbacks.input_state = cb;
-        });
-    }
+    with_glue_mut(|g| g.callbacks.input_state = cb);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_get_system_info(info: *mut SystemInfo) {
+    if info.is_null() {
+        return;
+    }
     let info = unsafe { &mut *info };
-    info.library_name = b"Wasm96\0".as_ptr() as *const c_char;
-    info.library_version = b"1.0.0\0".as_ptr() as *const c_char;
-    info.valid_extensions = b"wasm|wat|w96\0".as_ptr() as *const c_char;
+    info.library_name = b"wasm96\0".as_ptr() as *const c_char;
+    info.library_version = b"0.1.2\0".as_ptr() as *const c_char;
+    info.valid_extensions = b"w96|wasm|wat\0".as_ptr() as *const c_char;
     info.need_fullpath = false;
     info.block_extract = false;
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_get_system_av_info(info: *mut SystemAvInfo) {
+    if info.is_null() {
+        return;
+    }
     let info = unsafe { &mut *info };
-    // Default values; frontend may query before load.
     info.geometry.base_width = 320;
     info.geometry.base_height = 240;
     info.geometry.max_width = 1920;
     info.geometry.max_height = 1080;
-    info.geometry.aspect_ratio = 0.0;
-
+    info.geometry.aspect_ratio = 4.0 / 3.0;
     info.timing.fps = 60.0;
     info.timing.sample_rate = platform::preferred_audio_sample_rate_hz();
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
-    eprintln!("(wasm96) retro_load_game called");
-    // Pixel format negotiation (mandatory for correct 32-bit color + stride handling).
-    #[cfg(not(target_arch = "wasm32"))]
-    let env_cb = { glue().lock().unwrap().callbacks.env };
-    #[cfg(target_arch = "wasm32")]
     let env_cb = with_glue_mut(|g| g.callbacks.env);
     libretro_env::negotiate_pixel_format(env_cb);
 
@@ -579,183 +220,115 @@ pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
     let game = unsafe { &*game };
     let data_slice = unsafe { std::slice::from_raw_parts(game.data as *const u8, game.size) };
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        let Some(engine) = g.engine.as_mut() else {
-            return false;
-        };
-
-        match engine.load_game_from_bytes(data_slice) {
-            Ok(_) => true,
-            Err(e) => {
-                eprintln!("(wasm96) Failed to load game content: {e:?}");
-                false
+    with_glue_mut(|g| {
+        // Initialize VFS from SRAM
+        {
+            let mut gs = wasm96_engine::state::global().lock().unwrap();
+            let disk = wasm96_engine::vfs::VirtualDisk::from_bytes(g.sram.clone());
+            if g.sram.iter().all(|&b| b == 0) {
+                let _ = disk.format("WASM96");
             }
+            gs.vfs.mount_slot(0, disk);
         }
-    }
 
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            let Some(engine) = g.engine.as_mut() else {
-                return false;
-            };
-
+        if let Some(engine) = g.engine.as_mut() {
             match engine.load_game_from_bytes(data_slice) {
                 Ok(_) => true,
                 Err(e) => {
-                    eprintln!("(wasm96) Failed to load game content: {e:?}");
+                    eprintln!("(wasm96) Failed to load game: {e:?}");
                     false
                 }
             }
-        })
-    }
+        } else {
+            false
+        }
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_run() {
-    // If internal geometry changed, inform frontend before presenting frames.
-    #[cfg(not(target_arch = "wasm32"))]
-    let env_cb = { glue().lock().unwrap().callbacks.env };
-    #[cfg(target_arch = "wasm32")]
     let env_cb = with_glue_mut(|g| g.callbacks.env);
     libretro_env::maybe_emit_set_geometry(env_cb);
 
-    // Get current HW framebuffer (only if we have a valid HW framebuffer).
-    #[cfg(not(target_arch = "wasm32"))]
-    let (fbo, _do_prepare) = {
-        let g = glue().lock().unwrap();
+    with_glue_mut(|g| {
         let fbo = unsafe { (g.hw_render.get_current_framebuffer)() };
-        (fbo, fbo != 0)
-    };
-
-    #[cfg(target_arch = "wasm32")]
-    let (fbo, _do_prepare) = with_glue_mut(|g| {
-        let fbo = unsafe { (g.hw_render.get_current_framebuffer)() };
-        (fbo, fbo != 0)
-    });
-
-    // Run engine frame
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-
-        // Update framebuffer in callbacks
         g.callbacks.current_framebuffer = fbo;
-
-        // We need to split the borrow - take callbacks out temporarily
-        let callbacks_ptr = &mut g.callbacks as *mut LibretroCallbacks;
-
         if let Some(engine) = g.engine.as_mut() {
-            unsafe {
-                engine.run_frame(&mut *callbacks_ptr);
-            }
+            engine.run_frame(&mut g.callbacks);
         }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            // Update framebuffer in callbacks
-            g.callbacks.current_framebuffer = fbo;
-
-            // We need to split the borrow - take callbacks out temporarily
-            let callbacks_ptr = &mut g.callbacks as *mut LibretroCallbacks;
-
-            if let Some(engine) = g.engine.as_mut() {
-                unsafe {
-                    engine.run_frame(&mut *callbacks_ptr);
-                }
-            }
-        });
-    }
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_reset() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        if let Some(e) = g.engine.as_mut() {
-            e.reset();
+    with_glue_mut(|g| {
+        if let Some(engine) = g.engine.as_mut() {
+            engine.reset();
         }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            if let Some(e) = g.engine.as_mut() {
-                e.reset();
-            }
-        });
-    }
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_unload_game() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut g = glue().lock().unwrap();
-        if let Some(e) = g.engine.as_mut() {
-            e.unload();
+    with_glue_mut(|g| {
+        if let Some(engine) = g.engine.as_mut() {
+            engine.unload();
         }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        with_glue_mut(|g| {
-            if let Some(e) = g.engine.as_mut() {
-                e.unload();
-            }
-        });
-    }
+        let gs = wasm96_engine::state::global().lock().unwrap();
+        if let Some(disk) = gs.vfs.disk() {
+            g.sram = disk.export();
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_get_region() -> c_uint {
-    0 // RETRO_REGION_NTSC
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn retro_get_memory_data(_id: c_uint) -> *mut c_void {
-    ptr::null_mut()
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn retro_get_memory_size(_id: c_uint) -> usize {
     0
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn retro_get_memory_data(id: c_uint) -> *mut c_void {
+    if id == 0 {
+        // RETRO_MEMORY_SAVE_RAM
+        with_glue_mut(|g| g.sram.as_mut_ptr() as *mut c_void)
+    } else {
+        ptr::null_mut()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn retro_get_memory_size(id: c_uint) -> usize {
+    if id == 0 {
+        // RETRO_MEMORY_SAVE_RAM
+        with_glue_mut(|g| g.sram.len())
+    } else {
+        0
+    }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_serialize_size() -> usize {
     0
 }
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_serialize(_data: *mut c_void, _size: usize) -> bool {
     false
 }
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_unserialize(_data: *const c_void, _size: usize) -> bool {
     false
 }
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_cheat_reset() {}
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_cheat_set(_index: c_uint, _enabled: bool, _code: *const c_char) {}
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_load_game_special(
-    _id: c_uint,
+    _type: c_uint,
     _info: *const GameInfo,
-    _num_info: usize,
+    _num: usize,
 ) -> bool {
     false
 }
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_set_controller_port_device(_port: c_uint, _device: c_uint) {}

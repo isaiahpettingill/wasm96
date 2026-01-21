@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>dotnet_guest</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Enable Native AOT compilation -->
+    <PublishAot>true</PublishAot>
+
+    <!-- Specify the wasm-wasi runtime identifier for NativeAOT-LLVM -->
+    <RuntimeIdentifier>wasm-wasi</RuntimeIdentifier>
+
+    <!-- Use the LLVM backend for the ILCompiler -->
+    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <WasmBuildNative>true</WasmBuildNative>
+
+    <!-- guest-friendly settings -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <OptimizationPreference>Speed</OptimizationPreference>
+    <StackTraceSupport>false</StackTraceSupport>
+
+    <!-- We want a standalone WASM module, but setup/update/draw are our exports -->
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Use the experimental NativeAOT-LLVM packages from the runtimelab feature branch -->
+    <!-- Note: These require the 'dotnet-experimental' NuGet feed configured in nuget.config -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler.LLVM" Version="10.0.0-*" />
+    <PackageReference Include="runtime.wasm-wasi.Microsoft.DotNet.ILCompiler.LLVM" Version="10.0.0-*" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <SkipWorkloadResolution>true</SkipWorkloadResolution>
+    <DisableWorkloadResolution>true</DisableWorkloadResolution>
+  </PropertyGroup>
+</Project>

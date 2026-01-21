@@ -1002,7 +1002,7 @@ pub fn graphics_quad(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, x4: i
 /// `ptr` points to RGBA bytes (4 bytes per pixel).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image(
-    caller: &mut Caller<'_, ()>,
+    caller: &mut Caller<'_, crate::state::Wasm96Ctx>,
     x: i32,
     y: i32,
     img_w: u32,
@@ -1024,7 +1024,7 @@ pub fn graphics_image(
     // Read guest memory
     let memory = caller
         .get_export("memory")
-        .and_then(|e| e.into_memory())
+        .and_then(wasmtime::Extern::into_memory)
         .ok_or(AvError::MissingMemory)?;
 
     // We read the whole image into a temp buffer.
@@ -1071,7 +1071,7 @@ pub fn graphics_image(
 /// If decoding fails, this is a no-op.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image_png(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     x: i32,
     y: i32,
     ptr: u32,
@@ -1112,7 +1112,7 @@ pub fn graphics_image_png(
 /// If decoding fails, this is a no-op.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_image_jpeg(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     x: i32,
     y: i32,
     ptr: u32,
@@ -1168,7 +1168,7 @@ pub fn graphics_image_jpeg(
 /// Register raw MTL bytes under a string key.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mtl_register(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -1197,7 +1197,7 @@ pub fn graphics_mtl_register(key: u64, data_ptr: u32, data_len: u32) -> u32 {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mtl_register_texture(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     texture_key: u64,
     mtl_ptr: u32,
     mtl_len: u32,
@@ -1374,7 +1374,7 @@ fn decode_jpeg_to_rgba(jpeg_bytes: &[u8]) -> Option<ImageResource> {
 /// Register a PNG under a string key (bytes are encoded PNG).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_png_register(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -1439,7 +1439,7 @@ pub fn graphics_png_unregister(key: u64) {
 /// Register a JPEG under a string key (bytes are encoded JPEG).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_jpeg_register(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -1731,7 +1731,7 @@ pub fn graphics_pill_outline(x: i32, y: i32, w: u32, h: u32) {
 /// Register SVG resource under a string key.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_svg_register(
-    caller: &mut Caller<'_, ()>,
+    caller: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -1814,7 +1814,7 @@ pub fn graphics_svg_destroy(id: u32) {
 
 /// Create GIF resource.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_gif_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_gif_create(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -1900,7 +1900,7 @@ pub fn graphics_gif_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 
 
 /// Create GIF resource (wasm32/web).
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_gif_create(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_gif_create(_env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2146,7 +2146,7 @@ pub fn graphics_gif_destroy(id: u32) {
 
 /// Register GIF resource under a string key.
 pub fn graphics_gif_register(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -2247,7 +2247,7 @@ pub(crate) fn aseprite_build_resource_safe(data: &[u8]) -> Option<AsepriteResour
 
 /// Create an Aseprite resource from guest memory.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_aseprite_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_aseprite_create(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2271,7 +2271,7 @@ pub fn graphics_aseprite_create(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
 
 /// Create an Aseprite resource from guest memory (wasm32/web).
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_aseprite_create(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_aseprite_create(_env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2440,7 +2440,7 @@ pub fn graphics_aseprite_destroy(id: u32) {
 
 /// Register Aseprite resource under a string key.
 pub fn graphics_aseprite_register(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -2501,7 +2501,7 @@ pub fn graphics_aseprite_unregister(key: u64) {
 /// - The host stores the parsed `Font` in `RESOURCES.fonts` under the returned id.
 /// - The guest never sees this id; guests use the original `key` (u64) when drawing/measuring text.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_font_upload_ttf(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2520,7 +2520,7 @@ pub fn graphics_font_upload_ttf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_font_upload_ttf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_font_upload_ttf(_env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2539,7 +2539,7 @@ pub fn graphics_font_upload_ttf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_font_upload_bdf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_font_upload_bdf(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2565,7 +2565,7 @@ pub fn graphics_font_upload_bdf(env: &mut Caller<'_, ()>, ptr: u32, len: u32) ->
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_font_upload_bdf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u32 {
+pub fn graphics_font_upload_bdf(_env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u32 {
     let data = match super::utils::read_guest_bytes(ptr, len) {
         Ok(d) => d,
         Err(_) => return 0,
@@ -2609,7 +2609,7 @@ pub fn graphics_font_upload_bdf(_env: &mut Caller<'_, ()>, ptr: u32, len: u32) -
 /// - Register fonts once during guest `setup()`.
 /// - Reuse the same key each frame when rendering or measuring.
 pub fn graphics_font_register_ttf(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -2646,7 +2646,7 @@ pub fn graphics_font_register_ttf(
 /// - Current parser is intentionally minimal and expects a relatively well-formed BDF.
 /// - Missing glyphs will simply not render (per glyph lookup).
 pub fn graphics_font_register_bdf(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
     data_ptr: u32,
     data_len: u32,
@@ -2736,7 +2736,7 @@ pub fn graphics_font_unregister(key: u64) {
 pub fn graphics_text_key(
     x: i32,
     y: i32,
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     font_key: u64,
     text_ptr: u32,
     text_len: u32,
@@ -2889,7 +2889,7 @@ pub fn graphics_text_key(x: i32, y: i32, font_key: u64, text_ptr: u32, text_len:
 /// - Like draw, measurement reads the string bytes immediately from guest memory.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_text_measure_key(
-    env: &mut Caller<'_, ()>,
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
     font_key: u64,
     text_ptr: u32,
     text_len: u32,
@@ -3129,7 +3129,7 @@ pub fn graphics_font_use_spleen(size: u32) -> u32 {
 
 /// Draw text.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     let memory_ptr = {
         let s = global().lock().unwrap();
         s.memory_wasmtime
@@ -3237,7 +3237,7 @@ pub fn graphics_text(x: i32, y: i32, font_id: u32, env: &mut Caller<'_, ()>, ptr
 
 /// Measure text.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, ()>, ptr: u32, len: u32) -> u64 {
+pub fn graphics_text_measure(font_id: u32, env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) -> u64 {
     let memory_ptr = {
         let s = global().lock().unwrap();
         s.memory_wasmtime

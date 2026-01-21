@@ -46,7 +46,7 @@ pub fn storage_load_raw(key: u64) -> u64 {
 
 /// Native Wasmtime wrapper for saving storage.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn storage_save(env: &mut Caller<'_, ()>, key: u64, ptr: u32, len: u32) {
+pub fn storage_save(env: &mut Caller<'_, crate::state::Wasm96Ctx>, key: u64, ptr: u32, len: u32) {
     if let Ok(data) = crate::av::utils::read_guest_bytes(env, ptr, len) {
         storage_save_raw(key, &data);
     }
@@ -54,7 +54,7 @@ pub fn storage_save(env: &mut Caller<'_, ()>, key: u64, ptr: u32, len: u32) {
 
 /// Native Wasmtime wrapper for loading storage.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn storage_load(env: &mut Caller<'_, ()>, key: u64) -> u64 {
+pub fn storage_load(env: &mut Caller<'_, crate::state::Wasm96Ctx>, key: u64) -> u64 {
     let s = global().lock().unwrap();
     let data = match s.storage.kv.get(&key) {
         Some(v) => v.clone(),
@@ -66,7 +66,7 @@ pub fn storage_load(env: &mut Caller<'_, ()>, key: u64) -> u64 {
         return 0;
     };
 
-    let memory = env.get_export("memory").and_then(|e| e.into_memory());
+    let memory = env.get_export("memory").and_then(wasmtime::Extern::into_memory);
 
     if let Some(mem) = memory {
         if mem.write(&mut *env, dst_ptr as usize, &data).is_ok() {
@@ -80,6 +80,6 @@ pub fn storage_load(env: &mut Caller<'_, ()>, key: u64) -> u64 {
 
 /// Native Wasmtime wrapper for freeing storage.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn storage_free(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn storage_free(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     guest_free(env, ptr, len);
 }

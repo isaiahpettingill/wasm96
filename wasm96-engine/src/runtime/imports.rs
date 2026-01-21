@@ -14,7 +14,11 @@ use wasmtime::{Caller, Linker};
 use wasm_bindgen::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_guest_string(caller: &mut Caller<'_, ()>, ptr: u32, len: u32) -> Result<String, String> {
+fn read_guest_string(
+    caller: &mut Caller<'_, crate::state::Wasm96Ctx>,
+    ptr: u32,
+    len: u32,
+) -> Result<String, String> {
     av::utils::read_guest_string(caller, ptr, len)
         .map_err(|_| String::from("Failed to read guest string"))
 }
@@ -26,12 +30,12 @@ fn read_guest_string_web(ptr: u32, len: u32) -> Result<String, String> {
 
 /// Define all host imports expected by guests under module `"env"` for Wasmtime.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
+pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::Result<()> {
     // --- Graphics ---
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SET_SIZE,
-        |_caller: Caller<'_, ()>, width: u32, height: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, width: u32, height: u32| {
             av::graphics_set_size(width, height);
         },
     )?;
@@ -39,7 +43,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_APPLY_MATRIX,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          m00: f32,
          m01: f32,
          m02: f32,
@@ -65,7 +69,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_RESET_MATRIX,
-        |_caller: Caller<'_, ()>| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
             av::graphics_reset_matrix();
         },
     )?;
@@ -73,7 +77,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ROTATE,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_rotate(angle);
         },
     )?;
@@ -81,7 +85,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ROTATE_X,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_rotate_x(angle);
         },
     )?;
@@ -89,7 +93,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ROTATE_Y,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_rotate_y(angle);
         },
     )?;
@@ -97,7 +101,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ROTATE_Z,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_rotate_z(angle);
         },
     )?;
@@ -105,7 +109,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SCALE,
-        |_caller: Caller<'_, ()>, sx: f32, sy: f32, sz: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, sx: f32, sy: f32, sz: f32| {
             av::graphics_scale(sx, sy, sz);
         },
     )?;
@@ -113,7 +117,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SHEAR_X,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_shear_x(angle);
         },
     )?;
@@ -121,7 +125,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SHEAR_Y,
-        |_caller: Caller<'_, ()>, angle: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| {
             av::graphics_shear_y(angle);
         },
     )?;
@@ -129,7 +133,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TRANSLATE,
-        |_caller: Caller<'_, ()>, x: f32, y: f32, z: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: f32, y: f32, z: f32| {
             av::graphics_translate(x, y, z);
         },
     )?;
@@ -137,7 +141,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PUSH_MATRIX,
-        |_caller: Caller<'_, ()>| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
             av::graphics_push_matrix();
         },
     )?;
@@ -145,23 +149,23 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_POP_MATRIX,
-        |_caller: Caller<'_, ()>| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
             av::graphics_pop_matrix();
         },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
-        host_imports::GRAPHICS_SET_COLOR,
-        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
-            av::graphics_set_color(r, g, b, a);
+        host_imports::GRAPHICS_CLEAR,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
+            av::graphics_clear();
         },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BACKGROUND,
-        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, r: u32, g: u32, b: u32| {
             av::graphics_background(r, g, b);
         },
     )?;
@@ -169,7 +173,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_POINT,
-        |_caller: Caller<'_, ()>, x: i32, y: i32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32| {
             av::graphics_point(x, y);
         },
     )?;
@@ -177,7 +181,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_LINE,
-        |_caller: Caller<'_, ()>, x1: i32, y1: i32, x2: i32, y2: i32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x1: i32, y1: i32, x2: i32, y2: i32| {
             av::graphics_line(x1, y1, x2, y2);
         },
     )?;
@@ -185,7 +189,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_RECT,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_rect(x, y, w, h);
         },
     )?;
@@ -193,7 +197,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_RECT_OUTLINE,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_rect_outline(x, y, w, h);
         },
     )?;
@@ -201,7 +205,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CIRCLE,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, r: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, r: u32| {
             av::graphics_circle(x, y, r);
         },
     )?;
@@ -209,7 +213,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CIRCLE_OUTLINE,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, r: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, r: u32| {
             av::graphics_circle_outline(x, y, r);
         },
     )?;
@@ -218,7 +222,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_IMAGE,
-        |mut caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         x: i32,
+         y: i32,
+         w: u32,
+         h: u32,
+         ptr: u32,
+         len: u32| {
             let _ = av::graphics_image(&mut caller, x, y, w, h, ptr, len);
         },
     )?;
@@ -227,7 +237,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_IMAGE_PNG,
-        |mut caller: Caller<'_, ()>, x: i32, y: i32, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, ptr: u32, len: u32| {
             let _ = av::graphics_image_png(&mut caller, x, y, ptr, len);
         },
     )?;
@@ -236,7 +246,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_IMAGE_JPEG,
-        |mut caller: Caller<'_, ()>, x: i32, y: i32, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, ptr: u32, len: u32| {
             let _ = av::graphics_image_jpeg(&mut caller, x, y, ptr, len);
         },
     )?;
@@ -245,15 +255,17 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SVG_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_svg_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_svg_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SVG_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_svg_draw_key(key, x, y, w, h)
         },
     )?;
@@ -261,7 +273,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SVG_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_svg_unregister(key);
         },
     )?;
@@ -269,21 +281,25 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GIF_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_gif_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_gif_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GIF_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_gif_draw_key(key, x, y),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32| {
+            av::graphics_gif_draw_key(key, x, y)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GIF_DRAW_KEY_SCALED,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_gif_draw_key_scaled(key, x, y, w, h)
         },
     )?;
@@ -291,7 +307,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GIF_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_gif_unregister(key);
         },
     )?;
@@ -299,29 +315,35 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MTL_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_mtl_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_mtl_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_png_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_png_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_png_draw_key(key, x, y),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32| {
+            av::graphics_png_draw_key(key, x, y)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_DRAW_KEY_SCALED,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_png_draw_key_scaled(key, x, y, w, h)
         },
     )?;
@@ -329,7 +351,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PNG_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_png_unregister(key);
         },
     )?;
@@ -337,21 +359,25 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_JPEG_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_jpeg_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_jpeg_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_JPEG_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32| av::graphics_jpeg_draw_key(key, x, y),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32| {
+            av::graphics_jpeg_draw_key(key, x, y)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_JPEG_DRAW_KEY_SCALED,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_jpeg_draw_key_scaled(key, x, y, w, h)
         },
     )?;
@@ -359,7 +385,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_JPEG_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_jpeg_unregister(key);
         },
     )?;
@@ -368,15 +394,17 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_REGISTER,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_aseprite_register(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_aseprite_register(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_DRAW_KEY,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, frame: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, x: i32, y: i32, frame: u32| {
             av::graphics_aseprite_draw_key(key, x, y, frame)
         },
     )?;
@@ -384,15 +412,24 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_DRAW_KEY_SCALED,
-        |_caller: Caller<'_, ()>, key: u64, x: i32, y: i32, frame: u32, w: u32, h: u32| {
-            av::graphics_aseprite_draw_key_scaled(key, x, y, frame, w, h)
-        },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         x: i32,
+         y: i32,
+         frame: u32,
+         w: u32,
+         h: u32| { av::graphics_aseprite_draw_key_scaled(key, x, y, frame, w, h) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_PLAY_KEY,
-        |mut caller: Caller<'_, ()>, key: u64, x: i32, y: i32, tag_ptr: u32, tag_len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         x: i32,
+         y: i32,
+         tag_ptr: u32,
+         tag_len: u32| {
             let tag = match read_guest_string(&mut caller, tag_ptr, tag_len) {
                 Ok(s) => s,
                 Err(_) => return,
@@ -404,7 +441,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_PLAY_KEY_SCALED,
-        |mut caller: Caller<'_, ()>,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
          key: u64,
          x: i32,
          y: i32,
@@ -423,7 +460,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ASEPRITE_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_aseprite_unregister(key);
         },
     )?;
@@ -432,23 +469,27 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_REGISTER_TTF,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_font_register_ttf(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_font_register_ttf(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_REGISTER_BDF,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| -> u32 {
-            av::graphics_font_register_bdf(&mut caller, key, data_ptr, data_len)
-        },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32|
+         -> u32 { av::graphics_font_register_bdf(&mut caller, key, data_ptr, data_len) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_REGISTER_SPLEEN,
-        |_caller: Caller<'_, ()>, key: u64, size: u32| -> u32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, size: u32| -> u32 {
             av::graphics_font_register_spleen(key, size)
         },
     )?;
@@ -456,7 +497,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FONT_UNREGISTER,
-        |_caller: Caller<'_, ()>, key: u64| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| {
             av::graphics_font_unregister(key);
         },
     )?;
@@ -464,7 +505,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TEXT_KEY,
-        |mut caller: Caller<'_, ()>,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
          x: i32,
          y: i32,
          font_key: u64,
@@ -477,7 +518,11 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TEXT_MEASURE_KEY,
-        |mut caller: Caller<'_, ()>, font_key: u64, text_ptr: u32, text_len: u32| -> u64 {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         font_key: u64,
+         text_ptr: u32,
+         text_len: u32|
+         -> u64 {
             av::graphics_text_measure_key(&mut caller, font_key, text_ptr, text_len)
         },
     )?;
@@ -486,55 +531,55 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_RED,
-        |_caller: Caller<'_, ()>| -> u32 { av::graphics_red() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::graphics_red() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_GREEN,
-        |_caller: Caller<'_, ()>| -> u32 { av::graphics_green() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::graphics_green() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BLUE,
-        |_caller: Caller<'_, ()>| -> u32 { av::graphics_blue() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::graphics_blue() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ALPHA,
-        |_caller: Caller<'_, ()>| -> u32 { av::graphics_alpha() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::graphics_alpha() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BRIGHTNESS,
-        |_caller: Caller<'_, ()>| -> u32 { av::graphics_brightness() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::graphics_brightness() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_HUE,
-        |_caller: Caller<'_, ()>| -> f32 { av::graphics_hue() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> f32 { av::graphics_hue() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SATURATION,
-        |_caller: Caller<'_, ()>| -> f32 { av::graphics_saturation() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> f32 { av::graphics_saturation() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_LIGHTNESS,
-        |_caller: Caller<'_, ()>| -> f32 { av::graphics_lightness() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> f32 { av::graphics_lightness() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_COLOR_RGB,
-        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, r: u32, g: u32, b: u32, a: u32| {
             av::graphics_color_rgb(r, g, b, a);
         },
     )?;
@@ -542,7 +587,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_COLOR_HSL,
-        |_caller: Caller<'_, ()>, h: f32, s: f32, l: f32, a: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, h: f32, s: f32, l: f32, a: u32| {
             av::graphics_color_hsl(h, s, l, a);
         },
     )?;
@@ -550,7 +595,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_LERP_COLOR,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          r1: u32,
          g1: u32,
          b1: u32,
@@ -566,7 +611,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PALETTE_LERP,
-        |_caller: Caller<'_, ()>, c1: u32, c2: u32, t: f32| -> u32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, c1: u32, c2: u32, t: f32| -> u32 {
             av::graphics_palette_lerp(c1, c2, t)
         },
     )?;
@@ -575,13 +620,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CLEAR,
-        |_caller: Caller<'_, ()>| av::graphics_clear(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_clear(),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_FILL,
-        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, r: u32, g: u32, b: u32, a: u32| {
             av::graphics_fill(r, g, b, a);
         },
     )?;
@@ -589,13 +634,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_NO_FILL,
-        |_caller: Caller<'_, ()>| av::graphics_no_fill(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_no_fill(),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_STROKE,
-        |_caller: Caller<'_, ()>, r: u32, g: u32, b: u32, a: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, r: u32, g: u32, b: u32, a: u32| {
             av::graphics_stroke(r, g, b, a);
         },
     )?;
@@ -603,31 +648,31 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_NO_STROKE,
-        |_caller: Caller<'_, ()>| av::graphics_no_stroke(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_no_stroke(),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ERASE,
-        |_caller: Caller<'_, ()>| av::graphics_erase(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_erase(),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_NO_ERASE,
-        |_caller: Caller<'_, ()>| av::graphics_no_erase(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_no_erase(),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_COLOR_MODE,
-        |_caller: Caller<'_, ()>, mode: u32| av::graphics_color_mode(mode),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, mode: u32| av::graphics_color_mode(mode),
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CLIP,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_clip(x, y, w, h);
         },
     )?;
@@ -635,7 +680,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BEGIN_CLIP,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_begin_clip(x, y, w, h);
         },
     )?;
@@ -643,14 +688,14 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_END_CLIP,
-        |_caller: Caller<'_, ()>| av::graphics_end_clip(),
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| av::graphics_end_clip(),
     )?;
 
     // 3D
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ELLIPSE,
-        |_caller: Caller<'_, ()>, cx: i32, cy: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, cx: i32, cy: i32, w: u32, h: u32| {
             av::graphics_ellipse(cx, cy, w, h);
         },
     )?;
@@ -658,7 +703,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_ARC,
-        |_caller: Caller<'_, ()>, cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
+         cx: i32,
+         cy: i32,
+         w: u32,
+         h: u32,
+         start: f32,
+         end: f32| {
             av::graphics_arc(cx, cy, w, h, start, end);
         },
     )?;
@@ -666,7 +717,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_QUAD,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          x1: i32,
          y1: i32,
          x2: i32,
@@ -682,7 +733,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TRIANGLE,
-        |_caller: Caller<'_, ()>, x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
+         x1: i32,
+         y1: i32,
+         x2: i32,
+         y2: i32,
+         x3: i32,
+         y3: i32| {
             av::graphics_triangle(x1, y1, x2, y2, x3, y3);
         },
     )?;
@@ -690,7 +747,13 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_TRIANGLE_OUTLINE,
-        |_caller: Caller<'_, ()>, x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
+         x1: i32,
+         y1: i32,
+         x2: i32,
+         y2: i32,
+         x3: i32,
+         y3: i32| {
             av::graphics_triangle_outline(x1, y1, x2, y2, x3, y3);
         },
     )?;
@@ -698,7 +761,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BEZIER_QUADRATIC,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          x1: i32,
          y1: i32,
          cx: i32,
@@ -713,7 +776,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_BEZIER_CUBIC,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          x1: i32,
          y1: i32,
          cx1: i32,
@@ -730,7 +793,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PILL,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_pill(x, y, w, h);
         },
     )?;
@@ -738,7 +801,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_PILL_OUTLINE,
-        |_caller: Caller<'_, ()>, x: i32, y: i32, w: u32, h: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: i32, y: i32, w: u32, h: u32| {
             av::graphics_pill_outline(x, y, w, h);
         },
     )?;
@@ -747,7 +810,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_SET_3D,
-        |_caller: Caller<'_, ()>, enable: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, enable: u32| {
             av::graphics_set_3d(enable != 0);
         },
     )?;
@@ -755,7 +818,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CAMERA_LOOK_AT,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          eye_x: f32,
          eye_y: f32,
          eye_z: f32,
@@ -774,7 +837,11 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_CAMERA_PERSPECTIVE,
-        |_caller: Caller<'_, ()>, fovy: f32, aspect: f32, near: f32, far: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
+         fovy: f32,
+         aspect: f32,
+         near: f32,
+         far: f32| {
             av::graphics_camera_perspective(fovy, aspect, near, far);
         },
     )?;
@@ -782,7 +849,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_CREATE,
-        |mut caller: Caller<'_, ()>,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
          key: u64,
          v_ptr: u32,
          v_len: u32,
@@ -794,7 +861,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_CREATE_OBJ,
-        |mut caller: Caller<'_, ()>, key: u64, ptr: u32, len: u32| -> u32 {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, ptr: u32, len: u32| -> u32 {
             av::graphics_mesh_create_obj(&mut caller, key, ptr, len)
         },
     )?;
@@ -802,7 +869,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_CREATE_STL,
-        |mut caller: Caller<'_, ()>, key: u64, ptr: u32, len: u32| -> u32 {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64, ptr: u32, len: u32| -> u32 {
             av::graphics_mesh_create_stl(&mut caller, key, ptr, len)
         },
     )?;
@@ -810,7 +877,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_SET_TEXTURE,
-        |_caller: Caller<'_, ()>, mesh_key: u64, image_key: u64| -> u32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, mesh_key: u64, image_key: u64| -> u32 {
             av::graphics_mesh_set_texture(mesh_key, image_key)
         },
     )?;
@@ -818,7 +885,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MESH_DRAW,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          key: u64,
          x: f32,
          y: f32,
@@ -838,7 +905,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::GRAPHICS_MTL_REGISTER_TEXTURE,
-        |mut caller: Caller<'_, ()>,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
          texture_key: u64,
          mtl_ptr: u32,
          mtl_len: u32,
@@ -864,7 +931,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::INPUT_IS_BUTTON_DOWN,
-        |_caller: Caller<'_, ()>, port: u32, btn: u32| -> u32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, port: u32, btn: u32| -> u32 {
             input::joypad_button_pressed(port, btn)
         },
     )?;
@@ -872,25 +939,25 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::INPUT_IS_KEY_DOWN,
-        |_caller: Caller<'_, ()>, key: u32| -> u32 { input::key_pressed(key) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u32| -> u32 { input::key_pressed(key) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::INPUT_GET_MOUSE_X,
-        |_caller: Caller<'_, ()>| -> i32 { input::mouse_x() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> i32 { input::mouse_x() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::INPUT_GET_MOUSE_Y,
-        |_caller: Caller<'_, ()>| -> i32 { input::mouse_y() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> i32 { input::mouse_y() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::INPUT_IS_MOUSE_DOWN,
-        |_caller: Caller<'_, ()>, btn: u32| -> u32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, btn: u32| -> u32 {
             let mask = input::mouse_buttons();
             let requested = 1u32 << btn;
             if (mask & requested) != 0 { 1 } else { 0 }
@@ -901,13 +968,15 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_INIT,
-        |_caller: Caller<'_, ()>, sample_rate: u32| -> u32 { av::audio_init(sample_rate) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, sample_rate: u32| -> u32 {
+            av::audio_init(sample_rate)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_PUSH_SAMPLES,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             let _ = av::audio_push_samples(&mut caller, ptr, len);
         },
     )?;
@@ -915,7 +984,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_PLAY_WAV,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             av::audio_play_wav(&mut caller, ptr, len);
         },
     )?;
@@ -923,7 +992,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_PLAY_QOA,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             av::audio_play_qoa(&mut caller, ptr, len);
         },
     )?;
@@ -931,7 +1000,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_PLAY_XM,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             av::audio_play_xm(&mut caller, ptr, len);
         },
     )?;
@@ -939,7 +1008,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::AUDIO_PLAY_MIDI,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             av::audio_play_midi(&mut caller, ptr, len);
         },
     )?;
@@ -948,7 +1017,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_LOG,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             let memory = caller.get_export("memory").and_then(|e| e.into_memory());
             let Some(memory) = memory else {
                 return;
@@ -966,62 +1035,62 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_MILLIS,
-        |_caller: Caller<'_, ()>| -> u64 { crate::av::utils::system_millis() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u64 { crate::av::utils::system_millis() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_DAY,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_day() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_day() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_HOUR,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_hour() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_hour() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_MINUTE,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_minute() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_minute() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_MONTH,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_month() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_month() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_SECOND,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_second() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_second() },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::SYSTEM_YEAR,
-        |_caller: Caller<'_, ()>| -> u32 { av::system_year() },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { av::system_year() },
     )?;
 
     // --- Math ---
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ABS,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_abs(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_abs(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_CEIL,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_ceil(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_ceil(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_CONSTRAIN,
-        |_caller: Caller<'_, ()>, n: f32, low: f32, high: f32| -> f32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32, low: f32, high: f32| -> f32 {
             av::math_constrain(n, low, high)
         },
     )?;
@@ -1029,7 +1098,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_DIST,
-        |_caller: Caller<'_, ()>, x1: f32, y1: f32, x2: f32, y2: f32| -> f32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x1: f32, y1: f32, x2: f32, y2: f32| -> f32 {
             av::math_dist(x1, y1, x2, y2)
         },
     )?;
@@ -1037,25 +1106,25 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_EXP,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_exp(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_exp(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_FLOOR,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_floor(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_floor(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_FRACT,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_fract(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_fract(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_LERP,
-        |_caller: Caller<'_, ()>, start: f32, stop: f32, amt: f32| -> f32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, start: f32, stop: f32, amt: f32| -> f32 {
             av::math_lerp(start, stop, amt)
         },
     )?;
@@ -1063,19 +1132,21 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_LOG,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_log(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_log(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_MAG,
-        |_caller: Caller<'_, ()>, x: f32, y: f32| -> f32 { av::math_mag(x, y) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: f32, y: f32| -> f32 {
+            av::math_mag(x, y)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_MAP,
-        |_caller: Caller<'_, ()>,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          value: f32,
          start1: f32,
          stop1: f32,
@@ -1087,19 +1158,23 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_MAX,
-        |_caller: Caller<'_, ()>, a: f32, b: f32| -> f32 { av::math_max(a, b) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, a: f32, b: f32| -> f32 {
+            av::math_max(a, b)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_MIN,
-        |_caller: Caller<'_, ()>, a: f32, b: f32| -> f32 { av::math_min(a, b) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, a: f32, b: f32| -> f32 {
+            av::math_min(a, b)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_NORM,
-        |_caller: Caller<'_, ()>, value: f32, start: f32, stop: f32| -> f32 {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, value: f32, start: f32, stop: f32| -> f32 {
             av::math_norm(value, start, stop)
         },
     )?;
@@ -1107,91 +1182,101 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_POW,
-        |_caller: Caller<'_, ()>, n: f32, e: f32| -> f32 { av::math_pow(n, e) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32, e: f32| -> f32 {
+            av::math_pow(n, e)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ROUND,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_round(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_round(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_SQ,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_sq(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_sq(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_SQRT,
-        |_caller: Caller<'_, ()>, n: f32| -> f32 { av::math_sqrt(n) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, n: f32| -> f32 { av::math_sqrt(n) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ACOS,
-        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_acos(value) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, value: f32| -> f32 { av::math_acos(value) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ASIN,
-        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_asin(value) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, value: f32| -> f32 { av::math_asin(value) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ATAN,
-        |_caller: Caller<'_, ()>, value: f32| -> f32 { av::math_atan(value) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, value: f32| -> f32 { av::math_atan(value) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_ATAN2,
-        |_caller: Caller<'_, ()>, y: f32, x: f32| -> f32 { av::math_atan2(y, x) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, y: f32, x: f32| -> f32 {
+            av::math_atan2(y, x)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_COS,
-        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_cos(angle) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| -> f32 { av::math_cos(angle) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_SIN,
-        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_sin(angle) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| -> f32 { av::math_sin(angle) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_TAN,
-        |_caller: Caller<'_, ()>, angle: f32| -> f32 { av::math_tan(angle) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, angle: f32| -> f32 { av::math_tan(angle) },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_DEGREES,
-        |_caller: Caller<'_, ()>, radians: f32| -> f32 { av::math_degrees(radians) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, radians: f32| -> f32 {
+            av::math_degrees(radians)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_RADIANS,
-        |_caller: Caller<'_, ()>, degrees: f32| -> f32 { av::math_radians(degrees) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, degrees: f32| -> f32 {
+            av::math_radians(degrees)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_RANDOM,
-        |_caller: Caller<'_, ()>, min: f32, max: f32| -> f32 { av::math_random(min, max) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, min: f32, max: f32| -> f32 {
+            av::math_random(min, max)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_RANDOM_SEED,
-        |_caller: Caller<'_, ()>, seed: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, seed: u32| {
             av::math_random_seed(seed);
         },
     )?;
@@ -1199,19 +1284,23 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_RANDOM_GAUSSIAN,
-        |_caller: Caller<'_, ()>, mean: f32, sd: f32| -> f32 { av::math_random_gaussian(mean, sd) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, mean: f32, sd: f32| -> f32 {
+            av::math_random_gaussian(mean, sd)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_NOISE,
-        |_caller: Caller<'_, ()>, x: f32, y: f32, z: f32| -> f32 { av::math_noise(x, y, z) },
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, x: f32, y: f32, z: f32| -> f32 {
+            av::math_noise(x, y, z)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_NOISE_SEED,
-        |_caller: Caller<'_, ()>, seed: u32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, seed: u32| {
             av::math_noise_seed(seed);
         },
     )?;
@@ -1219,7 +1308,7 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::MATH_NOISE_DETAIL,
-        |_caller: Caller<'_, ()>, lod: u32, falloff: f32| {
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, lod: u32, falloff: f32| {
             av::math_noise_detail(lod, falloff);
         },
     )?;
@@ -1228,7 +1317,10 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::STORAGE_SAVE,
-        |mut caller: Caller<'_, ()>, key: u64, data_ptr: u32, data_len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         key: u64,
+         data_ptr: u32,
+         data_len: u32| {
             av::storage_save(&mut caller, key, data_ptr, data_len);
         },
     )?;
@@ -1236,13 +1328,15 @@ pub fn define_imports(linker: &mut Linker<()>) -> anyhow::Result<()> {
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::STORAGE_LOAD,
-        |mut caller: Caller<'_, ()>, key: u64| -> u64 { av::storage_load(&mut caller, key) },
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, key: u64| -> u64 {
+            av::storage_load(&mut caller, key)
+        },
     )?;
 
     linker.func_wrap(
         IMPORT_MODULE,
         host_imports::STORAGE_FREE,
-        |mut caller: Caller<'_, ()>, ptr: u32, len: u32| {
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32| {
             av::storage_free(&mut caller, ptr, len);
         },
     )?;

@@ -44,7 +44,7 @@ pub fn audio_init(sample_rate: u32) -> u32 {
 // Fire-and-forget: no ids/handles are returned.
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_play_wav(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn audio_play_wav(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     let wav_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(b) => b,
         Err(_) => return,
@@ -110,7 +110,7 @@ fn audio_play_wav_inner(wav_bytes: Vec<u8>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_play_qoa(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn audio_play_qoa(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     let qoa_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(b) => b,
         Err(_) => return,
@@ -170,7 +170,7 @@ fn audio_play_qoa_inner(qoa_bytes: Vec<u8>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_play_xm(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn audio_play_xm(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     let xm_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(b) => b,
         Err(_) => return,
@@ -245,7 +245,7 @@ fn audio_play_xm_inner(xm_bytes: Vec<u8>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_play_midi(env: &mut Caller<'_, ()>, ptr: u32, len: u32) {
+pub fn audio_play_midi(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     let midi_bytes = match super::utils::read_guest_bytes(env, ptr, len) {
         Ok(b) => b,
         Err(_) => return,
@@ -292,7 +292,7 @@ fn audio_play_midi_inner(midi_bytes: Vec<u8>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_push_samples(env: &mut Caller<'_, ()>, ptr: u32, count: u32) -> Result<(), AvError> {
+pub fn audio_push_samples(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, count: u32) -> Result<(), AvError> {
     // Read i16 samples. count is number of i16 elements.
     let byte_len = count.checked_mul(2).ok_or(AvError::MemoryReadFailed)?;
     let tmp_bytes = super::utils::read_guest_bytes(env, ptr, byte_len)?;
