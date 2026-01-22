@@ -10,3 +10,6 @@ obj/
 __pycache__/
 *.egg_info
 .venv/
+
+CART*.w96
+CART*.name
