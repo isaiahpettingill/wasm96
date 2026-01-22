@@ -176,6 +176,11 @@ pub trait PlatformInput {
     /// `true` if the key is pressed, `false` otherwise
     fn input_key_state(&mut self, key: u32) -> bool;
 
+    /// Get the next character from the input queue.
+    fn input_get_char(&mut self) -> Option<u8> {
+        None
+    }
+
     /// Get mouse X position.
     fn input_mouse_x(&mut self) -> i32;
 

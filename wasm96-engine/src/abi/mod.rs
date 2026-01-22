@@ -115,6 +115,7 @@ pub mod host_imports {
     pub const GRAPHICS_TEXT_MEASURE_KEY: &str = "wasm96_graphics_text_measure_key";
     pub const INPUT_IS_BUTTON_DOWN: &str = "wasm96_input_is_button_down";
     pub const INPUT_IS_KEY_DOWN: &str = "wasm96_input_is_key_down";
+    pub const INPUT_GET_CHAR: &str = "wasm96_input_get_char";
     pub const INPUT_GET_MOUSE_X: &str = "wasm96_input_get_mouse_x";
     pub const INPUT_GET_MOUSE_Y: &str = "wasm96_input_get_mouse_y";
     pub const INPUT_IS_MOUSE_DOWN: &str = "wasm96_input_is_mouse_down";

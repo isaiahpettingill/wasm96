@@ -252,6 +252,7 @@ pub const sys = struct {
     extern fn wasm96_input_is_button_down(port: u32, btn: u32) u32;
     extern fn wasm96_input_set_mode(mode: u32) void;
     extern fn wasm96_input_is_key_down(key: u32) u32;
+    extern fn wasm96_input_get_char() u32;
     extern fn wasm96_input_get_mouse_x() i32;
     extern fn wasm96_input_get_mouse_y() i32;
     extern fn wasm96_input_is_mouse_down(btn: u32) u32;
@@ -687,6 +688,12 @@ pub const input = struct {
     /// Returns true if the specified key is currently held down.
     pub fn isKeyDown(key: u32) bool {
         return sys.wasm96_input_is_key_down(key) != 0;
+    }
+
+    pub fn getChar() ?u8 {
+        const c = sys.wasm96_input_get_char();
+        if (c == 0) return null;
+        return @intCast(c);
     }
 
     /// Get current mouse X position.

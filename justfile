@@ -105,10 +105,10 @@ run-rust-wasi:
     just run example/rust-guest-wasi/target/wasm32-wasip1/release/rust_guest_wasi.wasm
 
 desktop:
-    cargo run -p wasm96-desktop
+    RUST_BACKTRACE=full RUSTFLAGS="-C target-cpu=native" cargo run -p wasm96-desktop --release
 
 desktop-run content-path:
-    cargo run -p wasm96-desktop -- {{ content-path }}
+    cargo run -p wasm96-desktop  --release -- {{ content-path }}
 
 desktop-3d:
     cargo build -p rust-guest-3d --release --target wasm32-unknown-unknown

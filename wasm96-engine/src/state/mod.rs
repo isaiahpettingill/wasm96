@@ -498,6 +498,7 @@ pub struct InputState {
     pub mouse_x: i32,
     pub mouse_y: i32,
     pub mouse_buttons: u32,
+    pub char_queue: Vec<u8>,
 }
 
 /// Set the guest memory for the Wasmtime runtime.

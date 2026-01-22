@@ -60,6 +60,16 @@ pub fn key_pressed(key: u32) -> u32 {
     .unwrap_or(0)
 }
 
+/// Get the next character from the input queue.
+pub fn get_char() -> u32 {
+    let mut s = state::global().lock().unwrap();
+    if s.input.char_queue.is_empty() {
+        0
+    } else {
+        s.input.char_queue.remove(0) as u32
+    }
+}
+
 /// Mouse X coordinate.
 pub fn mouse_x() -> i32 {
     let s = state::global().lock().unwrap();
@@ -113,4 +123,9 @@ pub fn snapshot_per_frame(callbacks: &mut dyn PlatformCallbacks) {
         buttons |= 4; // Middle
     }
     s.input.mouse_buttons = buttons;
+
+    // Pull characters from the platform
+    while let Some(c) = callbacks.input_get_char() {
+        s.input.char_queue.push(c);
+    }
 }

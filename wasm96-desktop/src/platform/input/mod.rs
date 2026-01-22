@@ -11,6 +11,7 @@ pub struct InputState {
     pub egui_input: Option<egui::InputState>,
     pub config: InputConfig,
     pub config_dirty: bool,
+    pub char_queue: Vec<u8>,
 }
 
 impl InputState {
@@ -21,6 +22,7 @@ impl InputState {
             egui_input: None,
             config: InputConfig::default(),
             config_dirty: false,
+            char_queue: Vec::new(),
         }
     }
 
@@ -49,6 +51,15 @@ impl InputState {
     }
 
     pub fn update_egui_input(&mut self, input: egui::InputState) {
+        for event in &input.events {
+            if let egui::Event::Text(text) = event {
+                for c in text.chars() {
+                    if c.is_ascii() {
+                        self.char_queue.push(c as u8);
+                    }
+                }
+            }
+        }
         self.egui_input = Some(input);
     }
 }
@@ -67,11 +78,6 @@ impl PlatformInput for crate::platform::DesktopPlatform {
             let gs = wasm96_engine::state::global().lock().unwrap();
             gs.input.mode
         };
-
-        // In Computer mode, we treat keyboard/mouse as raw inputs.
-        // If the guest is asking for Joypad buttons in Computer mode,
-        // we only allow them if they come from a physical gamepad,
-        // otherwise we might conflict with raw keyboard usage.
 
         let target_button = match button_idx {
             0 => RetroButton::B,
@@ -110,7 +116,6 @@ impl PlatformInput for crate::platform::DesktopPlatform {
         }
 
         // 2. Check Keyboard (only in Game mode or for Port 0)
-        // Libretro style: Port 0 usually maps to keyboard if no gamepad is present.
         if mode == wasm96_engine::state::InputMode::Game && port == 0 {
             if let Some(input) = &self.input.egui_input {
                 let mapping = &self.input.config.port_mappings[0];
@@ -125,19 +130,93 @@ impl PlatformInput for crate::platform::DesktopPlatform {
     }
 
     fn input_key_state(&mut self, key_code: u32) -> bool {
-        // In Game mode, we might want to disable raw keyboard to prevent "cheating"
-        // or unexpected behavior, but for now we'll allow it if implemented.
-        // We use egui Key mapping for simplicity in the desktop version.
+        let input = match &self.input.egui_input {
+            Some(i) => i,
+            None => return false,
+        };
 
-        if let Some(input) = &self.input.egui_input {
-            // key_code here is assumed to be an egui::Key index or similar.
-            // For a real implementation, we'd need a stable mapping.
-            // Since egui::Key is an enum, we'll try to treat the u32 as an index.
-            if let Some(key) = egui::Key::from_index(key_code as usize) {
-                return input.key_down(key);
-            }
+        let shift = input.modifiers.shift;
+
+        match key_code {
+            // Control keys
+            8 => input.key_down(egui::Key::Backspace),
+            9 => input.key_down(egui::Key::Tab),
+            13 => input.key_down(egui::Key::Enter),
+            27 => input.key_down(egui::Key::Escape),
+            32 => input.key_down(egui::Key::Space),
+
+            // Alphabet (Case sensitive mapping)
+            65..=90 => shift && input.key_down(match_letter(key_code)), // A-Z
+            97..=122 => !shift && input.key_down(match_letter(key_code - 32)), // a-z
+
+            // Numbers & Symbols (US Layout assumed for is_key_down mapping)
+            48 => !shift && input.key_down(egui::Key::Num0),
+            41 => shift && input.key_down(egui::Key::Num0), // )
+            49 => !shift && input.key_down(egui::Key::Num1),
+            33 => shift && input.key_down(egui::Key::Num1), // !
+            50 => !shift && input.key_down(egui::Key::Num2),
+            64 => shift && input.key_down(egui::Key::Num2), // @
+            51 => !shift && input.key_down(egui::Key::Num3),
+            35 => shift && input.key_down(egui::Key::Num3), // #
+            52 => !shift && input.key_down(egui::Key::Num4),
+            36 => shift && input.key_down(egui::Key::Num4), // $
+            53 => !shift && input.key_down(egui::Key::Num5),
+            37 => {
+                (shift && input.key_down(egui::Key::Num5))
+                    || (!shift && input.key_down(egui::Key::ArrowLeft))
+            } // % or ArrowLeft
+            54 => !shift && input.key_down(egui::Key::Num6),
+            94 => shift && input.key_down(egui::Key::Num6), // ^
+            55 => !shift && input.key_down(egui::Key::Num7),
+            38 => {
+                (shift && input.key_down(egui::Key::Num7))
+                    || (!shift && input.key_down(egui::Key::ArrowUp))
+            } // & or ArrowUp
+            56 => !shift && input.key_down(egui::Key::Num8),
+            42 => shift && input.key_down(egui::Key::Num8), // *
+            57 => !shift && input.key_down(egui::Key::Num9),
+            40 => {
+                (shift && input.key_down(egui::Key::Num9))
+                    || (!shift && input.key_down(egui::Key::ArrowDown))
+            } // ( or ArrowDown
+
+            // Punctuation
+            45 => !shift && input.key_down(egui::Key::Minus),
+            95 => shift && input.key_down(egui::Key::Minus), // _
+            61 => !shift && input.key_down(egui::Key::Equals),
+            43 => shift && input.key_down(egui::Key::Plus), // +
+            91 => !shift && input.key_down(egui::Key::OpenBracket),
+            123 => shift && input.key_down(egui::Key::OpenBracket), // {
+            93 => !shift && input.key_down(egui::Key::CloseBracket),
+            125 => shift && input.key_down(egui::Key::CloseBracket), // }
+            92 => !shift && input.key_down(egui::Key::Backslash),
+            124 => shift && input.key_down(egui::Key::Backslash), // |
+            59 => !shift && input.key_down(egui::Key::Semicolon),
+            58 => shift && input.key_down(egui::Key::Semicolon), // :
+            39 => {
+                (!shift && input.key_down(egui::Key::Quote))
+                    || (!shift && input.key_down(egui::Key::ArrowRight))
+            } // ' or ArrowRight
+            34 => shift && input.key_down(egui::Key::Quote),     // "
+            44 => !shift && input.key_down(egui::Key::Comma),
+            60 => shift && input.key_down(egui::Key::Comma), // <
+            46 => !shift && input.key_down(egui::Key::Period),
+            62 => shift && input.key_down(egui::Key::Period), // >
+            47 => !shift && input.key_down(egui::Key::Slash),
+            63 => shift && input.key_down(egui::Key::Slash), // ?
+            96 => !shift && input.key_down(egui::Key::Backtick),
+            126 => shift && input.key_down(egui::Key::Backtick), // ~
+
+            _ => false,
         }
-        false
+    }
+
+    fn input_get_char(&mut self) -> Option<u8> {
+        if self.input.char_queue.is_empty() {
+            None
+        } else {
+            Some(self.input.char_queue.remove(0))
+        }
     }
 
     fn input_mouse_x(&mut self) -> i32 {
@@ -172,21 +251,34 @@ impl PlatformInput for crate::platform::DesktopPlatform {
     }
 }
 
-/// Helper for egui::Key to index conversion if missing in older egui
-trait KeyExt {
-    fn from_index(index: usize) -> Option<egui::Key>;
-}
-
-impl KeyExt for egui::Key {
-    fn from_index(index: usize) -> Option<egui::Key> {
-        use egui::Key::*;
-        const KEYS: [egui::Key; 71] = [
-            ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Escape, Tab, Backspace, Enter, Space,
-            Insert, Delete, Home, End, PageUp, PageDown, A, B, C, D, E, F, G, H, I, J, K, L, M, N,
-            O, P, Q, R, S, T, U, V, W, X, Y, Z, Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7,
-            Num8, Num9, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17,
-            F18, F19, F20,
-        ];
-        KEYS.get(index).copied()
+fn match_letter(code: u32) -> egui::Key {
+    match code {
+        65 => egui::Key::A,
+        66 => egui::Key::B,
+        67 => egui::Key::C,
+        68 => egui::Key::D,
+        69 => egui::Key::E,
+        70 => egui::Key::F,
+        71 => egui::Key::G,
+        72 => egui::Key::H,
+        73 => egui::Key::I,
+        74 => egui::Key::J,
+        75 => egui::Key::K,
+        76 => egui::Key::L,
+        77 => egui::Key::M,
+        78 => egui::Key::N,
+        79 => egui::Key::O,
+        80 => egui::Key::P,
+        81 => egui::Key::Q,
+        82 => egui::Key::R,
+        83 => egui::Key::S,
+        84 => egui::Key::T,
+        85 => egui::Key::U,
+        86 => egui::Key::V,
+        87 => egui::Key::W,
+        88 => egui::Key::X,
+        89 => egui::Key::Y,
+        90 => egui::Key::Z,
+        _ => egui::Key::A,
     }
 }

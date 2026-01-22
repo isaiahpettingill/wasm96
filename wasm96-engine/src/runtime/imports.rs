@@ -950,6 +950,12 @@ pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::R
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::INPUT_GET_CHAR,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> u32 { input::get_char() },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::INPUT_GET_MOUSE_X,
         |_caller: Caller<'_, crate::state::Wasm96Ctx>| -> i32 { input::mouse_x() },
     )?;
@@ -1777,6 +1783,13 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         host_imports::INPUT_IS_KEY_DOWN,
         |k| -> u32 { input::key_pressed(k) as u32 },
         1,
+        RET
+    );
+
+    reg!(
+        host_imports::INPUT_GET_CHAR,
+        || -> u32 { input::get_char() },
+        0,
         RET
     );
     reg!(host_imports::INPUT_GET_MOUSE_X, || input::mouse_x(), RET);

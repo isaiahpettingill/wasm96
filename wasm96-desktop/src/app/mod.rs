@@ -1,5 +1,6 @@
 use crate::platform::DesktopPlatform;
 use eframe::{egui, wgpu};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use wasm96_engine::{Engine, PlatformGraphics};
 
@@ -26,11 +27,21 @@ pub struct Wasm96App {
     show_input_settings: bool,
     remapping_port: Option<usize>,
     remapping_button: Option<crate::platform::input::mapping::RetroButton>,
+    base_path: PathBuf,
 }
 
 impl Wasm96App {
     pub fn new(cc: &eframe::CreationContext<'_>, mut platform: DesktopPlatform) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+
+        let base_path =
+            if let Some(proj_dirs) = directories::ProjectDirs::from("com", "wasm96", "wasm96") {
+                let path = proj_dirs.data_dir();
+                let _ = std::fs::create_dir_all(path);
+                path.to_path_buf()
+            } else {
+                PathBuf::from(".")
+            };
 
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(wgpu_render_state) = &cc.wgpu_render_state {
@@ -57,8 +68,8 @@ impl Wasm96App {
 
         // Load persisted cartridges
         for i in 0..10 {
-            let cart_path = format!("CART{}.w96", i);
-            let name_path = format!("CART{}.name", i);
+            let cart_path = base_path.join(format!("CART{}.w96", i));
+            let name_path = base_path.join(format!("CART{}.name", i));
             if let Ok(data) = std::fs::read(&cart_path) {
                 let name =
                     std::fs::read_to_string(&name_path).unwrap_or_else(|_| format!("CART{}", i));
@@ -66,11 +77,21 @@ impl Wasm96App {
             }
         }
 
-        // Check for DISK0 presence
+        // Check for DISK0 presence, auto-create if missing
         let mut show_no_disk_warning = false;
-        let disk0_path = std::path::PathBuf::from("DISK0.img");
+        let disk0_path = base_path.join("DISK0.img");
         if !disk0_path.exists() {
-            show_no_disk_warning = true;
+            // Create a default 25MB disk if none exists
+            let disk = wasm96_engine::vfs::VirtualDisk::new_in_memory(25 * 1024 * 1024);
+            let _ = disk.format("WASM96");
+            let bytes = disk.export();
+            if let Err(e) = std::fs::write(&disk0_path, bytes) {
+                eprintln!("Failed to create DISK0.img: {}", e);
+                show_no_disk_warning = true;
+            } else {
+                let mut gs = wasm96_engine::state::global().lock().unwrap();
+                gs.vfs.mount_slot(0, disk);
+            }
         } else if let Ok(bytes) = std::fs::read(&disk0_path) {
             let disk = wasm96_engine::vfs::VirtualDisk::from_bytes(bytes);
 
@@ -135,6 +156,7 @@ impl Wasm96App {
             show_input_settings: false,
             remapping_port: None,
             remapping_button: None,
+            base_path,
         };
 
         if let Some(name) = app.loaded_filename.clone() {
@@ -149,7 +171,7 @@ impl Wasm96App {
         if let Some(disk) = &gs.vfs.disks[slot] {
             let bytes = disk.export();
             let path = if slot == 0 {
-                std::path::PathBuf::from("DISK0.img")
+                self.base_path.join("DISK0.img")
             } else if let Some(p) = &self.disk_paths[slot] {
                 p.clone()
             } else {
@@ -164,8 +186,8 @@ impl Wasm96App {
     fn save_cartridges(&self) {
         for i in 0..10 {
             if let Some(cart) = &self.cartridges[i] {
-                let _ = std::fs::write(format!("CART{}.w96", i), &cart.data);
-                let _ = std::fs::write(format!("CART{}.name", i), &cart.name);
+                let _ = std::fs::write(self.base_path.join(format!("CART{}.w96", i)), &cart.data);
+                let _ = std::fs::write(self.base_path.join(format!("CART{}.name", i)), &cart.name);
             }
         }
     }
@@ -179,9 +201,9 @@ impl Wasm96App {
                 save_data.extend_from_slice(&(val.len() as u32).to_le_bytes());
                 save_data.extend_from_slice(val);
             }
-            let path = format!("{}.sav", name);
+            let path = self.base_path.join(format!("{}.sav", name));
             if save_data.is_empty() {
-                if std::path::Path::new(&path).exists() {
+                if path.exists() {
                     let _ = std::fs::remove_file(path);
                 }
             } else {
@@ -197,12 +219,12 @@ impl Wasm96App {
             let _ = disk.write_file("input.json", &data);
             // Also save the disk image to host filesystem
             let bytes = disk.export();
-            let _ = std::fs::write("DISK0.img", bytes);
+            let _ = std::fs::write(self.base_path.join("DISK0.img"), bytes);
         }
     }
 
     fn load_storage(&mut self, name: &str) {
-        let path = format!("{}.sav", name);
+        let path = self.base_path.join(format!("{}.sav", name));
         if let Ok(data) = std::fs::read(path) {
             let mut gs = wasm96_engine::state::global().lock().unwrap();
             let mut pos = 0;

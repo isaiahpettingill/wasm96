@@ -602,6 +602,9 @@ Tip:
 
 ## Recent Fixes
 
+### Desktop Keyboard & Persistence (desktop)
+Fixed scrambled keyboard input in the desktop frontend by implementing a standard ASCII-compatible mapping. Also moved all automatic persistence (cartridges, DISK0, and saves) to the system app data directory. The `wsh` system shell is also now case-insensitive for all commands.
+
 ### System Shell and Cartridge Loading (host/core/sdk)
 Added a default system shell (`wsh`) and support for dynamic cartridge loading and flashing from within guests via new ABI imports.
 

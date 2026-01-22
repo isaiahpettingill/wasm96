@@ -38,7 +38,7 @@ export fn setup() void {
         }
     }
 
-    const initial_path = "disk0/";
+    const initial_path = "disk0";
     @memcpy(current_dir[0..initial_path.len], initial_path);
     current_dir_len = initial_path.len;
 
@@ -82,55 +82,52 @@ fn printPrompt() void {
     print("> ");
 }
 
-var last_key_time: u64 = 0;
-const KEY_REPEAT_MS = 150;
+var last_control_time: u64 = 0;
+const CONTROL_REPEAT_MS = 150;
 
 export fn update() void {
     const now = wasm96.system.millis();
-    if (now - last_key_time < KEY_REPEAT_MS) return;
 
-    // Very primitive keyboard handling - real shells would poll events
-    // but wasm96 currently uses isKeyDown. We'll check common keys.
-    // This is a placeholder for a more robust event-driven system.
-
-    // Check ASCII keys 32..126
-    var key_pressed = false;
-    for (32..127) |k| {
-        if (wasm96.input.isKeyDown(@intCast(k))) {
+    // Character input (buffered by host)
+    while (wasm96.input.getChar()) |c| {
+        if (c >= 32 and c < 127) {
             if (input_len < MAX_INPUT - 1) {
-                const char: u8 = @intCast(k);
-                input_buffer[input_len] = char;
+                input_buffer[input_len] = c;
                 input_len += 1;
-                var buf: [1]u8 = .{char};
+                var buf: [1]u8 = .{c};
                 print(&buf);
-                key_pressed = true;
             }
         }
     }
 
-    // Backspace
-    if (wasm96.input.isKeyDown(8)) { // Backspace
-        if (input_len > 0) {
-            input_len -= 1;
-            if (cursor_x > 0) {
-                cursor_x -= 1;
-                terminal_buffer[cursor_y][cursor_x] = ' ';
+    // Control keys (handled with repeat delay)
+    if (now - last_control_time >= CONTROL_REPEAT_MS) {
+        var control_pressed = false;
+
+        // Backspace
+        if (wasm96.input.isKeyDown(8)) {
+            if (input_len > 0) {
+                input_len -= 1;
+                if (cursor_x > 0) {
+                    cursor_x -= 1;
+                    terminal_buffer[cursor_y][cursor_x] = ' ';
+                }
+                control_pressed = true;
             }
-            key_pressed = true;
         }
-    }
 
-    // Enter
-    if (wasm96.input.isKeyDown(13)) {
-        newline();
-        executeCommand(input_buffer[0..input_len]);
-        input_len = 0;
-        printPrompt();
-        key_pressed = true;
-    }
+        // Enter
+        if (wasm96.input.isKeyDown(13)) {
+            newline();
+            executeCommand(input_buffer[0..input_len]);
+            input_len = 0;
+            printPrompt();
+            control_pressed = true;
+        }
 
-    if (key_pressed) {
-        last_key_time = now;
+        if (control_pressed) {
+            last_control_time = now;
+        }
     }
 }
 
@@ -163,9 +160,9 @@ fn executeCommand(cmd_line: []const u8) void {
     var it = std.mem.tokenizeAny(u8, cmd_line, " ");
     const cmd = it.next() orelse return;
 
-    if (std.mem.eql(u8, cmd, "help")) {
+    if (std.ascii.eqlIgnoreCase(cmd, "help")) {
         print("Commands: ls, cd, mkdir, touch, cat, rm, rmdir, echo, clear, run, install, exit\n");
-    } else if (std.mem.eql(u8, cmd, "clear")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "clear")) {
         for (0..ROWS) |y| {
             for (0..COLS) |x| {
                 terminal_buffer[y][x] = ' ';
@@ -173,33 +170,33 @@ fn executeCommand(cmd_line: []const u8) void {
         }
         cursor_x = 0;
         cursor_y = 0;
-    } else if (std.mem.eql(u8, cmd, "echo")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "echo")) {
         while (it.next()) |arg| {
             print(arg);
             print(" ");
         }
         print("\n");
-    } else if (std.mem.eql(u8, cmd, "ls")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "ls")) {
         ls(it.next() orelse ".");
-    } else if (std.mem.eql(u8, cmd, "cd")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "cd")) {
         cd(it.next() orelse "/");
-    } else if (std.mem.eql(u8, cmd, "mkdir")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "mkdir")) {
         mkdir(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "cat")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "cat")) {
         cat(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "touch")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "touch")) {
         touch(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "rm")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "rm")) {
         rm(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "run")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "run")) {
         run(it.next() orelse "", it.rest());
-    } else if (std.mem.eql(u8, cmd, "install")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "install")) {
         install(&it);
-    } else if (std.mem.eql(u8, cmd, "flash")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "flash")) {
         flash(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "rmdir")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "rmdir")) {
         rmdir(it.next() orelse "");
-    } else if (std.mem.eql(u8, cmd, "exit")) {
+    } else if (std.ascii.eqlIgnoreCase(cmd, "exit")) {
         // No-op for now
     } else {
         print("Unknown command: ");
@@ -363,7 +360,7 @@ fn install(it: *std.mem.TokenIterator(u8, .any)) void {
     };
     var update_flag = false;
     if (it.next()) |arg| {
-        if (std.mem.eql(u8, arg, "update")) {
+        if (std.ascii.eqlIgnoreCase(arg, "update")) {
             update_flag = true;
         }
     }
