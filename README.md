@@ -53,6 +53,16 @@ wasm96 includes a built-in Virtual File System (FAT-formatted) and supports **WA
 - **Micro OS Support**: You can pack a host folder into a disk image to distribute "micro OSes" where WASM is the native assembly.
 - **WASI Integration**: Guest WASI calls are mapped to an in-memory directory that synchronizes with the Virtual FAT disk upon loading and unloading.
 
+### wsh Shell
+`wsh` is the default system shell for wasm96. It provides a REPL-style interface for managing files and launching cartridges.
+ 
+#### Features
+- **File Management**: `ls`, `cd`, `mkdir`, `cat`, `touch`, `rm`, `rmdir`, `clear`.
+- **Cartridge Management**:
+  - `run <name> [args]`: Runs a cartridge from the `ROMS` directory on `disk0`.
+  - `install <path>`: Copies a `.w96` file to `disk0:/ROMS/`.
+- **WASI Support**: Supports passing arguments and stdin to cartridges. Carts can access disks by prefixing paths with the disk name (e.g., `disk0:/path`).
+
 ## Example guests
 
 ### Shapes demo (ellipse/arc/quad)
@@ -591,6 +601,9 @@ Tip:
 - The repository `justfile` also contains helper recipes for these cross-build + zip steps. Use those to avoid typos and keep the release process consistent.
 
 ## Recent Fixes
+
+### System Shell and Cartridge Loading (host/core/sdk)
+Added a default system shell (`wsh`) and support for dynamic cartridge loading and flashing from within guests via new ABI imports.
 
 ### WGPU Desktop Frontend Fixes (engine)
 Fixed 3D rendering in the desktop frontend by implementing a depth buffer, enabling alpha blending for the 2D overlay, and ensuring the background clear color is correctly applied to the WGPU pass.

@@ -129,6 +129,8 @@ pub mod host_imports {
     pub const STORAGE_LOAD: &str = "wasm96_storage_load";
     pub const STORAGE_FREE: &str = "wasm96_storage_free";
     pub const SYSTEM_LOG: &str = "wasm96_system_log";
+    pub const SYSTEM_RUN_CARTRIDGE: &str = "wasm96_system_run_cartridge";
+    pub const SYSTEM_FLASH_CARTRIDGE: &str = "wasm96_system_flash_cartridge";
     pub const SYSTEM_MILLIS: &str = "wasm96_system_millis";
     pub const SYSTEM_DAY: &str = "wasm96_system_day";
     pub const SYSTEM_HOUR: &str = "wasm96_system_hour";

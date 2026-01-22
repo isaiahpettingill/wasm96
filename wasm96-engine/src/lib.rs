@@ -226,8 +226,7 @@ impl Engine {
     }
 
     fn instantiate_with_details(&mut self) -> Result<(), anyhow::Error> {
-        self.ensure_runtime()
-            .map_err(|_| anyhow::anyhow!("Failed to initialize runtime"))?;
+        self.ensure_runtime()?;
 
         let rt = self
             .rt
@@ -247,13 +246,28 @@ impl Engine {
         Ok(())
     }
 
-    fn ensure_runtime(&mut self) -> Result<(), ()> {
+    fn ensure_runtime(&mut self) -> Result<(), anyhow::Error> {
+        self.ensure_runtime_with_args(Vec::new(), Vec::new())
+    }
+
+    fn ensure_runtime_with_args(
+        &mut self,
+        args: Vec<String>,
+        stdin: Vec<u8>,
+    ) -> Result<(), anyhow::Error> {
         if self.rt.is_some() {
             return Ok(());
         }
 
-        let mut rt = BackendRuntime::new().map_err(|_| ())?;
-        rt.define_imports().map_err(|_| ())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut rt = BackendRuntime::new_with_args(args, stdin)
+            .map_err(|e| anyhow::anyhow!("Failed to create Wasmtime runtime: {e:?}"))?;
+        #[cfg(target_arch = "wasm32")]
+        let mut rt = BackendRuntime::new()
+            .map_err(|e| anyhow::anyhow!("Failed to create Web runtime: {e:?}"))?;
+
+        rt.define_imports()
+            .map_err(|e| anyhow::anyhow!("Failed to define host imports: {e:?}"))?;
         self.rt = Some(rt);
         Ok(())
     }
@@ -336,10 +350,21 @@ impl Engine {
     }
 
     pub fn load_game_from_bytes(&mut self, data: &[u8]) -> Result<(), anyhow::Error> {
-        // Ensure runtime exists so we have an Engine to compile against.
-        if self.ensure_runtime().is_err() {
+        self.load_game_from_bytes_with_args(data, Vec::new(), Vec::new())
+    }
+
+    pub fn load_game_from_bytes_with_args(
+        &mut self,
+        data: &[u8],
+        args: Vec<String>,
+        stdin: Vec<u8>,
+    ) -> Result<(), anyhow::Error> {
+        // Ensure runtime exists with proper args.
+        // We drop the old runtime to ensure WASI is re-initialized for the new game.
+        self.rt = None;
+        if let Err(e) = self.ensure_runtime_with_args(args, stdin) {
             state::clear_on_unload();
-            return Err(anyhow::anyhow!("Failed to initialize runtime"));
+            return Err(anyhow::anyhow!("Failed to initialize runtime: {e}"));
         }
 
         let rt = self.rt.as_ref().unwrap();
@@ -382,6 +407,21 @@ impl Engine {
     /// # Arguments
     /// * `callbacks` - Platform callbacks for rendering, audio, and input
     pub fn run_frame(&mut self, callbacks: &mut dyn PlatformCallbacks) {
+        // Check for pending cartridge load
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let pending = {
+                let mut gs = state::global().lock().unwrap();
+                gs.pending_cartridge.take()
+            };
+
+            if let Some(pending) = pending {
+                self.unload();
+                let _ =
+                    self.load_game_from_bytes_with_args(&pending.data, pending.args, pending.stdin);
+            }
+        }
+
         // Set callbacks in thread-local storage so WASM imports can access them
         state::set_callbacks(callbacks);
 

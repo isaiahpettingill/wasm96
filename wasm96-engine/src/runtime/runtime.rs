@@ -23,84 +23,7 @@ impl super::Runtime for WasmtimeRuntime {
 
     /// Create a new Wasmtime runtime with a broad set of WebAssembly features enabled.
     fn new() -> Result<Self> {
-        let mut cfg = wasmtime::Config::new();
-
-        // Broadly supported/expected features for "modern" Wasm modules.
-        cfg.wasm_multi_value(true);
-        cfg.wasm_bulk_memory(true);
-        cfg.wasm_reference_types(true);
-        cfg.wasm_simd(true);
-
-        // Additional proposal support.
-        cfg.wasm_multi_memory(true);
-        cfg.wasm_memory64(true);
-        cfg.wasm_relaxed_simd(true);
-        cfg.wasm_tail_call(true);
-        cfg.wasm_function_references(true);
-        cfg.wasm_gc(true);
-
-        // Conservative but enabled, so guests using shared memories / atomics can at least load.
-        cfg.wasm_threads(true);
-
-        // Exception handling proposal is useful for some toolchains.
-        cfg.wasm_exceptions(true);
-
-        let engine = wasmtime::Engine::new(&cfg)?;
-
-        // Setup WASI with a host-backed directory that we sync from/to our VFS
-        let mut wasi_builder = WasiCtxBuilder::new();
-
-        // Inherit stdout/stderr for logging
-        wasi_builder.inherit_stdout().inherit_stderr();
-
-        // Create a temporary directory to act as the WASI root
-        let temp_dir = tempfile::tempdir()?;
-
-        // Sync our VFS into this directory if available
-        {
-            let gs = state::global().lock().unwrap();
-            for (i, disk_opt) in gs.vfs.disks.iter().enumerate() {
-                if let Some(disk) = disk_opt {
-                    let disk_path = temp_dir.path().join(format!("disk{}", i));
-                    std::fs::create_dir_all(&disk_path)?;
-                    disk.extract_to_host(&disk_path)?;
-
-                    // Open the directory for WASI.
-                    // DISK0 is also mapped to "." for compatibility with games expecting root access.
-                    if i == 0 {
-                        wasi_builder.preopened_dir(
-                            &disk_path,
-                            ".",
-                            wasmtime_wasi::DirPerms::all(),
-                            wasmtime_wasi::FilePerms::all(),
-                        )?;
-                    }
-
-                    wasi_builder.preopened_dir(
-                        disk_path,
-                        format!("disk{}", i),
-                        wasmtime_wasi::DirPerms::all(),
-                        wasmtime_wasi::FilePerms::all(),
-                    )?;
-                }
-            }
-        }
-
-        let wasi = wasi_builder.build_p1();
-
-        let store = Store::new(&engine, state::Wasm96Ctx { wasi, temp_dir });
-        let mut linker = Linker::new(&engine);
-
-        // Link WASI Preview 1 imports
-        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx: &mut state::Wasm96Ctx| {
-            &mut ctx.wasi
-        })?;
-
-        Ok(Self {
-            engine,
-            store,
-            linker,
-        })
+        Self::new_with_args(Vec::new(), Vec::new())
     }
 
     /// Register the standard wasm96 host imports.
@@ -142,6 +65,108 @@ impl super::Runtime for WasmtimeRuntime {
 }
 
 impl WasmtimeRuntime {
+    /// Create a new Wasmtime runtime with a broad set of WebAssembly features enabled and arguments.
+    pub fn new_with_args(args: Vec<String>, stdin: Vec<u8>) -> Result<Self> {
+        let mut cfg = wasmtime::Config::new();
+
+        // Broadly supported/expected features for "modern" Wasm modules.
+        cfg.wasm_multi_value(true);
+        cfg.wasm_bulk_memory(true);
+        cfg.wasm_reference_types(true);
+        cfg.wasm_simd(true);
+
+        // Additional proposal support.
+        cfg.wasm_multi_memory(true);
+        cfg.wasm_memory64(true);
+        cfg.wasm_relaxed_simd(true);
+        cfg.wasm_tail_call(true);
+        cfg.wasm_function_references(true);
+        cfg.wasm_gc(true);
+
+        // Conservative but enabled, so guests using shared memories / atomics can at least load.
+        cfg.wasm_threads(true);
+
+        // Exception handling proposal is useful for some toolchains.
+        cfg.wasm_exceptions(true);
+
+        let engine = wasmtime::Engine::new(&cfg)
+            .map_err(|e| anyhow::anyhow!("Failed to create Wasmtime engine: {e:?}"))?;
+
+        // Setup WASI with a host-backed directory that we sync from/to our VFS
+        let mut wasi_builder = WasiCtxBuilder::new();
+
+        // Add arguments to WASI context
+        wasi_builder.args(&args);
+
+        if !stdin.is_empty() {
+            wasi_builder.stdin(wasmtime_wasi::p2::pipe::MemoryInputPipe::new(stdin));
+        }
+
+        // Inherit stdout/stderr for logging
+        wasi_builder.inherit_stdout().inherit_stderr();
+
+        // Create a temporary directory to act as the WASI root
+        let temp_dir = tempfile::tempdir()
+            .map_err(|e| anyhow::anyhow!("Failed to create temp dir for WASI: {e:?}"))?;
+
+        // Sync our VFS into this directory if available
+        {
+            let gs = state::global().lock().unwrap();
+            for (i, disk_opt) in gs.vfs.disks.iter().enumerate() {
+                if let Some(disk) = disk_opt {
+                    let disk_path = temp_dir.path().join(format!("disk{}", i));
+                    std::fs::create_dir_all(&disk_path).map_err(|e| {
+                        anyhow::anyhow!("Failed to create disk directory {}: {e:?}", i)
+                    })?;
+                    disk.extract_to_host(&disk_path).map_err(|e| {
+                        anyhow::anyhow!("Failed to extract disk {} to host: {e:?}", i)
+                    })?;
+
+                    // Open the directory for WASI.
+                    // DISK0 is also mapped to "." for compatibility with games expecting root access.
+                    if i == 0 {
+                        wasi_builder
+                            .preopened_dir(
+                                &disk_path,
+                                ".",
+                                wasmtime_wasi::DirPerms::all(),
+                                wasmtime_wasi::FilePerms::all(),
+                            )
+                            .map_err(|e| {
+                                anyhow::anyhow!("Failed to preopen disk0 as root: {e:?}")
+                            })?;
+                    }
+
+                    wasi_builder
+                        .preopened_dir(
+                            disk_path,
+                            format!("disk{}", i),
+                            wasmtime_wasi::DirPerms::all(),
+                            wasmtime_wasi::FilePerms::all(),
+                        )
+                        .map_err(|e| anyhow::anyhow!("Failed to preopen disk{}: {e:?}", i))?;
+                }
+            }
+        }
+
+        let wasi = wasi_builder.build_p1();
+
+        let store = Store::new(&engine, state::Wasm96Ctx { wasi, temp_dir });
+        let mut linker = Linker::new(&engine);
+
+        // Link WASI Preview 1 imports
+        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx: &mut state::Wasm96Ctx| {
+            &mut ctx.wasi
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to add WASI p1 to linker: {e:?}"))?;
+
+        Ok(Self {
+            engine,
+            store,
+            linker,
+        })
+    }
+
     /// Sync from the WASI directory back to the FAT VFS disk
     /// Sync from the WASI directory back to the FAT VFS disk
     pub fn sync_wasi_to_vfs(&mut self) -> Result<()> {

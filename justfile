@@ -2,6 +2,9 @@ build-sdks:
     cargo build -p wasm96-sdk --release
     cd wasm96-zig-sdk && zig build
 
+build-wsh:
+    cd system/wsh && zig build
+
 # --- RetroArch packaging helpers ----------------------------------------------
 #
 # RetroArch uses core `.info` files to drive the content file picker filters.
@@ -161,6 +164,9 @@ run-zig-guest:
 run-zig-guest-3d:
     cd example/zig-guest-3d && zig build
     just run ./example/zig-guest-3d/zig-out/bin/zig-guest-3d.wasm
+
+run-wsh: build-wsh
+    just run ./system/wsh/zig-out/bin/wsh.wasm
 
 run-v-guest-3d:
     cd example/v-guest-3d && just build

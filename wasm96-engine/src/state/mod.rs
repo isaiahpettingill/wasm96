@@ -241,6 +241,13 @@ impl Default for AudioChannel {
 
 #[cfg(not(target_arch = "wasm32"))]
 /// Context for Wasmtime, including WASI state and the host-backed root.
+pub struct PendingCartridge {
+    pub data: Vec<u8>,
+    pub args: Vec<String>,
+    pub stdin: Vec<u8>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Wasm96Ctx {
     pub wasi: wasmtime_wasi::p1::WasiP1Ctx,
     pub temp_dir: tempfile::TempDir,
@@ -254,6 +261,10 @@ pub struct Wasm96Ctx;
 /// - `Engine::run_frame` (to set the current `RuntimeHandle`)
 /// - host import functions
 pub struct GlobalState {
+    /// A cartridge that is scheduled to be loaded on the next frame.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub pending_cartridge: Option<PendingCartridge>,
+
     /// Guest linear memory export (`memory`) for the Wasmtime runtime.
     ///
     /// Stored as a raw pointer because the rest of the codebase accesses global state
@@ -295,6 +306,8 @@ impl Default for GlobalState {
     fn default() -> Self {
         use rand::SeedableRng;
         Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_cartridge: None,
             #[cfg(not(target_arch = "wasm32"))]
             memory_wasmtime: std::ptr::null(),
             #[cfg(not(target_arch = "wasm32"))]

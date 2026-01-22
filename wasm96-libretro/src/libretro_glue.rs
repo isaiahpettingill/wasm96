@@ -211,27 +211,39 @@ pub unsafe extern "C" fn retro_get_system_av_info(info: *mut SystemAvInfo) {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
+    eprintln!("(wasm96-libretro) retro_load_game called");
     let env_cb = with_glue_mut(|g| g.callbacks.env);
     libretro_env::negotiate_pixel_format(env_cb);
 
     if game.is_null() {
+        eprintln!("(wasm96-libretro) retro_load_game: game is null");
         return false;
     }
     let game = unsafe { &*game };
     let data_slice = unsafe { std::slice::from_raw_parts(game.data as *const u8, game.size) };
+    eprintln!(
+        "(wasm96-libretro) retro_load_game: data size={}",
+        data_slice.len()
+    );
 
     with_glue_mut(|g| {
         // Initialize VFS from SRAM
         {
+            eprintln!(
+                "(wasm96-libretro) retro_load_game: initializing VFS from SRAM size={}",
+                g.sram.len()
+            );
             let mut gs = wasm96_engine::state::global().lock().unwrap();
             let disk = wasm96_engine::vfs::VirtualDisk::from_bytes(g.sram.clone());
             if g.sram.iter().all(|&b| b == 0) {
+                eprintln!("(wasm96-libretro) retro_load_game: SRAM empty, formatting VFS");
                 let _ = disk.format("WASM96");
             }
             gs.vfs.mount_slot(0, disk);
         }
 
         if let Some(engine) = g.engine.as_mut() {
+            eprintln!("(wasm96-libretro) retro_load_game: calling engine.load_game_from_bytes");
             match engine.load_game_from_bytes(data_slice) {
                 Ok(_) => true,
                 Err(e) => {
@@ -240,6 +252,7 @@ pub unsafe extern "C" fn retro_load_game(game: *const GameInfo) -> bool {
                 }
             }
         } else {
+            eprintln!("(wasm96-libretro) retro_load_game: engine is None");
             false
         }
     })

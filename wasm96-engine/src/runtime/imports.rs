@@ -42,6 +42,14 @@ pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::R
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::GRAPHICS_SET_COLOR,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, r: u32, g: u32, b: u32, a: u32| {
+            av::graphics_set_color(r, g, b, a);
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::GRAPHICS_APPLY_MATRIX,
         |_caller: Caller<'_, crate::state::Wasm96Ctx>,
          m00: f32,
@@ -151,14 +159,6 @@ pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::R
         host_imports::GRAPHICS_POP_MATRIX,
         |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
             av::graphics_pop_matrix();
-        },
-    )?;
-
-    linker.func_wrap(
-        IMPORT_MODULE,
-        host_imports::GRAPHICS_CLEAR,
-        |_caller: Caller<'_, crate::state::Wasm96Ctx>| {
-            av::graphics_clear();
         },
     )?;
 
@@ -1035,6 +1035,79 @@ pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::R
             {
                 println!("[wasm96] {msg}");
             }
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_RUN_CARTRIDGE,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>,
+         data_ptr: u32,
+         data_len: u32,
+         args_ptr: u32,
+         args_len: u32,
+         stdin_ptr: u32,
+         stdin_len: u32| {
+            let memory = caller.get_export("memory").and_then(|e| e.into_memory());
+            let Some(memory) = memory else {
+                return;
+            };
+
+            let mut data = vec![0u8; data_len as usize];
+            if memory.read(&caller, data_ptr as usize, &mut data).is_err() {
+                return;
+            }
+
+            let mut args = Vec::new();
+            if args_len > 0 {
+                let mut buf = vec![0u8; args_len as usize];
+                if memory.read(&caller, args_ptr as usize, &mut buf).is_ok() {
+                    if let Ok(s) = core::str::from_utf8(&buf) {
+                        args = s
+                            .split('\0')
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string())
+                            .collect();
+                    }
+                }
+            }
+
+            let mut stdin = Vec::new();
+            if stdin_len > 0 {
+                stdin = vec![0u8; stdin_len as usize];
+                if memory
+                    .read(&caller, stdin_ptr as usize, &mut stdin)
+                    .is_err()
+                {
+                    stdin.clear();
+                }
+            }
+
+            let mut gs = crate::state::global().lock().unwrap();
+            gs.pending_cartridge = Some(crate::state::PendingCartridge { data, args, stdin });
+        },
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
+        host_imports::SYSTEM_FLASH_CARTRIDGE,
+        |mut caller: Caller<'_, crate::state::Wasm96Ctx>, data_ptr: u32, data_len: u32| {
+            let memory = caller.get_export("memory").and_then(|e| e.into_memory());
+            let Some(memory) = memory else {
+                return;
+            };
+
+            let mut data = vec![0u8; data_len as usize];
+            if memory.read(&caller, data_ptr as usize, &mut data).is_err() {
+                return;
+            }
+
+            let mut gs = crate::state::global().lock().unwrap();
+            gs.pending_cartridge = Some(crate::state::PendingCartridge {
+                data,
+                args: Vec::new(),
+                stdin: Vec::new(),
+            });
         },
     )?;
 

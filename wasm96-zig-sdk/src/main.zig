@@ -269,6 +269,15 @@ pub const sys = struct {
     extern fn wasm96_storage_free(ptr: [*]const u8, len: usize) void;
 
     extern fn wasm96_system_log(ptr: [*]const u8, len: u32) void;
+    extern fn wasm96_system_run_cartridge(
+        data_ptr: [*]const u8,
+        data_len: u32,
+        args_ptr: [*]const u8,
+        args_len: u32,
+        stdin_ptr: [*]const u8,
+        stdin_len: u32,
+    ) void;
+    extern fn wasm96_system_flash_cartridge(data_ptr: [*]const u8, data_len: u32) void;
     extern fn wasm96_system_millis() u64;
     extern fn wasm96_system_day() u32;
     extern fn wasm96_system_hour() u32;
@@ -762,6 +771,21 @@ pub const storage = struct {
 pub const system = struct {
     pub fn log(message: []const u8) void {
         sys.wasm96_system_log(message.ptr, @intCast(message.len));
+    }
+
+    pub fn runCartridge(data: []const u8, args: []const u8, stdin: []const u8) void {
+        sys.wasm96_system_run_cartridge(
+            data.ptr,
+            @intCast(data.len),
+            args.ptr,
+            @intCast(args.len),
+            stdin.ptr,
+            @intCast(stdin.len),
+        );
+    }
+
+    pub fn flashCartridge(data: []const u8) void {
+        sys.wasm96_system_flash_cartridge(data.ptr, @intCast(data.len));
     }
 
     pub fn millis() u64 {
