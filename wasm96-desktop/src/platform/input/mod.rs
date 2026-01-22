@@ -12,6 +12,7 @@ pub struct InputState {
     pub config: InputConfig,
     pub config_dirty: bool,
     pub char_queue: Vec<u8>,
+    pub last_rect: Option<egui::Rect>,
 }
 
 impl InputState {
@@ -23,6 +24,7 @@ impl InputState {
             config: InputConfig::default(),
             config_dirty: false,
             char_queue: Vec::new(),
+            last_rect: None,
         }
     }
 
@@ -50,7 +52,7 @@ impl InputState {
         }
     }
 
-    pub fn update_egui_input(&mut self, input: egui::InputState) {
+    pub fn update_egui_input(&mut self, input: egui::InputState, rect: Option<egui::Rect>) {
         for event in &input.events {
             if let egui::Event::Text(text) = event {
                 for c in text.chars() {
@@ -61,6 +63,7 @@ impl InputState {
             }
         }
         self.egui_input = Some(input);
+        self.last_rect = rect;
     }
 }
 
@@ -220,21 +223,31 @@ impl PlatformInput for crate::platform::DesktopPlatform {
     }
 
     fn input_mouse_x(&mut self) -> i32 {
-        self.input
-            .egui_input
-            .as_ref()
-            .and_then(|i| i.pointer.hover_pos())
-            .map(|p| p.x as i32)
-            .unwrap_or(0)
+        if let (Some(input), Some(rect)) = (&self.input.egui_input, self.input.last_rect) {
+            if let Some(pos) = input.pointer.hover_pos() {
+                let local_x = pos.x - rect.min.x;
+                let scale_x = {
+                    let gs = wasm96_engine::state::global().lock().unwrap();
+                    gs.video.width as f32 / rect.width()
+                };
+                return (local_x * scale_x) as i32;
+            }
+        }
+        0
     }
 
     fn input_mouse_y(&mut self) -> i32 {
-        self.input
-            .egui_input
-            .as_ref()
-            .and_then(|i| i.pointer.hover_pos())
-            .map(|p| p.y as i32)
-            .unwrap_or(0)
+        if let (Some(input), Some(rect)) = (&self.input.egui_input, self.input.last_rect) {
+            if let Some(pos) = input.pointer.hover_pos() {
+                let local_y = pos.y - rect.min.y;
+                let scale_y = {
+                    let gs = wasm96_engine::state::global().lock().unwrap();
+                    gs.video.height as f32 / rect.height()
+                };
+                return (local_y * scale_y) as i32;
+            }
+        }
+        0
     }
 
     fn input_mouse_button(&mut self, button: u32) -> bool {

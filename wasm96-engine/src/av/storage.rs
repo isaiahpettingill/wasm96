@@ -66,7 +66,9 @@ pub fn storage_load(env: &mut Caller<'_, crate::state::Wasm96Ctx>, key: u64) -> 
         return 0;
     };
 
-    let memory = env.get_export("memory").and_then(wasmtime::Extern::into_memory);
+    let memory = env
+        .get_export("memory")
+        .and_then(wasmtime::Extern::into_memory);
 
     if let Some(mem) = memory {
         if mem.write(&mut *env, dst_ptr as usize, &data).is_ok() {

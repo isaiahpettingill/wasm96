@@ -292,7 +292,11 @@ fn audio_play_midi_inner(midi_bytes: Vec<u8>) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn audio_push_samples(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, count: u32) -> Result<(), AvError> {
+pub fn audio_push_samples(
+    env: &mut Caller<'_, crate::state::Wasm96Ctx>,
+    ptr: u32,
+    count: u32,
+) -> Result<(), AvError> {
     // Read i16 samples. count is number of i16 elements.
     let byte_len = count.checked_mul(2).ok_or(AvError::MemoryReadFailed)?;
     let tmp_bytes = super::utils::read_guest_bytes(env, ptr, byte_len)?;

@@ -572,7 +572,7 @@ impl eframe::App for Wasm96App {
 
             // Update input state before running the frame
             ctx.input(|i| {
-                self.platform.input.update_egui_input(i.clone());
+                self.platform.input.update_egui_input(i.clone(), None);
             });
 
             // Prepare WGPU texture if available
@@ -645,15 +645,16 @@ impl eframe::App for Wasm96App {
                 // Prefer WGPU display if we have a texture
                 if let Some((texture_id, [tw, th])) = self.wgpu_texture_id {
                     if tw == width && th == height {
-                        ui.centered_and_justified(|ui| {
+                        let response = ui.centered_and_justified(|ui| {
                             ui.add(
                                 egui::Image::new(egui::load::SizedTexture::new(
                                     texture_id,
                                     egui::vec2(width as f32, height as f32),
                                 ))
                                 .shrink_to_fit(),
-                            );
+                            )
                         });
+                        self.platform.input.last_rect = Some(response.response.rect);
                         return;
                     }
                 }
@@ -682,9 +683,10 @@ impl eframe::App for Wasm96App {
                     });
                     texture.set(image, Default::default());
 
-                    ui.centered_and_justified(|ui| {
-                        ui.add(egui::Image::new(&*texture).shrink_to_fit());
+                    let response = ui.centered_and_justified(|ui| {
+                        ui.add(egui::Image::new(&*texture).shrink_to_fit())
                     });
+                    self.platform.input.last_rect = Some(response.response.rect);
                 } else {
                     ui.centered_and_justified(|ui| {
                         if let Some(name) = &self.loaded_filename {

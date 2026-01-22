@@ -665,10 +665,11 @@ High-level audio playback (`play_wav`/`play_qoa`/`play_xm`) decodes assets and m
 ### Resolution configuration (host/core)
 The core now correctly respects the resolution set by the guest via `graphics::set_size()` during `setup()`. Previously, the resolution was hardcoded to 320x240 in the libretro AV info, causing display issues if the guest requested a different size.
 
-### SVG scaling (host/core)
-SVG rendering now correctly respects the target width and height passed to `svg_draw_key`, scaling the vector graphic to fit the requested dimensions instead of cropping it.
+### Mouse Scaling (desktop)
+Fixed an issue in the desktop frontend where `mouseX` and `mouseY` had an incorrect offset when the window was resized. Mouse coordinates are now correctly scaled to the game's internal resolution regardless of the window size or aspect ratio.
 
 ### Font blending (host/core)
+
 TTF font rendering now performs proper alpha blending with the background, eliminating artifacts where text would overwrite the background with black pixels in transparent regions of the glyph.
 
 ### BDF Font Support (host/core)
