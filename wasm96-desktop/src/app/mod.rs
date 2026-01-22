@@ -23,6 +23,9 @@ pub struct Wasm96App {
     show_no_disk_warning: bool,
     show_mount_cart_dialog: Option<(String, Vec<u8>)>,
     show_run_from_disk_dialog: Option<usize>,
+    show_input_settings: bool,
+    remapping_port: Option<usize>,
+    remapping_button: Option<crate::platform::input::mapping::RetroButton>,
 }
 
 impl Wasm96App {
@@ -70,6 +73,16 @@ impl Wasm96App {
             show_no_disk_warning = true;
         } else if let Ok(bytes) = std::fs::read(&disk0_path) {
             let disk = wasm96_engine::vfs::VirtualDisk::from_bytes(bytes);
+
+            // Try to load input config from disk
+            if let Ok(data) = disk.read_file("input.json") {
+                if let Some(config) =
+                    crate::platform::input::mapping::InputConfig::load_from_bytes(&data)
+                {
+                    platform.input.config = config;
+                }
+            }
+
             let mut gs = wasm96_engine::state::global().lock().unwrap();
             gs.vfs.mount_slot(0, disk);
         }
@@ -119,6 +132,9 @@ impl Wasm96App {
             show_no_disk_warning,
             show_mount_cart_dialog: None,
             show_run_from_disk_dialog: None,
+            show_input_settings: false,
+            remapping_port: None,
+            remapping_button: None,
         };
 
         if let Some(name) = app.loaded_filename.clone() {
@@ -171,6 +187,17 @@ impl Wasm96App {
             } else {
                 let _ = std::fs::write(path, save_data);
             }
+        }
+    }
+
+    fn save_input_config(&mut self) {
+        let data = self.platform.input.config.save_to_vec();
+        let mut gs = wasm96_engine::state::global().lock().unwrap();
+        if let Some(disk) = &mut gs.vfs.disks[0] {
+            let _ = disk.write_file("input.json", &data);
+            // Also save the disk image to host filesystem
+            let bytes = disk.export();
+            let _ = std::fs::write("DISK0.img", bytes);
         }
     }
 
@@ -345,6 +372,44 @@ impl eframe::App for Wasm96App {
                                 }
                             }
                         });
+                    }
+                });
+
+                ui.menu_button("Settings", |ui| {
+                    if ui.button("Input Remapping...").clicked() {
+                        self.show_input_settings = true;
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    let mut mode = {
+                        let gs = wasm96_engine::state::global().lock().unwrap();
+                        gs.input.mode
+                    };
+
+                    ui.label("Input Mode:");
+                    if ui
+                        .radio_value(
+                            &mut mode,
+                            wasm96_engine::state::InputMode::Game,
+                            "Game Mode",
+                        )
+                        .clicked()
+                    {
+                        let mut gs = wasm96_engine::state::global().lock().unwrap();
+                        gs.input.mode = mode;
+                    }
+                    if ui
+                        .radio_value(
+                            &mut mode,
+                            wasm96_engine::state::InputMode::Computer,
+                            "Computer Mode",
+                        )
+                        .clicked()
+                    {
+                        let mut gs = wasm96_engine::state::global().lock().unwrap();
+                        gs.input.mode = mode;
                     }
                 });
             });
@@ -610,6 +675,117 @@ impl eframe::App for Wasm96App {
             });
 
         // Keep the UI loop running for smooth gameplay
+        if self.platform.input.config_dirty {
+            self.save_input_config();
+            self.platform.input.config_dirty = false;
+        }
+
+        if self.show_input_settings {
+            egui::Window::new("Input Settings")
+                .open(&mut self.show_input_settings)
+                .show(ctx, |ui| {
+                    ui.label("Configure controllers and keyboard mappings.");
+
+                    for port in 0..4 {
+                        ui.collapsing(format!("Port {}", port), |ui| {
+                            let gamepad_info =
+                                if let Some(id) = self.platform.input.active_gamepads[port] {
+                                    let gp = self.platform.input.gilrs.gamepad(id);
+                                    format!("Gamepad connected: {}", gp.name())
+                                } else {
+                                    "No gamepad connected (using keyboard if Port 0)".to_string()
+                                };
+                            ui.label(gamepad_info);
+
+                            ui.separator();
+                            ui.label("Button Mappings:");
+
+                            egui::Grid::new(format!("grid_port_{}", port))
+                                .num_columns(2)
+                                .spacing([40.0, 4.0])
+                                .show(ui, |ui| {
+                                    for btn in crate::platform::input::mapping::RetroButton::ALL {
+                                        ui.label(btn.name());
+                                        if ui.button("Map...").clicked() {
+                                            self.remapping_port = Some(port);
+                                            self.remapping_button = Some(btn);
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+
+                            if ui.button("Reset to Default").clicked() {
+                                self.platform.input.config.port_mappings[port] =
+                                    crate::platform::input::mapping::ControllerMapping::default();
+                                self.platform.input.config_dirty = true;
+                            }
+                        });
+                    }
+                });
+        }
+
+        if let (Some(port), Some(btn)) = (self.remapping_port, self.remapping_button) {
+            egui::Window::new("Press Key or Button").show(ctx, |ui| {
+                ui.label(format!("Remapping Port {}, Button: {}", port, btn.name()));
+                ui.label("Press a key on your keyboard or a button on your controller...");
+
+                // Keyboard capture
+                if let Some(input) = &self.platform.input.egui_input {
+                    // Check all keys down
+                    for key in input.keys_down.iter() {
+                        self.platform.input.config.port_mappings[port]
+                            .key_map
+                            .insert(*key, btn);
+                        self.platform.input.config_dirty = true;
+                        self.remapping_port = None;
+                        self.remapping_button = None;
+                        break;
+                    }
+                }
+
+                // Gamepad capture
+                if let Some(id) = self.platform.input.active_gamepads[port] {
+                    let gamepad = self.platform.input.gilrs.gamepad(id);
+                    for gil_btn in [
+                        gilrs::Button::South,
+                        gilrs::Button::East,
+                        gilrs::Button::North,
+                        gilrs::Button::West,
+                        gilrs::Button::C,
+                        gilrs::Button::Z,
+                        gilrs::Button::LeftTrigger,
+                        gilrs::Button::LeftTrigger2,
+                        gilrs::Button::RightTrigger,
+                        gilrs::Button::RightTrigger2,
+                        gilrs::Button::Select,
+                        gilrs::Button::Start,
+                        gilrs::Button::Mode,
+                        gilrs::Button::LeftThumb,
+                        gilrs::Button::RightThumb,
+                        gilrs::Button::DPadUp,
+                        gilrs::Button::DPadDown,
+                        gilrs::Button::DPadLeft,
+                        gilrs::Button::DPadRight,
+                    ] {
+                        if gamepad.is_pressed(gil_btn) {
+                            self.platform.input.config.port_mappings[port]
+                                .pad_map
+                                .insert(gil_btn, btn);
+                            self.platform.input.config_dirty = true;
+                            self.remapping_port = None;
+                            self.remapping_button = None;
+                            break;
+                        }
+                    }
+                }
+
+                if ui.button("Cancel").clicked() {
+                    self.remapping_port = None;
+                    self.remapping_button = None;
+                }
+            });
+        }
+
         ctx.request_repaint();
     }
 

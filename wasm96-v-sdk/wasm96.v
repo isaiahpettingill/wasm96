@@ -97,6 +97,7 @@ fn C.wasm96_graphics_mesh_draw(key u64, pos_x f32, pos_y f32, pos_z f32, rot_x f
 
 // Input
 fn C.wasm96_input_is_button_down(port u32, btn u32) u32
+fn C.wasm96_input_set_mode(mode u32)
 fn C.wasm96_input_is_key_down(key u32) u32
 fn C.wasm96_input_get_mouse_x() int
 fn C.wasm96_input_get_mouse_y() int
@@ -414,9 +415,19 @@ pub fn graphics_mesh_draw(key string, pos_x f32, pos_y f32, pos_z f32, rot_x f32
 
 // Input API.
 
+pub enum InputMode {
+	game = 0
+	computer = 1
+}
+
 // Returns true if the specified button is currently held down.
 pub fn input_is_button_down(port u32, btn Button) bool {
 	return C.wasm96_input_is_button_down(port, u32(btn)) != 0
+}
+
+// Sets the input mode.
+pub fn input_set_mode(mode InputMode) {
+	C.wasm96_input_set_mode(u32(mode))
 }
 
 // Returns true if the specified key is currently held down.

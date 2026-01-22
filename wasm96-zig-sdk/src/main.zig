@@ -250,6 +250,7 @@ pub const sys = struct {
 
     // Input
     extern fn wasm96_input_is_button_down(port: u32, btn: u32) u32;
+    extern fn wasm96_input_set_mode(mode: u32) void;
     extern fn wasm96_input_is_key_down(key: u32) u32;
     extern fn wasm96_input_get_mouse_x() i32;
     extern fn wasm96_input_get_mouse_y() i32;
@@ -661,6 +662,15 @@ pub const graphics = struct {
 /// Input API.
 pub const input = struct {
     /// Returns true if the specified button is currently held down.
+    pub const InputMode = enum(u32) {
+        game = 0,
+        computer = 1,
+    };
+
+    pub fn setMode(mode: InputMode) void {
+        sys.wasm96_input_set_mode(@intFromEnum(mode));
+    }
+
     pub fn isButtonDown(port: u32, btn: Button) bool {
         return sys.wasm96_input_is_button_down(port, @intFromEnum(btn)) != 0;
     }

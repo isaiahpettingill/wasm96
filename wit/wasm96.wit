@@ -227,6 +227,14 @@ world wasm96 {
       a, x, l1, r1, l2, r2, l3, r3
     }
 
+    enum input-mode {
+      game,
+      computer
+    }
+
+    /// Set the input mode.
+    set-mode: func(mode: input-mode);
+
     /// Returns true if the specified button is currently held down.
     is-button-down: func(port: u32, btn: button) -> bool;
 

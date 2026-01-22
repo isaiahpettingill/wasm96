@@ -330,6 +330,26 @@ JPEG is treated as **RGB** (opaque).
 - Draw meshes:
   - `graphics::mesh_draw("cube", pos, rot, scale)`
 
+## Input and Remapping
+
+wasm96 supports two primary input modes:
+- **Game Mode (Default)**: Keyboard and gamepads are mapped to a standard 16-button "Retropad" (SNES-style).
+- **Computer Mode**: Keyboard and mouse inputs are passed as-is, allowing for PC-style software.
+
+### Host API
+Guests can request an input mode change (e.g., a terminal emulator switching to Computer mode):
+```c
+// C SDK
+wasm96_input_set_mode(WASM96_INPUT_MODE_COMPUTER);
+```
+```rust
+// Rust SDK
+wasm96::input::set_mode(wasm96::input::InputMode::Computer);
+```
+
+### Remapping
+The desktop frontend includes a remapping menu under **Settings > Input Remapping**. You can map any keyboard key or gamepad button to any of the 16 virtual controller buttons across 4 ports. Mappings are automatically detected and saved to the root of `DISK0` if it is mounted.
+
 ## SDK
 
 ### Rust SDK (`wasm96-sdk/`)
@@ -655,6 +675,9 @@ Added support for 2D and 3D transformations, including translation, rotation, sc
 
 ### Math & System Host Functions (host/core/sdk)
 Added a comprehensive set of math functions (abs, ceil, constrain, dist, exp, floor, fract, lerp, log, mag, map, max, min, norm, pow, round, sq, sqrt, acos, asin, atan, atan2, cos, sin, tan, degrees, radians, random, noise) and system functions (day, hour, minute, month, second, year) to the host environment and SDK. Added `Vector2` and `Vector3` helper types to the Rust SDK with common vector operations inspired by p5.js and Processing.
+
+### Input Remapping & Modes (host/core/sdk/desktop)
+Support for "Game" vs "Computer" input modes, configurable controller ports, and persistent input remapping to DISK0.
 
 ## License
 

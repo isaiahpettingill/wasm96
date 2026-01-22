@@ -78,6 +78,16 @@ pub fn mouse_buttons() -> u32 {
     s.input.mouse_buttons
 }
 
+/// Set the input mode (0 = Game, 1 = Computer).
+pub fn set_input_mode(mode: u32) {
+    let mut s = state::global().lock().unwrap();
+    s.input.mode = match mode {
+        0 => state::InputMode::Game,
+        1 => state::InputMode::Computer,
+        _ => state::InputMode::Game,
+    };
+}
+
 /// Snapshot inputs for the current frame into `state::InputState`.
 ///
 /// Call this once per `on_run` before invoking guest `wasm96_frame`.

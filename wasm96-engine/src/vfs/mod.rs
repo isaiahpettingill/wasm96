@@ -55,6 +55,31 @@ impl VirtualDisk {
         Ok(())
     }
 
+    /// Read a file's contents from the virtual disk.
+    pub fn read_file(&self, path: &str) -> Result<Vec<u8>> {
+        let mut lock = self.inner.lock().unwrap();
+        let cursor = &mut *lock;
+        cursor.set_position(0);
+        let fs = fatfs::FileSystem::new(cursor, fatfs::FsOptions::new())?;
+        let mut file = fs.root_dir().open_file(path)?;
+        let mut contents = Vec::new();
+        use std::io::Read;
+        file.read_to_end(&mut contents)?;
+        Ok(contents)
+    }
+
+    /// Write a file's contents to the virtual disk.
+    pub fn write_file(&self, path: &str, data: &[u8]) -> Result<()> {
+        let mut lock = self.inner.lock().unwrap();
+        let cursor = &mut *lock;
+        cursor.set_position(0);
+        let fs = fatfs::FileSystem::new(cursor, fatfs::FsOptions::new())?;
+        let mut file = fs.root_dir().create_file(path)?;
+        use std::io::Write;
+        file.write_all(data)?;
+        Ok(())
+    }
+
     /// Pack a host directory into the virtual disk.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn pack_from_host(&self, host_path: &Path) -> Result<()> {

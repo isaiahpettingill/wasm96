@@ -471,9 +471,17 @@ pub struct StorageState {
     pub kv: HashMap<u64, Vec<u8>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputMode {
+    #[default]
+    Game,
+    Computer,
+}
+
 /// Minimal cached input state.
 #[derive(Default, Debug)]
 pub struct InputState {
+    pub mode: InputMode,
     pub mouse_x: i32,
     pub mouse_y: i32,
     pub mouse_buttons: u32,

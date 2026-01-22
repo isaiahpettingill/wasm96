@@ -118,6 +118,7 @@ pub mod host_imports {
     pub const INPUT_GET_MOUSE_X: &str = "wasm96_input_get_mouse_x";
     pub const INPUT_GET_MOUSE_Y: &str = "wasm96_input_get_mouse_y";
     pub const INPUT_IS_MOUSE_DOWN: &str = "wasm96_input_is_mouse_down";
+    pub const INPUT_SET_MODE: &str = "wasm96_input_set_mode";
     pub const AUDIO_INIT: &str = "wasm96_audio_init";
     pub const AUDIO_PUSH_SAMPLES: &str = "wasm96_audio_push_samples";
     pub const AUDIO_PLAY_WAV: &str = "wasm96_audio_play_wav";

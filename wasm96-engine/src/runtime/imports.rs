@@ -938,6 +938,12 @@ pub fn define_imports(linker: &mut Linker<crate::state::Wasm96Ctx>) -> anyhow::R
 
     linker.func_wrap(
         IMPORT_MODULE,
+        host_imports::INPUT_SET_MODE,
+        |_caller: Caller<'_, crate::state::Wasm96Ctx>, mode: u32| input::set_input_mode(mode),
+    )?;
+
+    linker.func_wrap(
+        IMPORT_MODULE,
         host_imports::INPUT_IS_KEY_DOWN,
         |_caller: Caller<'_, crate::state::Wasm96Ctx>, key: u32| -> u32 { input::key_pressed(key) },
     )?;
@@ -1687,6 +1693,12 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         |p, b| -> u32 { input::joypad_button_pressed(p, b) as u32 },
         2,
         RET
+    );
+
+    reg!(
+        host_imports::INPUT_SET_MODE,
+        |m| { input::set_input_mode(m) },
+        1
     );
     reg!(
         host_imports::INPUT_IS_KEY_DOWN,

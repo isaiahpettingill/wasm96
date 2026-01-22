@@ -643,6 +643,8 @@ pub mod sys {
         // Input
         #[link_name = "wasm96_input_is_button_down"]
         pub fn input_is_button_down(port: u32, btn: u32) -> u32;
+        #[link_name = "wasm96_input_set_mode"]
+        pub fn input_set_mode(mode: u32);
         #[link_name = "wasm96_input_is_key_down"]
         pub fn input_is_key_down(key: u32) -> u32;
         #[link_name = "wasm96_input_get_mouse_x"]
@@ -1493,6 +1495,18 @@ pub mod input {
     use super::{Button, sys};
 
     /// Returns true if the specified button is currently held down.
+    #[repr(u32)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum InputMode {
+        Game = 0,
+        Computer = 1,
+    }
+
+    /// Set the input mode (Game or Computer).
+    pub fn set_mode(mode: InputMode) {
+        unsafe { sys::input_set_mode(mode as u32) }
+    }
+
     pub fn is_button_down(port: u32, btn: Button) -> bool {
         unsafe { sys::input_is_button_down(port, btn as u32) != 0 }
     }

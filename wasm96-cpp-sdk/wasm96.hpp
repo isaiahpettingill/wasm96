@@ -187,7 +187,13 @@ extern void wasm96_graphics_text_key(int32_t x, int32_t y, uint64_t font_key, co
 extern uint64_t wasm96_graphics_text_measure_key(uint64_t font_key, const uint8_t* text_ptr, uint32_t text_len) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_graphics_text_measure_key");
 
 // Input
+typedef enum {
+    WASM96_INPUT_MODE_GAME = 0,
+    WASM96_INPUT_MODE_COMPUTER = 1,
+} wasm96_input_mode_t;
+
 extern uint32_t wasm96_input_is_button_down(uint32_t port, uint32_t btn) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_is_button_down");
+extern void wasm96_input_set_mode(uint32_t mode) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_set_mode");
 extern uint32_t wasm96_input_is_key_down(uint32_t key) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_is_key_down");
 extern int32_t wasm96_input_get_mouse_x(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_get_mouse_x");
 extern int32_t wasm96_input_get_mouse_y(void) WASM96_WASM_IMPORT(WASM96_WASM_IMPORT_MODULE, "wasm96_input_get_mouse_y");
@@ -429,6 +435,7 @@ public:
 
 class Input {
 public:
+    static void setMode(wasm96_input_mode_t mode) { wasm96_input_set_mode(static_cast<uint32_t>(mode)); }
     static bool isButtonDown(uint32_t port, wasm96_button_t btn) { return wasm96_input_is_button_down(port, static_cast<uint32_t>(btn)) != 0; }
     static bool isKeyDown(uint32_t key) { return wasm96_input_is_key_down(key) != 0; }
     static int32_t getMouseX() { return wasm96_input_get_mouse_x(); }
