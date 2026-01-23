@@ -12,6 +12,7 @@ pub struct InputState {
     pub config: InputConfig,
     pub config_dirty: bool,
     pub char_queue: Vec<u8>,
+    pub event_queue: Vec<wasm96_engine::InputEvent>,
     pub last_rect: Option<egui::Rect>,
 }
 
@@ -24,13 +25,40 @@ impl InputState {
             config: InputConfig::default(),
             config_dirty: false,
             char_queue: Vec::new(),
+            event_queue: Vec::new(),
             last_rect: None,
         }
     }
 
     pub fn poll(&mut self) {
         while let Some(gilrs::Event { id, event, .. }) = self.gilrs.next_event() {
+            let port_opt = self.active_gamepads.iter().position(|&p| p == Some(id));
+
             match event {
+                gilrs::EventType::ButtonPressed(btn, _) => {
+                    if let Some(port) = port_opt {
+                        let mapping = &self.config.port_mappings[port];
+                        if let Some(retro_btn) = mapping.pad_map.get(&btn) {
+                            self.event_queue
+                                .push(wasm96_engine::InputEvent::JoypadPressed {
+                                    port: port as u32,
+                                    button: *retro_btn as u32,
+                                });
+                        }
+                    }
+                }
+                gilrs::EventType::ButtonReleased(btn, _) => {
+                    if let Some(port) = port_opt {
+                        let mapping = &self.config.port_mappings[port];
+                        if let Some(retro_btn) = mapping.pad_map.get(&btn) {
+                            self.event_queue
+                                .push(wasm96_engine::InputEvent::JoypadReleased {
+                                    port: port as u32,
+                                    button: *retro_btn as u32,
+                                });
+                        }
+                    }
+                }
                 gilrs::EventType::Connected => {
                     // Automatically assign to first empty port
                     for port in 0..4 {
@@ -54,22 +82,147 @@ impl InputState {
 
     pub fn update_egui_input(&mut self, input: egui::InputState, rect: Option<egui::Rect>) {
         for event in &input.events {
-            if let egui::Event::Text(text) = event {
-                for c in text.chars() {
-                    if c.is_ascii() {
-                        self.char_queue.push(c as u8);
+            match event {
+                egui::Event::Text(text) => {
+                    for c in text.chars() {
+                        if c.is_ascii() {
+                            self.char_queue.push(c as u8);
+                        }
                     }
                 }
+                egui::Event::Key {
+                    key, pressed: true, ..
+                } => {
+                    if let Some(code) = self.egui_key_to_wasm96(*key, input.modifiers.shift) {
+                        self.event_queue
+                            .push(wasm96_engine::InputEvent::KeyPressed { key: code });
+                    }
+                }
+                egui::Event::Key {
+                    key,
+                    pressed: false,
+                    ..
+                } => {
+                    if let Some(code) = self.egui_key_to_wasm96(*key, input.modifiers.shift) {
+                        self.event_queue
+                            .push(wasm96_engine::InputEvent::KeyReleased { key: code });
+                    }
+                }
+                egui::Event::PointerButton {
+                    button,
+                    pressed: true,
+                    pos,
+                    ..
+                } => {
+                    let (x, y) = if let Some(r) = rect {
+                        let local_x = pos.x - r.min.x;
+                        let local_y = pos.y - r.min.y;
+                        let gs = wasm96_engine::state::global().lock().unwrap();
+                        let scale_x = gs.video.width as f32 / r.width();
+                        let scale_y = gs.video.height as f32 / r.height();
+                        ((local_x * scale_x) as i32, (local_y * scale_y) as i32)
+                    } else {
+                        (0, 0)
+                    };
+                    let btn_idx = match button {
+                        egui::PointerButton::Primary => 0,
+                        egui::PointerButton::Secondary => 1,
+                        egui::PointerButton::Middle => 2,
+                        _ => 0,
+                    };
+                    self.event_queue
+                        .push(wasm96_engine::InputEvent::MousePressed {
+                            button: btn_idx,
+                            x,
+                            y,
+                        });
+                }
+                _ => {}
             }
         }
         self.egui_input = Some(input);
         self.last_rect = rect;
+    }
+
+    fn egui_key_to_wasm96(&self, key: egui::Key, shift: bool) -> Option<u32> {
+        match key {
+            egui::Key::Backspace => Some(8),
+            egui::Key::Tab => Some(9),
+            egui::Key::Enter => Some(13),
+            egui::Key::Escape => Some(27),
+            egui::Key::Space => Some(32),
+
+            egui::Key::A => Some(if shift { 65 } else { 97 }),
+            egui::Key::B => Some(if shift { 66 } else { 98 }),
+            egui::Key::C => Some(if shift { 67 } else { 99 }),
+            egui::Key::D => Some(if shift { 68 } else { 100 }),
+            egui::Key::E => Some(if shift { 69 } else { 101 }),
+            egui::Key::F => Some(if shift { 70 } else { 102 }),
+            egui::Key::G => Some(if shift { 71 } else { 103 }),
+            egui::Key::H => Some(if shift { 72 } else { 104 }),
+            egui::Key::I => Some(if shift { 73 } else { 105 }),
+            egui::Key::J => Some(if shift { 74 } else { 106 }),
+            egui::Key::K => Some(if shift { 75 } else { 107 }),
+            egui::Key::L => Some(if shift { 76 } else { 108 }),
+            egui::Key::M => Some(if shift { 77 } else { 109 }),
+            egui::Key::N => Some(if shift { 78 } else { 110 }),
+            egui::Key::O => Some(if shift { 79 } else { 111 }),
+            egui::Key::P => Some(if shift { 80 } else { 112 }),
+            egui::Key::Q => Some(if shift { 81 } else { 113 }),
+            egui::Key::R => Some(if shift { 82 } else { 114 }),
+            egui::Key::S => Some(if shift { 83 } else { 115 }),
+            egui::Key::T => Some(if shift { 84 } else { 116 }),
+            egui::Key::U => Some(if shift { 85 } else { 117 }),
+            egui::Key::V => Some(if shift { 86 } else { 118 }),
+            egui::Key::W => Some(if shift { 87 } else { 119 }),
+            egui::Key::X => Some(if shift { 88 } else { 120 }),
+            egui::Key::Y => Some(if shift { 89 } else { 121 }),
+            egui::Key::Z => Some(if shift { 90 } else { 122 }),
+
+            egui::Key::Num0 => Some(if shift { 41 } else { 48 }),
+            egui::Key::Num1 => Some(if shift { 33 } else { 49 }),
+            egui::Key::Num2 => Some(if shift { 64 } else { 50 }),
+            egui::Key::Num3 => Some(if shift { 35 } else { 51 }),
+            egui::Key::Num4 => Some(if shift { 36 } else { 52 }),
+            egui::Key::Num5 => Some(if shift { 37 } else { 53 }),
+            egui::Key::Num6 => Some(if shift { 94 } else { 54 }),
+            egui::Key::Num7 => Some(if shift { 38 } else { 55 }),
+            egui::Key::Num8 => Some(if shift { 42 } else { 56 }),
+            egui::Key::Num9 => Some(if shift { 40 } else { 57 }),
+
+            egui::Key::Minus => Some(if shift { 95 } else { 45 }),
+            egui::Key::Equals => Some(if shift { 43 } else { 61 }),
+            egui::Key::OpenBracket => Some(if shift { 123 } else { 91 }),
+            egui::Key::CloseBracket => Some(if shift { 125 } else { 93 }),
+            egui::Key::Backslash => Some(if shift { 124 } else { 92 }),
+            egui::Key::Semicolon => Some(if shift { 58 } else { 59 }),
+            egui::Key::Quote => Some(if shift { 34 } else { 39 }),
+            egui::Key::Comma => Some(if shift { 60 } else { 44 }),
+            egui::Key::Period => Some(if shift { 62 } else { 46 }),
+            egui::Key::Slash => Some(if shift { 63 } else { 47 }),
+            egui::Key::Backtick => Some(if shift { 126 } else { 96 }),
+
+            egui::Key::ArrowLeft => Some(37),
+            egui::Key::ArrowUp => Some(38),
+            egui::Key::ArrowRight => Some(39),
+            egui::Key::ArrowDown => Some(40),
+
+            _ => None,
+        }
     }
 }
 
 impl PlatformInput for crate::platform::DesktopPlatform {
     fn input_poll(&mut self) {
         self.input.poll();
+    }
+
+    fn input_get_event(&mut self) -> Option<wasm96_engine::InputEvent> {
+        if self.input.event_queue.is_empty() {
+            None
+        } else {
+            Some(self.input.event_queue.remove(0))
+        }
     }
 
     fn input_button_state(&mut self, port: u32, button_idx: u32) -> bool {

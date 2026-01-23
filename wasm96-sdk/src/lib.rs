@@ -1491,6 +1491,17 @@ pub mod graphics {
 }
 
 /// Input API.
+/// Input handling and queries.
+///
+/// In addition to the polling functions provided in this module, you can implement
+/// optional event handlers that the wasm96 host will call automatically:
+///
+/// - `#[no_mangle] pub extern "C" fn on_key_pressed(key: u32)`
+/// - `#[no_mangle] pub extern "C" fn on_joypad_pressed(port: u32, button: u32)`
+/// - `#[no_mangle] pub extern "C" fn on_mouse_clicked(button: u32, x: i32, y: i32)`
+///
+/// These handlers are called by the host in the order events were received from the hardware,
+/// before the `update()` and `draw()` functions are called for the current frame.
 pub mod input {
     use super::{Button, sys};
 

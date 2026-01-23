@@ -608,6 +608,9 @@ Fixed scrambled keyboard input in the desktop frontend by implementing a standar
 ### System Shell and Cartridge Loading (host/core/sdk)
 Added a default system shell (`wsh`) and support for dynamic cartridge loading and flashing from within guests via new ABI imports.
 
+### Event-Based Input (host/core/sdk)
+Implemented `on_key_pressed`, `on_joypad_pressed`, and `on_mouse_clicked` event callbacks. These allow guests to receive input events in the exact order they occurred on the hardware, improving responsiveness and correctness. Updated `wsh` to use these for improved keyboard handling.
+
 ### WGPU Desktop Frontend Fixes (engine)
 Fixed 3D rendering in the desktop frontend by implementing a depth buffer, enabling alpha blending for the 2D overlay, and ensuring the background clear color is correctly applied to the WGPU pass.
 

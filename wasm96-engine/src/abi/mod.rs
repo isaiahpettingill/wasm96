@@ -13,6 +13,9 @@ pub mod guest_exports {
     pub const SETUP: &str = "setup";
     pub const UPDATE: &str = "update";
     pub const DRAW: &str = "draw";
+    pub const ON_KEY_PRESSED: &str = "on_key_pressed";
+    pub const ON_JOYPAD_PRESSED: &str = "on_joypad_pressed";
+    pub const ON_MOUSE_CLICKED: &str = "on_mouse_clicked";
     pub const WASI_START: &str = "_start";
     pub const MAIN: &str = "main";
 }
@@ -224,11 +227,18 @@ pub type GuestFunc = wasmtime::Func;
 #[cfg(target_arch = "wasm32")]
 pub type GuestFunc = js_sys::Function;
 
+pub type GuestFuncU32 = GuestFunc;
+pub type GuestFuncU32U32 = GuestFunc;
+pub type GuestFuncU32I32I32 = GuestFunc;
+
 /// Resolved entrypoints for a guest module.
 pub struct GuestEntrypoints {
     pub setup: GuestFunc,
     pub update: Option<GuestFunc>,
     pub draw: Option<GuestFunc>,
+    pub on_key_pressed: Option<GuestFuncU32>,
+    pub on_joypad_pressed: Option<GuestFuncU32U32>,
+    pub on_mouse_clicked: Option<GuestFuncU32I32I32>,
 }
 
 impl GuestEntrypoints {
@@ -251,10 +261,17 @@ impl GuestEntrypoints {
             draw = instance.get_func(&mut store, guest_exports::MAIN);
         }
 
+        let on_key_pressed = instance.get_func(&mut store, guest_exports::ON_KEY_PRESSED);
+        let on_joypad_pressed = instance.get_func(&mut store, guest_exports::ON_JOYPAD_PRESSED);
+        let on_mouse_clicked = instance.get_func(&mut store, guest_exports::ON_MOUSE_CLICKED);
+
         Ok(Self {
             setup,
             update,
             draw,
+            on_key_pressed,
+            on_joypad_pressed,
+            on_mouse_clicked,
         })
     }
 
@@ -286,10 +303,23 @@ impl GuestEntrypoints {
                 .and_then(|v| v.dyn_into::<Function>().ok());
         }
 
+        let on_key_pressed = Reflect::get(&exports, &guest_exports::ON_KEY_PRESSED.into())
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+        let on_joypad_pressed = Reflect::get(&exports, &guest_exports::ON_JOYPAD_PRESSED.into())
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+        let on_mouse_clicked = Reflect::get(&exports, &guest_exports::ON_MOUSE_CLICKED.into())
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+
         Ok(Self {
             setup,
             update,
             draw,
+            on_key_pressed,
+            on_joypad_pressed,
+            on_mouse_clicked,
         })
     }
 }

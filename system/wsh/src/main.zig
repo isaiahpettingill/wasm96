@@ -9,7 +9,6 @@ const COLS = SCREEN_WIDTH / FONT_WIDTH;
 const ROWS = SCREEN_HEIGHT / FONT_HEIGHT;
 
 const MAX_INPUT = 256;
-const MAX_HISTORY = 32;
 
 var terminal_buffer: [ROWS][COLS]u8 = undefined;
 var color_buffer: [ROWS][COLS]u32 = undefined;
@@ -38,7 +37,7 @@ export fn setup() void {
         }
     }
 
-    const initial_path = "disk0";
+    const initial_path = "/";
     @memcpy(current_dir[0..initial_path.len], initial_path);
     current_dir_len = initial_path.len;
 
@@ -82,54 +81,32 @@ fn printPrompt() void {
     print("> ");
 }
 
-var last_control_time: u64 = 0;
-const CONTROL_REPEAT_MS = 150;
-
-export fn update() void {
-    const now = wasm96.system.millis();
-
-    // Character input (buffered by host)
-    while (wasm96.input.getChar()) |c| {
-        if (c >= 32 and c < 127) {
-            if (input_len < MAX_INPUT - 1) {
-                input_buffer[input_len] = c;
-                input_len += 1;
-                var buf: [1]u8 = .{c};
-                print(&buf);
+export fn on_key_pressed(key: u32) void {
+    if (key == 8) { // Backspace
+        if (input_len > 0) {
+            input_len -= 1;
+            if (cursor_x > 0) {
+                cursor_x -= 1;
+                terminal_buffer[cursor_y][cursor_x] = ' ';
             }
         }
-    }
-
-    // Control keys (handled with repeat delay)
-    if (now - last_control_time >= CONTROL_REPEAT_MS) {
-        var control_pressed = false;
-
-        // Backspace
-        if (wasm96.input.isKeyDown(8)) {
-            if (input_len > 0) {
-                input_len -= 1;
-                if (cursor_x > 0) {
-                    cursor_x -= 1;
-                    terminal_buffer[cursor_y][cursor_x] = ' ';
-                }
-                control_pressed = true;
-            }
-        }
-
-        // Enter
-        if (wasm96.input.isKeyDown(13)) {
-            newline();
-            executeCommand(input_buffer[0..input_len]);
-            input_len = 0;
-            printPrompt();
-            control_pressed = true;
-        }
-
-        if (control_pressed) {
-            last_control_time = now;
+    } else if (key == 13) { // Enter
+        newline();
+        executeCommand(input_buffer[0..input_len]);
+        input_len = 0;
+        printPrompt();
+    } else if (key >= 32 and key < 127) { // ASCII
+        if (input_len < MAX_INPUT - 1) {
+            const c: u8 = @intCast(key);
+            input_buffer[input_len] = c;
+            input_len += 1;
+            var buf: [1]u8 = .{c};
+            print(&buf);
         }
     }
 }
+
+export fn update() void {}
 
 export fn draw() void {
     wasm96.graphics.background(20, 20, 25);
@@ -161,7 +138,7 @@ fn executeCommand(cmd_line: []const u8) void {
     const cmd = it.next() orelse return;
 
     if (std.ascii.eqlIgnoreCase(cmd, "help")) {
-        print("Commands: ls, cd, mkdir, touch, cat, rm, rmdir, echo, clear, run, install, exit\n");
+        print("Commands: ls, cd, mkdir, touch, cat, rm, rmdir, echo, clear, run, install, flash, exit\n");
     } else if (std.ascii.eqlIgnoreCase(cmd, "clear")) {
         for (0..ROWS) |y| {
             for (0..COLS) |x| {
@@ -212,7 +189,10 @@ fn ls(path: []const u8) void {
     };
     defer allocator.free(dir_path);
 
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch {
+    // WASI compatibility: open relative to root
+    const clean_path = if (dir_path.len > 0 and dir_path[0] == '/') dir_path[1..] else dir_path;
+
+    var dir = (if (clean_path.len == 0) std.fs.cwd().openDir(".", .{ .iterate = true }) else std.fs.cwd().openDir(clean_path, .{ .iterate = true })) catch {
         print("ls: cannot open directory\n");
         return;
     };
@@ -235,7 +215,9 @@ fn cd(path: []const u8) void {
     };
     defer allocator.free(new_path);
 
-    var dir = std.fs.cwd().openDir(new_path, .{}) catch {
+    const clean_path = if (new_path.len > 0 and new_path[0] == '/') new_path[1..] else new_path;
+
+    var dir = (if (clean_path.len == 0) std.fs.cwd().openDir(".", .{}) else std.fs.cwd().openDir(clean_path, .{})) catch {
         print("cd: no such directory\n");
         return;
     };
@@ -250,7 +232,9 @@ fn mkdir(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    std.fs.cwd().makeDir(full_path) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    std.fs.cwd().makeDir(clean_path) catch {
         print("mkdir: failed\n");
     };
 }
@@ -260,7 +244,9 @@ fn touch(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    const file = std.fs.cwd().createFile(full_path, .{}) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    const file = std.fs.cwd().createFile(clean_path, .{}) catch {
         print("touch: failed\n");
         return;
     };
@@ -272,7 +258,9 @@ fn cat(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    const file = std.fs.cwd().openFile(full_path, .{}) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    const file = std.fs.cwd().openFile(clean_path, .{}) catch {
         print("cat: no such file\n");
         return;
     };
@@ -292,7 +280,9 @@ fn rm(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    std.fs.cwd().deleteFile(full_path) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    std.fs.cwd().deleteFile(clean_path) catch {
         print("rm: failed\n");
     };
 }
@@ -302,7 +292,9 @@ fn rmdir(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    std.fs.cwd().deleteDir(full_path) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    std.fs.cwd().deleteDir(clean_path) catch {
         print("rmdir: failed\n");
     };
 }
@@ -313,7 +305,9 @@ fn run(name: []const u8, args: []const u8) void {
     const full_path = resolvePath(name) catch return;
     defer allocator.free(full_path);
 
-    var file = std.fs.cwd().openFile(full_path, .{}) catch blk: {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    var file = std.fs.cwd().openFile(clean_path, .{}) catch blk: {
         // Try ROMS directory
         var rom_path_buf: [256]u8 = undefined;
         const rom_path = std.fmt.bufPrint(&rom_path_buf, "disk0/ROMS/{s}.w96", .{name}) catch return;
@@ -338,7 +332,9 @@ fn flash(path: []const u8) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    const file = std.fs.cwd().openFile(full_path, .{}) catch {
+    const clean_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    const file = std.fs.cwd().openFile(clean_path, .{}) catch {
         print("flash: file not found\n");
         return;
     };
@@ -368,7 +364,9 @@ fn install(it: *std.mem.TokenIterator(u8, .any)) void {
     const full_path = resolvePath(path) catch return;
     defer allocator.free(full_path);
 
-    const file = std.fs.cwd().openFile(full_path, .{}) catch {
+    const clean_src_path = if (full_path.len > 0 and full_path[0] == '/') full_path[1..] else full_path;
+
+    const file = std.fs.cwd().openFile(clean_src_path, .{}) catch {
         print("install: source file not found\n");
         return;
     };
@@ -404,24 +402,28 @@ fn install(it: *std.mem.TokenIterator(u8, .any)) void {
 }
 
 fn resolvePath(path: []const u8) ![]u8 {
-    // Handle diskN: prefixes for WASI compatibility (converts disk0:/foo to disk0/foo)
+    // Drive-style paths disk0:foo -> /disk0/foo
     if (std.mem.indexOfScalar(u8, path, ':')) |idx| {
         const disk = path[0..idx];
         const rest = if (idx + 1 < path.len) std.mem.trimLeft(u8, path[idx + 1 ..], "/") else "";
-        return try std.fmt.allocPrint(allocator, "{s}/{s}", .{ disk, rest });
+        return try std.fmt.allocPrint(allocator, "/{s}/{s}", .{ disk, rest });
     }
 
     if (std.mem.startsWith(u8, path, "/")) {
-        // Strip leading slash for WASI relative-to-root handling
-        return try allocator.dupe(u8, std.mem.trimLeft(u8, path, "/"));
+        return try allocator.dupe(u8, path);
     }
 
     const base = current_dir[0..current_dir_len];
     if (std.mem.eql(u8, path, ".")) return try allocator.dupe(u8, base);
+
     if (std.mem.eql(u8, path, "..")) {
-        const truncated = std.mem.trimRight(u8, base, "/");
-        const last_sep = std.mem.lastIndexOfScalar(u8, truncated, '/') orelse 0;
-        return try allocator.dupe(u8, base[0 .. last_sep + 1]);
+        if (std.mem.eql(u8, base, "/")) return try allocator.dupe(u8, "/");
+        const last_sep = std.mem.lastIndexOfScalar(u8, std.mem.trimRight(u8, base, "/"), '/');
+        if (last_sep) |idx| {
+            if (idx == 0) return try allocator.dupe(u8, "/");
+            return try allocator.dupe(u8, base[0..idx]);
+        }
+        return try allocator.dupe(u8, "/");
     }
 
     const sep = if (std.mem.endsWith(u8, base, "/")) "" else "/";

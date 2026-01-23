@@ -150,12 +150,34 @@ pub trait PlatformAudio {
     fn audio_batch(&mut self, samples: &[i16]);
 }
 
+/// Types of input events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputEvent {
+    /// A joypad button was pressed.
+    JoypadPressed { port: u32, button: u32 },
+    /// A joypad button was released.
+    JoypadReleased { port: u32, button: u32 },
+    /// A keyboard key was pressed.
+    KeyPressed { key: u32 },
+    /// A keyboard key was released.
+    KeyReleased { key: u32 },
+    /// A mouse button was pressed.
+    MousePressed { button: u32, x: i32, y: i32 },
+    /// A mouse button was released.
+    MouseReleased { button: u32, x: i32, y: i32 },
+}
+
 /// Platform-agnostic input callbacks.
 ///
 /// Frontends must implement this trait to handle input devices.
 pub trait PlatformInput {
     /// Poll input devices (called once per frame).
     fn input_poll(&mut self);
+
+    /// Get the next input event from the queue.
+    fn input_get_event(&mut self) -> Option<InputEvent> {
+        None
+    }
 
     /// Query button state.
     ///
@@ -330,6 +352,85 @@ impl Engine {
         }
     }
 
+    fn call_guest_on_key_pressed(&mut self, key: u32) {
+        let Some(rt) = self.rt.as_mut() else { return };
+        let Some(entry) = &self.entrypoints else {
+            return;
+        };
+        let Some(func) = &entry.on_key_pressed else {
+            return;
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = func.call(
+                &mut rt.store,
+                &[wasmtime::Val::I32(key as i32)],
+                &mut results,
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = func.call1(&js_sys::Object::new(), &key.into());
+        }
+    }
+
+    fn call_guest_on_joypad_pressed(&mut self, port: u32, button: u32) {
+        let Some(rt) = self.rt.as_mut() else { return };
+        let Some(entry) = &self.entrypoints else {
+            return;
+        };
+        let Some(func) = &entry.on_joypad_pressed else {
+            return;
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = func.call(
+                &mut rt.store,
+                &[
+                    wasmtime::Val::I32(port as i32),
+                    wasmtime::Val::I32(button as i32),
+                ],
+                &mut results,
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = func.call2(&js_sys::Object::new(), &port.into(), &button.into());
+        }
+    }
+
+    fn call_guest_on_mouse_clicked(&mut self, button: u32, x: i32, y: i32) {
+        let Some(rt) = self.rt.as_mut() else { return };
+        let Some(entry) = &self.entrypoints else {
+            return;
+        };
+        let Some(func) = &entry.on_mouse_clicked else {
+            return;
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut results: [wasmtime::Val; 0] = [];
+            let _ = func.call(
+                &mut rt.store,
+                &[
+                    wasmtime::Val::I32(button as i32),
+                    wasmtime::Val::I32(x),
+                    wasmtime::Val::I32(y),
+                ],
+                &mut results,
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = func.call3(&js_sys::Object::new(), &button.into(), &x.into(), &y.into());
+        }
+    }
+
     fn clear_guest(&mut self) {
         self.module = None;
         self.instance = None;
@@ -452,6 +553,20 @@ impl Engine {
 
         // Snapshot inputs once per frame for determinism.
         input::snapshot_per_frame(callbacks);
+
+        // Process input events.
+        while let Some(event) = callbacks.input_get_event() {
+            match event {
+                InputEvent::KeyPressed { key } => self.call_guest_on_key_pressed(key),
+                InputEvent::JoypadPressed { port, button } => {
+                    self.call_guest_on_joypad_pressed(port, button)
+                }
+                InputEvent::MousePressed { button, x, y } => {
+                    self.call_guest_on_mouse_clicked(button, x, y)
+                }
+                _ => {}
+            }
+        }
 
         // Run guest update loop.
         self.call_guest_update();

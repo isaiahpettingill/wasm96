@@ -109,6 +109,18 @@ impl WasmtimeRuntime {
         let temp_dir = tempfile::tempdir()
             .map_err(|e| anyhow::anyhow!("Failed to create temp dir for WASI: {e:?}"))?;
 
+        // Map the root temp directory as ".".
+        // In WASI Preview 1 (which we are using), mapping a directory to "."
+        // is the most reliable way to provide a root for file access.
+        wasi_builder
+            .preopened_dir(
+                temp_dir.path(),
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to preopen WASI root: {e:?}"))?;
+
         // Sync our VFS into this directory if available
         {
             let gs = state::global().lock().unwrap();
@@ -121,30 +133,6 @@ impl WasmtimeRuntime {
                     disk.extract_to_host(&disk_path).map_err(|e| {
                         anyhow::anyhow!("Failed to extract disk {} to host: {e:?}", i)
                     })?;
-
-                    // Open the directory for WASI.
-                    // DISK0 is also mapped to "." for compatibility with games expecting root access.
-                    if i == 0 {
-                        wasi_builder
-                            .preopened_dir(
-                                &disk_path,
-                                ".",
-                                wasmtime_wasi::DirPerms::all(),
-                                wasmtime_wasi::FilePerms::all(),
-                            )
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to preopen disk0 as root: {e:?}")
-                            })?;
-                    }
-
-                    wasi_builder
-                        .preopened_dir(
-                            disk_path,
-                            format!("disk{}", i),
-                            wasmtime_wasi::DirPerms::all(),
-                            wasmtime_wasi::FilePerms::all(),
-                        )
-                        .map_err(|e| anyhow::anyhow!("Failed to preopen disk{}: {e:?}", i))?;
                 }
             }
         }
@@ -167,7 +155,6 @@ impl WasmtimeRuntime {
         })
     }
 
-    /// Sync from the WASI directory back to the FAT VFS disk
     /// Sync from the WASI directory back to the FAT VFS disk
     pub fn sync_wasi_to_vfs(&mut self) -> Result<()> {
         let gs = state::global().lock().unwrap();

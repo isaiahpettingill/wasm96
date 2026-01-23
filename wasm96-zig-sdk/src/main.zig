@@ -670,6 +670,17 @@ pub const graphics = struct {
 };
 
 /// Input API.
+/// Input handling and queries.
+///
+/// In addition to the polling functions provided in this struct, you can implement
+/// optional event handlers that the wasm96 host will call automatically:
+///
+/// - `export fn on_key_pressed(key: u32) void`
+/// - `export fn on_joypad_pressed(port: u32, button: u32) void`
+/// - `export fn on_mouse_clicked(button: u32, x: i32, y: i32) void`
+///
+/// These handlers are called by the host in the order events were received from the hardware,
+/// before the `update()` and `draw()` functions are called for the current frame.
 pub const input = struct {
     /// Returns true if the specified button is currently held down.
     pub const InputMode = enum(u32) {
