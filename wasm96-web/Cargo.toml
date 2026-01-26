@@ -1,0 +1,59 @@
+[package]
+name = "wasm96-web"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm96-engine = { path = "../wasm96-engine" }
+yew = { version = "0.21", features = ["csr"] }
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3.77"
+gloo = "0.11"
+log = "0.4"
+wasm-logger = "0.2"
+console_error_panic_hook = "0.1"
+wgpu = { version = "0.20", default-features = false, features = ["webgl", "webgpu"] }
+
+[features]
+default = ["webgl", "webgpu"]
+webgpu = []
+webgl = []
+
+[dependencies.web-sys]
+version = "0.3.77"
+features = [
+    "HtmlCanvasElement",
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Node",
+    "Event",
+    "KeyboardEvent",
+    "MouseEvent",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
+    "AudioContext",
+    "AudioContextState",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioDestinationNode",
+    "GainNode",
+    "console",
+    "Performance",
+    "Gamepad",
+    "GamepadButton",
+    "Navigator",
+    "CanvasRenderingContext2d",
+    "ImageData",
+    "HtmlInputElement",
+    "FileList",
+    "File",
+    "Blob",
+]

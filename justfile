@@ -43,6 +43,12 @@ dist-libretro-metadata:
 dist-examples:
     sh ./scripts/dist-examples.sh
 
+web-serve:
+    cd wasm96-web && trunk serve
+
+web-dist:
+    cd wasm96-web && trunk build --release
+
 build-core:
     cargo build -p wasm96-libretro --release
 
@@ -105,7 +111,7 @@ run-rust-wasi:
     just run example/rust-guest-wasi/target/wasm32-wasip1/release/rust_guest_wasi.wasm
 
 desktop:
-    RUST_BACKTRACE=full RUSTFLAGS="-C target-cpu=native" cargo run -p wasm96-desktop --release
+    RUST_BACKTRACE=full RUSTFLAGS="-C target-cpu=native -Z threads=16" cargo +nightly run -p wasm96-desktop
 
 desktop-run content-path:
     cargo run -p wasm96-desktop  --release -- {{ content-path }}

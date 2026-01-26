@@ -51,6 +51,7 @@ pub struct State3d {
     pub projection: Mat4,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct GlState {
     // 3D Shader
     program_3d: u32,
@@ -86,6 +87,7 @@ pub(crate) static STATE_3D: Mutex<State3d> = Mutex::new(State3d {
 lazy_static::lazy_static! {
     static ref MESH_STORE: Mutex<HashMap<u64, Mesh>> = Mutex::new(HashMap::new());
 }
+#[cfg(not(target_arch = "wasm32"))]
 static GL_STATE: OnceLock<Mutex<GlState>> = OnceLock::new();
 static OVERLAY_COMPOSITING_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -93,6 +95,7 @@ static OVERLAY_COMPOSITING_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// Uploads a 2D texture with RGBA8 internalformat, falling back to unsized RGBA if the driver rejects RGBA8.
 /// This improves GLES compatibility.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn tex_image_2d_rgba_fallback(
     target: u32,
     level: i32,
@@ -134,6 +137,7 @@ unsafe fn tex_image_2d_rgba_fallback(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn check_gl_error(label: &str) {
     // Only check GL errors if GL context has been initialized
     // Calling GL functions before gl::load_with() causes crashes on some platforms
@@ -333,6 +337,7 @@ fn overlay_shader_sources() -> (&'static str, &'static str) {
 
 // --- Initialization ---
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn init_gl_context<F>(loader: F)
 where
     F: Fn(&str) -> *const c_void,
@@ -424,6 +429,7 @@ where
     check_gl_error("init_gl_context");
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn create_program(vs_src: &str, fs_src: &str) -> u32 {
     unsafe {
         let vs = compile_shader(gl::VERTEX_SHADER, vs_src);
@@ -456,6 +462,7 @@ fn create_program(vs_src: &str, fs_src: &str) -> u32 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn compile_shader(type_: u32, src: &str) -> u32 {
     unsafe {
         let shader = gl::CreateShader(type_);
@@ -647,19 +654,38 @@ pub fn graphics_mesh_create(
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_mesh_create(
-    _env: &mut (),
-    _key: u64,
-    _v_ptr: u32,
-    _v_len: u32,
-    _i_ptr: u32,
-    _i_len: u32,
-) -> u32 {
-    // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
-    0
+pub fn graphics_mesh_create(key: u64, v_ptr: u32, v_len: u32, i_ptr: u32, i_len: u32) -> u32 {
+    let v_bytes =
+        match super::utils::read_guest_bytes(v_ptr, v_len * std::mem::size_of::<Vertex>() as u32) {
+            Ok(b) => b,
+            Err(_) => return 0,
+        };
+    let i_bytes = match super::utils::read_guest_bytes(i_ptr, i_len * 4) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    let vertices: &[Vertex] = bytemuck::cast_slice(&v_bytes);
+    let indices: &[u32] = bytemuck::cast_slice(&i_bytes);
+
+    let mut store = MESH_STORE.lock().unwrap();
+    store.insert(
+        key,
+        Mesh {
+            vao: 0,
+            index_count: indices.len() as i32,
+            texture_key: None,
+        },
+    );
+
+    // Also notify wgpu backend
+    let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(vertices);
+    let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
+    super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
+    1
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn hash_key(key: &str) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     for byte in key.bytes() {
@@ -669,6 +695,7 @@ pub(crate) fn hash_key(key: &str) -> u64 {
     hash
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_create_obj(
     env: &mut wasmtime::Caller<'_, crate::state::Wasm96Ctx>,
     key: u64,
@@ -930,13 +957,145 @@ pub fn graphics_mesh_create_stl(
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_mesh_create_obj(_env: &mut (), _key: u64, _ptr: u32, _len: u32) -> u32 {
-    // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
-    0
+pub fn graphics_mesh_create_obj(key: u64, ptr: u32, len: u32) -> u32 {
+    use std::io::Cursor;
+    use std::path::Path;
+
+    let obj_bytes = match super::utils::read_guest_bytes(ptr, len) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+
+    let mut reader = Cursor::new(obj_bytes);
+
+    let (models, materials) = match tobj::load_obj_buf(
+        &mut reader,
+        &tobj::LoadOptions {
+            triangulate: true,
+            single_index: true,
+            ..Default::default()
+        },
+        |p: &Path| -> tobj::MTLLoadResult {
+            let filename = p.to_str().unwrap_or("");
+            let mtl_key = hash_key(filename);
+
+            let mtl_bytes = {
+                let res = super::resources::RESOURCES.lock().unwrap();
+                res.keyed_mtls.get(&mtl_key).cloned()
+            };
+
+            if let Some(bytes) = mtl_bytes {
+                let mut mtl_reader = Cursor::new(bytes);
+                tobj::load_mtl_buf(&mut mtl_reader)
+            } else {
+                Ok((Vec::new(), ahash::AHashMap::new()))
+            }
+        },
+    ) {
+        Ok(r) => r,
+        Err(_) => return 0,
+    };
+
+    if models.is_empty() {
+        return 0;
+    }
+
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    for model in models.iter() {
+        let mesh = &model.mesh;
+
+        if mesh.positions.len() % 3 != 0 {
+            return 0;
+        }
+        if !mesh.texcoords.is_empty() && mesh.texcoords.len() % 2 != 0 {
+            return 0;
+        }
+        if !mesh.normals.is_empty() && mesh.normals.len() % 3 != 0 {
+            return 0;
+        }
+
+        if mesh.indices.is_empty() {
+            continue;
+        }
+
+        let base_vertex = vertices.len() as u32;
+        let vertex_count = mesh.positions.len() / 3;
+
+        for i in 0..vertex_count {
+            let px = mesh.positions[i * 3 + 0];
+            let py = mesh.positions[i * 3 + 1];
+            let pz = mesh.positions[i * 3 + 2];
+
+            let (u, v) = if mesh.texcoords.len() >= (i * 2 + 2) {
+                (mesh.texcoords[i * 2 + 0], 1.0 - mesh.texcoords[i * 2 + 1])
+            } else {
+                (0.0, 0.0)
+            };
+
+            let (nx, ny, nz) = if mesh.normals.len() >= (i * 3 + 3) {
+                (
+                    mesh.normals[i * 3 + 0],
+                    mesh.normals[i * 3 + 1],
+                    mesh.normals[i * 3 + 2],
+                )
+            } else {
+                (0.0, 0.0, 1.0)
+            };
+
+            vertices.push(Vertex {
+                position: [px, py, pz],
+                uv: [u, v],
+                normal: [nx, ny, nz],
+            });
+        }
+
+        for &idx in mesh.indices.iter() {
+            indices.push(base_vertex + (idx as u32));
+        }
+    }
+
+    if vertices.is_empty() || indices.is_empty() {
+        return 0;
+    }
+
+    let mut store = MESH_STORE.lock().unwrap();
+    store.insert(
+        key,
+        Mesh {
+            vao: 0,
+            index_count: indices.len() as i32,
+            texture_key: None,
+        },
+    );
+
+    // Also notify wgpu backend
+    let wgpu_verts: &[super::wgpu_backend::WgpuVertex] = bytemuck::cast_slice(&vertices);
+    let wgpu_indices: Vec<u16> = indices.iter().map(|&i| i as u16).collect();
+    super::wgpu_backend::wgpu_mesh_create(key, wgpu_verts, &wgpu_indices);
+
+    // Automatically set texture if MTL diffuse texture is present
+    if let Ok(mats) = materials {
+        for mat in mats.iter() {
+            if let Some(ref tex_name) = mat.diffuse_texture {
+                if !tex_name.is_empty() {
+                    let tex_key = hash_key(tex_name);
+                    if let Some(mesh) = store.get_mut(&key) {
+                        mesh.texture_key = Some(tex_key);
+                    }
+                    super::wgpu_backend::wgpu_mesh_set_texture(key, tex_key);
+                    break;
+                }
+            }
+        }
+    }
+
+    1
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn graphics_mesh_create_stl(_env: &mut (), _key: u64, _ptr: u32, _len: u32) -> u32 {
+pub fn graphics_mesh_create_stl(_key: u64, _ptr: u32, _len: u32) -> u32 {
     // Web (wasm32): WebGL path pending. Stub out for now so wasm32 builds.
     0
 }
@@ -962,6 +1121,8 @@ pub fn graphics_mesh_set_texture(mesh_key: u64, image_key: u64) -> u32 {
     1
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn graphics_mesh_draw(
     key: u64,
     x: f32,
@@ -1146,6 +1307,25 @@ pub fn graphics_mesh_draw(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn graphics_mesh_draw(
+    key: u64,
+    x: f32,
+    y: f32,
+    z: f32,
+    rx: f32,
+    ry: f32,
+    rz: f32,
+    sx: f32,
+    sy: f32,
+    sz: f32,
+) {
+    // Notify wgpu backend
+    super::wgpu_backend::wgpu_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn prepare_frame(fbo: usize) {
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {
@@ -1175,10 +1355,16 @@ pub fn prepare_frame(fbo: usize) {
     check_gl_error("prepare_frame");
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn prepare_frame(_fbo: usize) {
+    // No-op for now on web
+}
+
 pub fn set_overlay_compositing_enabled(enabled: bool) {
     OVERLAY_COMPOSITING_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn flush_to_host() -> bool {
     // Allow host/frontends to disable 2D overlay compositing (e.g. for debugging).
     if !OVERLAY_COMPOSITING_ENABLED.load(Ordering::Relaxed) {
@@ -1312,6 +1498,7 @@ pub fn flush_to_host() -> bool {
 /// Clears the GL framebuffer with the specified color.
 /// Called by `graphics_background()` when GL is available.
 /// Returns false if GL context is not initialized or FBO is invalid.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn clear_framebuffer(r: f32, g: f32, b: f32, a: f32) -> bool {
     let gl_state_lock = GL_STATE.get();
     if gl_state_lock.is_none() {

@@ -121,7 +121,7 @@ A pure-Rust desktop frontend is available for running `wasm96` content without R
 
 ### Features
 - **Cartridge Slots**: Support for up to 10 cartridge slots (`CART0` to `CART9`). `CART0` is the default boot cartridge.
-- **Virtual Disks**: Support for up to 5 virtual disks (up to 4GB each). `DISK0` is the primary system/save disk.
+- **Virtual Disks**: Support for up to 5 virtual disks (up to 4GB each). `DISK0` is the primary system/save disk. Creating a new disk allows for any size between 1MB and 4GB.
 - **Persistent Storage**: Game saves are stored in `.sav` files keyed by the cartridge name.
 - **Disk Execution**: Run `.w96`, `.wasm`, or `.wat` programs directly from any mounted virtual disk.
 - **SRAM Support**: `DISK0.img` acts as the persistent game memory (SRAM) for the runtime.
@@ -490,6 +490,8 @@ wasm96/
 ### Guidelines
 - Follow test-driven development (TDD)
 - Ensure all code compiles and passes tests
+- Engine uses nightly Rust for portable SIMD (`rust-toolchain.toml`)
+- WASM builds can enable `wasm-alloc` (talc allocator)
 - See `AGENTS.md` for agent-specific rules
 
 ### Contributing
@@ -601,6 +603,9 @@ Tip:
 - The repository `justfile` also contains helper recipes for these cross-build + zip steps. Use those to avoid typos and keep the release process consistent.
 
 ## Recent Fixes
+
+### Web Player Audio & 3D Support (web)
+Fixed `AudioContext` startup issues by ensuring it resumes on user interaction (keyboard/mouse input). Also implemented the proper WGPU surface rendering loop in the web player, fixing 3D object rendering which was previously failing to present frames to the canvas. Added missing audio import stubs (`wasm96_audio_play_qoa`, `wasm96_audio_play_xm`, `wasm96_audio_play_midi`, `wasm96_audio_push_samples`) to the web runtime to prevent instantiation errors for games using these features.
 
 ### Desktop Keyboard & Persistence (desktop)
 Fixed scrambled keyboard input in the desktop frontend by implementing a standard ASCII-compatible mapping. Also moved all automatic persistence (cartridges, DISK0, and saves) to the system app data directory. The `wsh` system shell is also now case-insensitive for all commands.

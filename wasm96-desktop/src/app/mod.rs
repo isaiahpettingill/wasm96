@@ -24,6 +24,7 @@ pub struct Wasm96App {
     show_no_disk_warning: bool,
     show_mount_cart_dialog: Option<(String, Vec<u8>)>,
     show_run_from_disk_dialog: Option<usize>,
+    show_create_disk_dialog: Option<(usize, u32)>,
     show_input_settings: bool,
     remapping_port: Option<usize>,
     remapping_button: Option<crate::platform::input::mapping::RetroButton>,
@@ -153,6 +154,7 @@ impl Wasm96App {
             show_no_disk_warning,
             show_mount_cart_dialog: None,
             show_run_from_disk_dialog: None,
+            show_create_disk_dialog: None,
             show_input_settings: false,
             remapping_port: None,
             remapping_button: None,
@@ -383,13 +385,8 @@ impl eframe::App for Wasm96App {
                                     }
                                     ui.close_menu();
                                 }
-                                if ui.button("Create New (25MB)...").clicked() {
-                                    let disk = wasm96_engine::vfs::VirtualDisk::new_in_memory(
-                                        25 * 1024 * 1024,
-                                    );
-                                    let _ = disk.format("WASM96");
-                                    let mut gs = wasm96_engine::state::global().lock().unwrap();
-                                    gs.vfs.mount_slot(i, disk);
+                                if ui.button("Create New...").clicked() {
+                                    self.show_create_disk_dialog = Some((i, 25)); // Default 25MB
                                     ui.close_menu();
                                 }
                             }
@@ -542,6 +539,36 @@ impl eframe::App for Wasm96App {
             if close {
                 self.show_run_from_disk_dialog = None;
             }
+        }
+
+        if let Some((slot, mut size_mb)) = self.show_create_disk_dialog {
+            egui::Window::new(format!("Create New DISK{}", slot)).show(ctx, |ui| {
+                ui.label("Enter disk size in Megabytes (MB):");
+                ui.add(
+                    egui::DragValue::new(&mut size_mb)
+                        .range(1..=4096)
+                        .suffix(" MB"),
+                );
+
+                ui.horizontal(|ui| {
+                    if ui.button("Create").clicked() {
+                        let disk = wasm96_engine::vfs::VirtualDisk::new_in_memory(
+                            (size_mb as usize) * 1024 * 1024,
+                        );
+                        let _ = disk.format("WASM96");
+                        let mut gs = wasm96_engine::state::global().lock().unwrap();
+                        gs.vfs.mount_slot(slot, disk);
+                        self.show_create_disk_dialog = None;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.show_create_disk_dialog = None;
+                    }
+                });
+
+                if self.show_create_disk_dialog.is_some() {
+                    self.show_create_disk_dialog = Some((slot, size_mb));
+                }
+            });
         }
 
         if self.show_no_disk_warning {

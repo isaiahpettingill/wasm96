@@ -56,14 +56,14 @@
 //! ```no_run
 //! use wasm96_sdk::graphics;
 //!
-//! #[no_mangle]
+//! #[unsafe(no_mangle)]
 //! pub extern "C" fn setup() {
 //!     graphics::set_size(320, 240);
 //!     // Register built-in Spleen under a key you control.
 //!     graphics::font_register_spleen("ui", 16);
 //! }
 //!
-//! #[no_mangle]
+//! #[unsafe(no_mangle)]
 //! pub extern "C" fn draw() {
 //!     graphics::background(0, 0, 0);
 //!     graphics::set_color(255, 255, 255, 255);

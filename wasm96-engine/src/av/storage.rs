@@ -85,3 +85,9 @@ pub fn storage_load(env: &mut Caller<'_, crate::state::Wasm96Ctx>, key: u64) -> 
 pub fn storage_free(env: &mut Caller<'_, crate::state::Wasm96Ctx>, ptr: u32, len: u32) {
     guest_free(env, ptr, len);
 }
+
+/// Web wrapper for freeing storage.
+#[cfg(target_arch = "wasm32")]
+pub fn storage_free(ptr: u32, len: u32) {
+    guest_free(ptr, len);
+}

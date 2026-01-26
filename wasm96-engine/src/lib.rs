@@ -1,4 +1,6 @@
 //! wasm96-engine: Platform-agnostic core engine for running WASM/WAT modules.
+#![feature(portable_simd)]
+
 //!
 //! This crate implements an **Immediate Mode ABI**:
 //! - The host owns the framebuffer and handles rendering.
@@ -18,6 +20,9 @@ pub mod loader;
 pub mod runtime;
 pub mod state;
 pub mod vfs;
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm-alloc"))]
+mod wasm_alloc;
 
 use crate::abi::GuestEntrypoints;
 use crate::runtime::{BackendRuntime, Instance, Module, Runtime};

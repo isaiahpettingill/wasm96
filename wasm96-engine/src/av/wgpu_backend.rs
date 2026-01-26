@@ -100,7 +100,30 @@ struct WgpuContext {
 
 // --- Global State ---
 
+#[cfg(not(target_arch = "wasm32"))]
 static WGPU_CTX: OnceLock<Mutex<Option<WgpuContext>>> = OnceLock::new();
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static WGPU_CTX: std::cell::RefCell<Option<WgpuContext>> = std::cell::RefCell::new(None);
+}
+
+fn with_wgpu_ctx<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Option<WgpuContext>) -> R,
+{
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let lock = WGPU_CTX.get_or_init(|| Mutex::new(None));
+        let mut guard = lock.lock().unwrap();
+        f(&mut *guard)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        WGPU_CTX.with(|cell| f(&mut *cell.borrow_mut()))
+    }
+}
 
 // --- Shaders ---
 
@@ -356,68 +379,67 @@ pub fn init_wgpu(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, format: wgp
         ],
     });
 
-    let ctx = WgpuContext {
-        device,
-        queue,
-        pipeline_3d,
-        pipeline_2d,
-        bind_group_layout_3d,
-        bind_group_layout_tex,
-        overlay_texture: None,
-        overlay_bind_group: None,
-        sampler,
-        meshes: HashMap::new(),
-        draw_calls: Vec::new(),
-        textures: HashMap::new(),
-        dummy_bind_group_3d,
-        dummy_bind_group_tex,
-        clear_color: wgpu::Color::BLACK,
-        depth_texture: None,
-    };
-
-    let mut lock = WGPU_CTX.get_or_init(|| Mutex::new(None)).lock().unwrap();
-    *lock = Some(ctx);
+    with_wgpu_ctx(|guard| {
+        *guard = Some(WgpuContext {
+            device,
+            queue,
+            pipeline_3d,
+            pipeline_2d,
+            bind_group_layout_3d,
+            bind_group_layout_tex,
+            overlay_texture: None,
+            overlay_bind_group: None,
+            sampler,
+            meshes: HashMap::new(),
+            draw_calls: Vec::new(),
+            textures: HashMap::new(),
+            dummy_bind_group_3d,
+            dummy_bind_group_tex,
+            clear_color: wgpu::Color::BLACK,
+            depth_texture: None,
+        });
+    });
 }
 
 pub fn wgpu_mesh_create(key: u64, vertices: &[WgpuVertex], indices: &[u16]) {
-    let Some(lock) = WGPU_CTX.get() else { return };
-    let mut lock = lock.lock().unwrap();
-    if let Some(ctx) = lock.as_mut() {
-        let v_buf = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("mesh_v_buf"),
-                contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let i_buf = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("mesh_i_buf"),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+    with_wgpu_ctx(|guard| {
+        if let Some(ctx) = guard.as_mut() {
+            let v_buf = ctx
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("mesh_v_buf"),
+                    contents: bytemuck::cast_slice(vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            let i_buf = ctx
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("mesh_i_buf"),
+                    contents: bytemuck::cast_slice(indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
 
-        ctx.meshes.insert(
-            key,
-            WgpuMesh {
-                vertex_buffer: v_buf,
-                index_buffer: i_buf,
-                index_count: indices.len() as u32,
-                texture_key: None,
-            },
-        );
-    }
+            ctx.meshes.insert(
+                key,
+                WgpuMesh {
+                    vertex_buffer: v_buf,
+                    index_buffer: i_buf,
+                    index_count: indices.len() as u32,
+                    texture_key: None,
+                },
+            );
+        }
+    });
 }
 
 pub fn wgpu_mesh_set_texture(mesh_key: u64, tex_key: u64) {
-    let Some(lock) = WGPU_CTX.get() else { return };
-    let mut lock = lock.lock().unwrap();
-    if let Some(ctx) = lock.as_mut() {
-        if let Some(mesh) = ctx.meshes.get_mut(&mesh_key) {
-            mesh.texture_key = Some(tex_key);
+    with_wgpu_ctx(|guard| {
+        if let Some(ctx) = guard.as_mut() {
+            if let Some(mesh) = ctx.meshes.get_mut(&mesh_key) {
+                mesh.texture_key = Some(tex_key);
+            }
         }
-    }
+    });
 }
 
 pub fn wgpu_mesh_draw(
@@ -432,299 +454,326 @@ pub fn wgpu_mesh_draw(
     sy: f32,
     sz: f32,
 ) {
-    let Some(lock) = WGPU_CTX.get() else { return };
-    let mut lock = lock.lock().unwrap();
-    if let Some(ctx) = lock.as_mut() {
-        let state_3d = super::graphics3d::STATE_3D.lock().unwrap();
-        if !state_3d.enabled {
-            return;
+    with_wgpu_ctx(|guard| {
+        if let Some(ctx) = guard.as_mut() {
+            let state_3d = super::graphics3d::STATE_3D.lock().unwrap();
+            if !state_3d.enabled {
+                return;
+            }
+
+            let model = Mat4::from_translation(Vec3::new(x, y, z))
+                * Mat4::from_rotation_z(rz)
+                * Mat4::from_rotation_y(ry)
+                * Mat4::from_rotation_x(rx)
+                * Mat4::from_scale(Vec3::new(sx, sy, sz));
+
+            let mvp = state_3d.projection * state_3d.view * model;
+            let normal_mat = model.inverse().transpose();
+
+            let color_u32 = global().lock().unwrap().video.draw_color;
+            let r = srgb_to_linear(((color_u32 >> 16) & 0xFF) as f32 / 255.0);
+            let g = srgb_to_linear(((color_u32 >> 8) & 0xFF) as f32 / 255.0);
+            let b = srgb_to_linear((color_u32 & 0xFF) as f32 / 255.0);
+
+            ctx.draw_calls.push(DrawCall {
+                mesh_key: key,
+                mvp,
+                normal_mat,
+                color: [r, g, b],
+            });
         }
-
-        let model = Mat4::from_translation(Vec3::new(x, y, z))
-            * Mat4::from_rotation_z(rz)
-            * Mat4::from_rotation_y(ry)
-            * Mat4::from_rotation_x(rx)
-            * Mat4::from_scale(Vec3::new(sx, sy, sz));
-
-        let mvp = state_3d.projection * state_3d.view * model;
-        let normal_mat = model.inverse().transpose();
-
-        let color_u32 = global().lock().unwrap().video.draw_color;
-        let r = srgb_to_linear(((color_u32 >> 16) & 0xFF) as f32 / 255.0);
-        let g = srgb_to_linear(((color_u32 >> 8) & 0xFF) as f32 / 255.0);
-        let b = srgb_to_linear((color_u32 & 0xFF) as f32 / 255.0);
-
-        ctx.draw_calls.push(DrawCall {
-            mesh_key: key,
-            mvp,
-            normal_mat,
-            color: [r, g, b],
-        });
-    }
+    });
 }
 
 pub fn wgpu_clear_framebuffer(r: f32, g: f32, b: f32, a: f32) -> bool {
-    if let Some(lock) = WGPU_CTX.get() {
-        if let Some(ctx) = lock.lock().unwrap().as_mut() {
+    with_wgpu_ctx(|guard| {
+        if let Some(ctx) = guard.as_mut() {
             ctx.clear_color = wgpu::Color {
                 r: srgb_to_linear(r) as f64,
                 g: srgb_to_linear(g) as f64,
                 b: srgb_to_linear(b) as f64,
                 a: a as f64,
             };
-            return true;
+            true
+        } else {
+            false
         }
-    }
-    false
+    })
 }
 
 pub fn wgpu_present(view: &wgpu::TextureView, width: u32, height: u32, sw_framebuffer: &[u32]) {
-    let Some(lock) = WGPU_CTX.get() else { return };
-    let mut lock = lock.lock().unwrap();
-    let Some(ctx) = lock.as_mut() else { return };
+    with_wgpu_ctx(|guard| {
+        let Some(ctx) = guard.as_mut() else { return };
 
-    // Update overlay texture
-    if ctx.overlay_texture.is_none()
-        || ctx.overlay_texture.as_ref().unwrap().width() != width
-        || ctx.overlay_texture.as_ref().unwrap().height() != height
-    {
-        let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("overlay_texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("overlay_bind_group"),
-            layout: &ctx.bind_group_layout_tex,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
+        // Update overlay texture
+        if ctx.overlay_texture.is_none()
+            || ctx.overlay_texture.as_ref().unwrap().width() != width
+            || ctx.overlay_texture.as_ref().unwrap().height() != height
+        {
+            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("overlay_texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
                 },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&ctx.sampler),
-                },
-            ],
-        });
-        ctx.overlay_texture = Some(texture);
-        ctx.overlay_bind_group = Some(bind_group);
-    }
-
-    // Update depth texture
-    if ctx.depth_texture.is_none()
-        || ctx.depth_texture.as_ref().unwrap().width() != width
-        || ctx.depth_texture.as_ref().unwrap().height() != height
-    {
-        let depth_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth_texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        ctx.depth_texture = Some(depth_texture);
-    }
-
-    // Repack ARGB8888 to RGBA8888 for wgpu
-    let mut rgba = Vec::with_capacity(sw_framebuffer.len() * 4);
-    for &p in sw_framebuffer {
-        rgba.push(((p >> 16) & 0xFF) as u8);
-        rgba.push(((p >> 8) & 0xFF) as u8);
-        rgba.push((p & 0xFF) as u8);
-        rgba.push(((p >> 24) & 0xFF) as u8);
-    }
-
-    ctx.queue.write_texture(
-        wgpu::ImageCopyTexture {
-            texture: ctx.overlay_texture.as_ref().unwrap(),
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        &rgba,
-        wgpu::ImageDataLayout {
-            offset: 0,
-            bytes_per_row: Some(4 * width),
-            rows_per_image: Some(height),
-        },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-    );
-
-    // Prepare 3D resources before starting render pass to satisfy lifetimes
-    let mut prepared_calls = Vec::new();
-    for call in &ctx.draw_calls {
-        if let Some(mesh) = ctx.meshes.get(&call.mesh_key) {
-            // Handle texture if present
-            let tex_bg = if let Some(tex_key) = mesh.texture_key {
-                if !ctx.textures.contains_key(&tex_key) {
-                    let img = {
-                        let res = RESOURCES.lock().unwrap();
-                        res.keyed_images.get(&tex_key).cloned()
-                    };
-
-                    if let Some(img) = img {
-                        let size = wgpu::Extent3d {
-                            width: img.width,
-                            height: img.height,
-                            depth_or_array_layers: 1,
-                        };
-                        let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
-                            label: None,
-                            size,
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: wgpu::TextureDimension::D2,
-                            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                                | wgpu::TextureUsages::COPY_DST,
-                            view_formats: &[],
-                        });
-
-                        ctx.queue.write_texture(
-                            wgpu::ImageCopyTexture {
-                                texture: &texture,
-                                mip_level: 0,
-                                origin: wgpu::Origin3d::ZERO,
-                                aspect: wgpu::TextureAspect::All,
-                            },
-                            &img.rgba,
-                            wgpu::ImageDataLayout {
-                                offset: 0,
-                                bytes_per_row: Some(4 * img.width),
-                                rows_per_image: Some(img.height),
-                            },
-                            size,
-                        );
-
-                        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                        let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: None,
-                            layout: &ctx.bind_group_layout_tex,
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(&view),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::Sampler(&ctx.sampler),
-                                },
-                            ],
-                        });
-                        ctx.textures.insert(tex_key, Arc::new(bg));
-                    }
-                }
-                ctx.textures.get(&tex_key).cloned()
-            } else {
-                None
-            };
-
-            let uniforms = WgpuUniforms {
-                mvp: call.mvp.to_cols_array(),
-                normal_mat: call.normal_mat.to_cols_array(),
-                color: call.color,
-                use_tex: if tex_bg.is_some() { 1.0 } else { 0.0 },
-            };
-            let u_buf = ctx
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::bytes_of(&uniforms),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-            let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &ctx.bind_group_layout_3d,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: u_buf.as_entire_binding(),
-                }],
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
             });
-            prepared_calls.push((u_buf, bg, tex_bg, call.mesh_key));
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("overlay_bind_group"),
+                layout: &ctx.bind_group_layout_tex,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&ctx.sampler),
+                    },
+                ],
+            });
+            ctx.overlay_texture = Some(texture);
+            ctx.overlay_bind_group = Some(bind_group);
         }
-    }
 
-    let depth_view = ctx
-        .depth_texture
-        .as_ref()
-        .unwrap()
-        .create_view(&wgpu::TextureViewDescriptor::default());
-
-    let mut encoder = ctx
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("present_encoder"),
-        });
-    {
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("present_pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(ctx.clear_color),
-                    store: wgpu::StoreOp::Store,
+        // Update depth texture
+        if ctx.depth_texture.is_none()
+            || ctx.depth_texture.as_ref().unwrap().width() != width
+            || ctx.depth_texture.as_ref().unwrap().height() != height
+        {
+            let depth_texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("depth_texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
                 },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            ctx.depth_texture = Some(depth_texture);
+        }
 
-        // 3D pass
-        rpass.set_pipeline(&ctx.pipeline_3d);
-        for (_u_buf, bg, tex_bg, mesh_key) in &prepared_calls {
-            if let Some(mesh) = ctx.meshes.get(mesh_key) {
-                rpass.set_bind_group(0, bg, &[]);
-                if let Some(tbg) = tex_bg {
-                    rpass.set_bind_group(1, tbg, &[]);
+        // Repack ARGB8888 to RGBA8888 for wgpu
+        let mut rgba = vec![0u8; sw_framebuffer.len() * 4];
+        let mut src_index = 0;
+        let mut dst_index = 0;
+        const LANES: usize = 8;
+        let mask = core::simd::Simd::<u32, LANES>::splat(0xFF);
+
+        while src_index + LANES <= sw_framebuffer.len() {
+            let pixels = core::simd::Simd::<u32, LANES>::from_slice(
+                &sw_framebuffer[src_index..src_index + LANES],
+            );
+            let r = ((pixels >> core::simd::Simd::splat(16)) & mask).to_array();
+            let g = ((pixels >> core::simd::Simd::splat(8)) & mask).to_array();
+            let b = (pixels & mask).to_array();
+            let a = ((pixels >> core::simd::Simd::splat(24)) & mask).to_array();
+
+            for lane in 0..LANES {
+                rgba[dst_index] = r[lane] as u8;
+                rgba[dst_index + 1] = g[lane] as u8;
+                rgba[dst_index + 2] = b[lane] as u8;
+                rgba[dst_index + 3] = a[lane] as u8;
+                dst_index += 4;
+            }
+
+            src_index += LANES;
+        }
+
+        for &p in &sw_framebuffer[src_index..] {
+            rgba[dst_index] = ((p >> 16) & 0xFF) as u8;
+            rgba[dst_index + 1] = ((p >> 8) & 0xFF) as u8;
+            rgba[dst_index + 2] = (p & 0xFF) as u8;
+            rgba[dst_index + 3] = ((p >> 24) & 0xFF) as u8;
+            dst_index += 4;
+        }
+
+        ctx.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: ctx.overlay_texture.as_ref().unwrap(),
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        // Prepare 3D resources before starting render pass to satisfy lifetimes
+        let mut prepared_calls = Vec::new();
+        for call in &ctx.draw_calls {
+            if let Some(mesh) = ctx.meshes.get(&call.mesh_key) {
+                // Handle texture if present
+                let tex_bg = if let Some(tex_key) = mesh.texture_key {
+                    if !ctx.textures.contains_key(&tex_key) {
+                        let img = {
+                            let res = RESOURCES.lock().unwrap();
+                            res.keyed_images.get(&tex_key).cloned()
+                        };
+
+                        if let Some(img) = img {
+                            let size = wgpu::Extent3d {
+                                width: img.width,
+                                height: img.height,
+                                depth_or_array_layers: 1,
+                            };
+                            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+                                label: None,
+                                size,
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: wgpu::TextureDimension::D2,
+                                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                                    | wgpu::TextureUsages::COPY_DST,
+                                view_formats: &[],
+                            });
+
+                            ctx.queue.write_texture(
+                                wgpu::ImageCopyTexture {
+                                    texture: &texture,
+                                    mip_level: 0,
+                                    origin: wgpu::Origin3d::ZERO,
+                                    aspect: wgpu::TextureAspect::All,
+                                },
+                                &img.rgba,
+                                wgpu::ImageDataLayout {
+                                    offset: 0,
+                                    bytes_per_row: Some(4 * img.width),
+                                    rows_per_image: Some(img.height),
+                                },
+                                size,
+                            );
+
+                            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                            let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: None,
+                                layout: &ctx.bind_group_layout_tex,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(&view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(&ctx.sampler),
+                                    },
+                                ],
+                            });
+                            ctx.textures.insert(tex_key, Arc::new(bg));
+                        }
+                    }
+                    ctx.textures.get(&tex_key).cloned()
                 } else {
-                    rpass.set_bind_group(1, &ctx.dummy_bind_group_tex, &[]);
-                }
-                rpass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
+                    None
+                };
+
+                let uniforms = WgpuUniforms {
+                    mvp: call.mvp.to_cols_array(),
+                    normal_mat: call.normal_mat.to_cols_array(),
+                    color: call.color,
+                    use_tex: if tex_bg.is_some() { 1.0 } else { 0.0 },
+                };
+                let u_buf = ctx
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::bytes_of(&uniforms),
+                        usage: wgpu::BufferUsages::UNIFORM,
+                    });
+                let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: None,
+                    layout: &ctx.bind_group_layout_3d,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: u_buf.as_entire_binding(),
+                    }],
+                });
+                prepared_calls.push((u_buf, bg, tex_bg, call.mesh_key));
             }
         }
 
-        // 2D Overlay pass
-        rpass.set_pipeline(&ctx.pipeline_2d);
-        if let Some(bg) = &ctx.overlay_bind_group {
-            rpass.set_bind_group(0, &ctx.dummy_bind_group_3d, &[]);
-            rpass.set_bind_group(1, bg, &[]);
-            rpass.draw(0..4, 0..1);
-        }
-    }
+        let depth_view = ctx
+            .depth_texture
+            .as_ref()
+            .unwrap()
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-    ctx.queue.submit(std::iter::once(encoder.finish()));
-    ctx.draw_calls.clear();
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("present_encoder"),
+            });
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("present_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(ctx.clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // 3D pass
+            rpass.set_pipeline(&ctx.pipeline_3d);
+            for (_u_buf, bg, tex_bg, mesh_key) in &prepared_calls {
+                if let Some(mesh) = ctx.meshes.get(mesh_key) {
+                    rpass.set_bind_group(0, bg, &[]);
+                    if let Some(tbg) = tex_bg {
+                        rpass.set_bind_group(1, tbg, &[]);
+                    } else {
+                        rpass.set_bind_group(1, &ctx.dummy_bind_group_tex, &[]);
+                    }
+                    rpass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
+                }
+            }
+
+            // 2D Overlay pass
+            rpass.set_pipeline(&ctx.pipeline_2d);
+            if let Some(bg) = &ctx.overlay_bind_group {
+                rpass.set_bind_group(0, &ctx.dummy_bind_group_3d, &[]);
+                rpass.set_bind_group(1, bg, &[]);
+                rpass.draw(0..4, 0..1);
+            }
+        }
+
+        ctx.queue.submit(std::iter::once(encoder.finish()));
+        ctx.draw_calls.clear();
+    })
 }

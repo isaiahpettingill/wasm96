@@ -406,10 +406,13 @@ pub fn audio_drain_host(callbacks: &mut dyn crate::PlatformCallbacks) {
                 (32768 + channel.pan_i16) as f32 / 32768.0
             };
 
+            let volume_left = volume * pan_left;
+            let volume_right = volume * pan_right;
+
             for i in 0..frames_to_mix {
                 let src_idx = (start_frame + i) * 2;
-                let l = (channel.pcm_stereo[src_idx] as f32 * volume * pan_left) as i16;
-                let r = (channel.pcm_stereo[src_idx + 1] as f32 * volume * pan_right) as i16;
+                let l = (channel.pcm_stereo[src_idx] as f32 * volume_left) as i16;
+                let r = (channel.pcm_stereo[src_idx + 1] as f32 * volume_right) as i16;
 
                 let dst_idx = i * 2;
                 mixed[dst_idx] = sat_add_i16(mixed[dst_idx], l);

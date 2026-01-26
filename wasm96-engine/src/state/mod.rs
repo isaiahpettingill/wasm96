@@ -331,6 +331,7 @@ unsafe impl Sync for GlobalState {}
 
 static GLOBAL_STATE: OnceLock<Mutex<GlobalState>> = OnceLock::new();
 
+
 pub fn global() -> &'static Mutex<GlobalState> {
     GLOBAL_STATE.get_or_init(|| Mutex::new(GlobalState::default()))
 }

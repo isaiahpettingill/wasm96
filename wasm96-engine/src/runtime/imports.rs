@@ -1441,6 +1441,12 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
             closure.forget();
         }};
+        ($name:expr, $func:expr, 1) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
         ($name:expr, $func:expr, 2) => {{
             let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _)>);
             js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
@@ -1467,6 +1473,12 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         }};
         ($name:expr, $func:expr, 6) => {{
             let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _)>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 7) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _)>);
             js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
             closure.forget();
@@ -1501,6 +1513,25 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
             closure.forget();
         }};
+        ($name:expr, $func:expr, 5, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 7, RET) => {{
+            let closure =
+                Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _) -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
+        ($name:expr, $func:expr, 0, RET) => {{
+            let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut() -> _>);
+            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            closure.forget();
+        }};
         ($name:expr, $func:expr, 8) => {{
             let closure = Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _)>);
             js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
@@ -1508,26 +1539,22 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
             closure.forget();
         }};
         ($name:expr, $func:expr, 9) => {{
-            let closure =
-                Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _, _)>);
-            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+            let _ = $func;
+            let js_func = js_sys::Function::new_no_args("return;");
+            js_sys::Reflect::set(&env, &$name.into(), &js_func)
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
-            closure.forget();
         }};
         ($name:expr, $func:expr, 10) => {{
-            let closure =
-                Closure::wrap(Box::new($func) as Box<dyn FnMut(_, _, _, _, _, _, _, _, _, _)>);
-            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+            let _ = $func;
+            let js_func = js_sys::Function::new_no_args("return;");
+            js_sys::Reflect::set(&env, &$name.into(), &js_func)
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
-            closure.forget();
         }};
         ($name:expr, $func:expr, 16) => {{
-            let closure =
-                Closure::wrap(Box::new($func)
-                    as Box<dyn FnMut(_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _)>);
-            js_sys::Reflect::set(&env, &$name.into(), closure.as_ref().unchecked_ref())
+            let _ = $func;
+            let js_func = js_sys::Function::new_no_args("return;");
+            js_sys::Reflect::set(&env, &$name.into(), &js_func)
                 .map_err(|e| anyhow::anyhow!("{:?}", e))?;
-            closure.forget();
         }};
     }
 
@@ -1687,46 +1714,214 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         6
     );
 
-    // --- 3D Stubs (not yet supported on Web) ---
-    reg!(host_imports::GRAPHICS_SET_3D, |_enable| { /* stub */ }, 1);
+    // --- Keyed resources: Aseprite ---
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_aseprite_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_DRAW_KEY,
+        |key, x, y, frame| av::graphics_aseprite_draw_key(key, x, y, frame),
+        4
+    );
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_DRAW_KEY_SCALED,
+        |key, x, y, frame, w, h| av::graphics_aseprite_draw_key_scaled(key, x, y, frame, w, h),
+        6
+    );
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_PLAY_KEY,
+        |key, x, y, tag_ptr, tag_len| {
+            if let Ok(tag) = read_guest_string_web(tag_ptr, tag_len) {
+                av::graphics_aseprite_play_key(key, x, y, &tag);
+            }
+        },
+        5
+    );
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_PLAY_KEY_SCALED,
+        |key, x, y, tag_ptr, tag_len, w, h| {
+            if let Ok(tag) = read_guest_string_web(tag_ptr, tag_len) {
+                av::graphics_aseprite_play_key_scaled(key, x, y, &tag, w, h);
+            }
+        },
+        7
+    );
+    reg!(
+        host_imports::GRAPHICS_ASEPRITE_UNREGISTER,
+        |key| av::graphics_aseprite_unregister(key),
+        1
+    );
+
+    // --- Keyed resources (SVG/GIF/PNG/JPEG) ---
+    reg!(
+        host_imports::GRAPHICS_SVG_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_svg_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_SVG_DRAW_KEY,
+        |key, x, y, w, h| av::graphics_svg_draw_key(key, x, y, w, h),
+        5
+    );
+    reg!(
+        host_imports::GRAPHICS_SVG_UNREGISTER,
+        |key| av::graphics_svg_unregister(key),
+        1
+    );
+
+    reg!(
+        host_imports::GRAPHICS_GIF_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_gif_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_GIF_DRAW_KEY,
+        |key, x, y| av::graphics_gif_draw_key(key, x, y),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_GIF_DRAW_KEY_SCALED,
+        |key, x, y, w, h| av::graphics_gif_draw_key_scaled(key, x, y, w, h),
+        5
+    );
+    reg!(
+        host_imports::GRAPHICS_GIF_UNREGISTER,
+        |key| av::graphics_gif_unregister(key),
+        1
+    );
+
+    reg!(
+        host_imports::GRAPHICS_MTL_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_mtl_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_PNG_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_png_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_PNG_DRAW_KEY,
+        |key, x, y| av::graphics_png_draw_key(key, x, y),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_PNG_DRAW_KEY_SCALED,
+        |key, x, y, w, h| av::graphics_png_draw_key_scaled(key, x, y, w, h),
+        5
+    );
+    reg!(
+        host_imports::GRAPHICS_PNG_UNREGISTER,
+        |key| av::graphics_png_unregister(key),
+        1
+    );
+
+    reg!(
+        host_imports::GRAPHICS_JPEG_REGISTER,
+        |key, ptr, len| -> u32 { av::graphics_jpeg_register(key, ptr, len) },
+        3,
+        RET
+    );
+    reg!(
+        host_imports::GRAPHICS_JPEG_DRAW_KEY,
+        |key, x, y| av::graphics_jpeg_draw_key(key, x, y),
+        3
+    );
+    reg!(
+        host_imports::GRAPHICS_JPEG_DRAW_KEY_SCALED,
+        |key, x, y, w, h| av::graphics_jpeg_draw_key_scaled(key, x, y, w, h),
+        5
+    );
+    reg!(
+        host_imports::GRAPHICS_JPEG_UNREGISTER,
+        |key| av::graphics_jpeg_unregister(key),
+        1
+    );
+
+    // --- 3D ---
+    reg!(
+        host_imports::GRAPHICS_SET_3D,
+        |enable: u32| {
+            av::graphics_set_3d(enable != 0);
+        },
+        1
+    );
     reg!(
         host_imports::GRAPHICS_CAMERA_LOOK_AT,
-        |_ex, _ey, _ez, _tx, _ty, _tz, _ux, _uy, _uz| { /* stub */ },
+        |ex, ey, ez, tx, ty, tz, ux, uy, uz| {
+            av::graphics_camera_look_at(ex, ey, ez, tx, ty, tz, ux, uy, uz);
+        },
         9
     );
     reg!(
         host_imports::GRAPHICS_CAMERA_PERSPECTIVE,
-        |_fovy, _aspect, _near, _far| { /* stub */ },
+        |fovy, aspect, near, far| {
+            av::graphics_camera_perspective(fovy, aspect, near, far);
+        },
         4
     );
     reg!(
         host_imports::GRAPHICS_MESH_CREATE,
-        |_key, _vptr, _vlen, _iptr, _ilen| 0u32,
+        |key, vptr, vlen, iptr, ilen| -> u32 {
+            av::graphics_mesh_create(key, vptr, vlen, iptr, ilen)
+        },
         5,
         RET
     );
     reg!(
         host_imports::GRAPHICS_MESH_CREATE_OBJ,
-        |_key, _ptr, _len| 0u32,
+        |key, ptr, len| -> u32 { av::graphics_mesh_create_obj(key, ptr, len) },
         3,
         RET
     );
     reg!(
         host_imports::GRAPHICS_MESH_CREATE_STL,
-        |_key, _ptr, _len| 0u32,
+        |key, ptr, len| -> u32 { av::graphics_mesh_create_stl(key, ptr, len) },
         3,
         RET
     );
     reg!(
         host_imports::GRAPHICS_MESH_SET_TEXTURE,
-        |_mkey, _ikey| 0u32,
+        |mkey, ikey| -> u32 { av::graphics_mesh_set_texture(mkey, ikey) },
         2,
         RET
     );
     reg!(
         host_imports::GRAPHICS_MESH_DRAW,
-        |_key, _x, _y, _z, _rx, _ry, _rz, _sx, _sy, _sz| { /* stub */ },
+        |key, x, y, z, rx, ry, rz, sx, sy, sz| {
+            av::graphics_mesh_draw(key, x, y, z, rx, ry, rz, sx, sy, sz);
+        },
         10
+    );
+    reg!(
+        host_imports::GRAPHICS_MTL_REGISTER_TEXTURE,
+        |texture_key,
+         mtl_ptr,
+         mtl_len,
+         tex_filename_ptr,
+         tex_filename_len,
+         tex_ptr,
+         tex_len|
+         -> u32 {
+            av::graphics_mtl_register_texture(
+                texture_key,
+                mtl_ptr,
+                mtl_len,
+                tex_filename_ptr,
+                tex_filename_len,
+                tex_ptr,
+                tex_len,
+            )
+        },
+        7,
+        RET
     );
 
     reg!(host_imports::GRAPHICS_CLEAR, || av::graphics_clear(), RET);
@@ -1820,6 +2015,34 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         },
         2
     );
+    reg!(
+        host_imports::AUDIO_PLAY_QOA,
+        |ptr, len| {
+            av::audio_play_qoa(ptr, len);
+        },
+        2
+    );
+    reg!(
+        host_imports::AUDIO_PLAY_XM,
+        |ptr, len| {
+            av::audio_play_xm(ptr, len);
+        },
+        2
+    );
+    reg!(
+        host_imports::AUDIO_PLAY_MIDI,
+        |ptr, len| {
+            av::audio_play_midi(ptr, len);
+        },
+        2
+    );
+    reg!(
+        host_imports::AUDIO_PUSH_SAMPLES,
+        |ptr, len| {
+            let _ = av::audio_push_samples(ptr, len);
+        },
+        2
+    );
 
     // --- System ---
     reg!(
@@ -1866,6 +2089,13 @@ pub fn define_web_imports(imports: &js_sys::Object) -> anyhow::Result<()> {
         |key| -> u64 { av::storage_load_raw(key) },
         1,
         RET
+    );
+    reg!(
+        host_imports::STORAGE_FREE,
+        |ptr, len| {
+            av::storage_free(ptr, len);
+        },
+        2
     );
 
     js_sys::Reflect::set(imports, &IMPORT_MODULE.into(), &env.into())

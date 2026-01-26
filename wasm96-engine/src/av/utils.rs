@@ -3,6 +3,7 @@ extern crate alloc;
 
 use crate::state::{Wasm96Ctx, global};
 use glam::{Mat4, Vec3};
+use core::simd::cmp::SimdPartialEq;
 
 #[cfg(not(target_arch = "wasm32"))]
 use wasmtime::Caller;
@@ -87,18 +88,85 @@ pub fn graphics_image_from_host(x: i32, y: i32, w: u32, h: u32, data: &[u8]) {
             let src_y = curr_y - y;
             let src_row_start = (src_y as usize) * (w as usize) * 4;
             let dst_row_start = (curr_y as usize) * (screen_w as usize);
-            for curr_x in x_start..x_end {
-                let src_x = curr_x - x;
-                let src_idx = src_row_start + (src_x as usize) * 4;
-                let r = data[src_idx];
-                let g = data[src_idx + 1];
-                let b = data[src_idx + 2];
-                let a = data[src_idx + 3];
+            let row_width = (x_end - x_start) as usize;
+            let mut src_index = src_row_start + (x_start - x) as usize * 4;
+            let mut dst_index = dst_row_start + x_start as usize;
+            let mut remaining = row_width;
+            const LANES: usize = 8;
+
+            while remaining >= LANES {
+                let r = core::simd::Simd::<u32, LANES>::from_array([
+                    data[src_index] as u32,
+                    data[src_index + 4] as u32,
+                    data[src_index + 8] as u32,
+                    data[src_index + 12] as u32,
+                    data[src_index + 16] as u32,
+                    data[src_index + 20] as u32,
+                    data[src_index + 24] as u32,
+                    data[src_index + 28] as u32,
+                ]);
+                let g = core::simd::Simd::<u32, LANES>::from_array([
+                    data[src_index + 1] as u32,
+                    data[src_index + 5] as u32,
+                    data[src_index + 9] as u32,
+                    data[src_index + 13] as u32,
+                    data[src_index + 17] as u32,
+                    data[src_index + 21] as u32,
+                    data[src_index + 25] as u32,
+                    data[src_index + 29] as u32,
+                ]);
+                let b = core::simd::Simd::<u32, LANES>::from_array([
+                    data[src_index + 2] as u32,
+                    data[src_index + 6] as u32,
+                    data[src_index + 10] as u32,
+                    data[src_index + 14] as u32,
+                    data[src_index + 18] as u32,
+                    data[src_index + 22] as u32,
+                    data[src_index + 26] as u32,
+                    data[src_index + 30] as u32,
+                ]);
+                let a = core::simd::Simd::<u32, LANES>::from_array([
+                    data[src_index + 3] as u32,
+                    data[src_index + 7] as u32,
+                    data[src_index + 11] as u32,
+                    data[src_index + 15] as u32,
+                    data[src_index + 19] as u32,
+                    data[src_index + 23] as u32,
+                    data[src_index + 27] as u32,
+                    data[src_index + 31] as u32,
+                ]);
+
+                let color = (a << core::simd::Simd::splat(24))
+                    | (r << core::simd::Simd::splat(16))
+                    | (g << core::simd::Simd::splat(8))
+                    | b;
+                let alpha_mask = a.simd_ne(core::simd::Simd::splat(0));
+                let colors = color.to_array();
+                let write_mask = alpha_mask.to_array();
+
+                for lane in 0..LANES {
+                    if write_mask[lane] {
+                        fb[dst_index + lane] = colors[lane];
+                    }
+                }
+
+                src_index += LANES * 4;
+                dst_index += LANES;
+                remaining -= LANES;
+            }
+
+            for _ in 0..remaining {
+                let r = data[src_index];
+                let g = data[src_index + 1];
+                let b = data[src_index + 2];
+                let a = data[src_index + 3];
                 if a > 0 {
                     let color =
                         ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-                    fb[dst_row_start + (curr_x as usize)] = color;
+                    fb[dst_index] = color;
                 }
+                src_index += 4;
+                dst_index += 1;
             }
         }
     } else {
