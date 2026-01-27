@@ -1,6 +1,27 @@
+# ⚠️ Pre-Alpha Software
+
+**This is pre-alpha software and is not ready for production use.** Expect:
+- Breaking changes without notice
+- Incomplete features and missing functionality
+- Potential stability and security issues
+- Rapid development and API evolution
+
+Use at your own risk and only for experimental purposes.
+
+---
+
 # Clone the repository
 git clone https://github.com/isaiahpettingill/wasm96.git
 cd wasm96
+
+## Diagnostics notes (platform profile + guest entrypoint validation)
+
+Two small behaviors are worth calling out because they affect debugging and what content is considered “runnable”:
+
+- **Platform profile logging (libretro)**: on startup, the libretro core prints a one-line “platform profile” label (e.g. `arm64-gles3-48khz`, `x86_64-glcore33-44khz`). This is intended to make it obvious which target-specific policy bundle was selected (HW context type/version and audio rate). Look for a line like:
+  - `(wasm96) platform profile: ...`
+
+- **Strengthened guest export validation (native/Wasmtime)**: when running on the native backend, wasm96 validates guest exports up front. `setup()` is required, and the guest must provide at least one runnable “main” entrypoint: `draw()`, `_start` (WASI), or `main()`. This matches the engine’s entrypoint resolution and prevents late failures when attempting to call missing functions.
 
 ## RetroArch: core `.info` + config snippets (so `.wat` / `.w96` show up)
 
@@ -114,6 +135,26 @@ Font registration calls include:
 If a guest calls `wasm96_graphics_text_key(...)` or `wasm96_graphics_text_measure_key(...)` with a `font_key` that is **not registered**, the core will fall back to rendering/measuring text with the built-in **Spleen** font at **size 16**.
 
 This fallback exists so guests can render text “out of the box” without explicit font registration. Guests that need a specific font/size should still register and use their own keyed font.
+
+# Web Frontend
+
+A web-based frontend is available for running `wasm96` content in browsers. It uses WebGPU/WebGL for rendering and supports most core features including 3D graphics and audio.
+
+### Features
+- **Browser Compatibility**: Runs in modern browsers with WebGPU/WebGL support
+- **3D Rendering**: Hardware-accelerated graphics via WebGPU/WebGL
+- **Audio**: Full audio support with Web Audio API
+- **Input**: Keyboard and mouse support
+- **File Loading**: Drag-and-drop WASM file loading
+
+### Running the Web Frontend
+```bash
+# Start development server
+just web-serve
+
+# Build for production
+just web-dist
+```
 
 # Desktop Frontend
 
@@ -389,6 +430,19 @@ The desktop frontend includes a remapping menu under **Settings > Input Remappin
 - Entry point: `import "github.com/isaiahpettingill/wasm96-go-sdk"`
 - **Note:** Requires TinyGo for proper WebAssembly host imports; standard Go's WebAssembly target is browser-oriented and doesn't support direct host imports
 
+### V SDK (`wasm96-v-sdk/`)
+- Handwritten bindings matching the core ABI
+- Entry point: `import wasm96`
+- **Status**: Available but with build limitations due to V's WASM backend
+
+### C# / .NET SDK (Experimental)
+- **Status**: Experimental, no dedicated SDK yet
+- **Example**: `example/dotnet-guest/` demonstrates basic usage
+- **Build**: Uses .NET Native AOT with WASI target (`wasi-wasm`)
+- **Entry Points**: Exports `setup`, `update`, `draw` functions via `[UnmanagedCallersOnly]`
+- **ABI**: Direct P/Invoke imports using `[DllImport("__native")]`
+- **Requirements**: .NET 10.0 preview with WASI support
+
 ## Examples
 
 The `example/` directory contains guest applications:
@@ -400,11 +454,18 @@ The `example/` directory contains guest applications:
 - `rust-guest-shapes/`: Shapes demo (ellipse/arc/quad) (Rust)
 - `rust-guest-3d/`: 3D rotating cube example (Rust)
 - `rust-guest-rapier/`: Physics game with Rapier3D (Rust)
+- `rust-guest-aseprite/`: Dwarf mining game with Aseprite support (Rust)
+- `rust-guest-osmosis/`: Osmosis puzzle game (Rust)
+- `rust-guest-transform/`: Transformation and matrix operations demo (Rust)
+- `rust-guest-wasi/`: WASI-compatible example (Rust)
 - `zig-guest/`: Basic hello-world example (Zig)
 - `zig-guest-3d/`: 3D rotating cube example (Zig)
-- `go-guest-tetris/`: 2D Tetris game example (Go) - *requires TinyGo for compilation*
-- `v-guest-2d/`: 2D bouncing rectangle example (V) - *thus far impossible to build due to V's WASM backend limitations and compilation issues*
+- `dotnet-guest/`: Basic graphics example with circle rendering (C#/.NET) - *experimental*
+- `c-guest/`: Basic example using C SDK
+- `cpp-guest/`: Basic example using C++ SDK
+- `assemblyscript-guest/`: Flappy bird clone (AssemblyScript)
 - `wat-guest/`: Simple 2D controllable rectangle example (WAT)
+- `v-guest-2d/`: 2D bouncing rectangle example (V) - *thus far impossible to build due to V's WASM backend limitations and compilation issues*
 - `kotlin-guest/`: 2D graphics shapes demo (Kotlin) - *currently has compatibility issues*
 
 To build a Rust example:
@@ -426,6 +487,12 @@ cd example/go-guest-tetris && tinygo build -o go-guest-tetris.wasm -target wasm
 To build the WAT example:
 ```bash
 cd example/wat-guest && wat2wasm main.wat -o wat-guest.wasm
+```
+
+To build the .NET example (requires .NET 10.0 preview):
+```bash
+cd example/dotnet-guest
+dotnet publish -c Release -r wasi-wasm
 ```
 
 To build the Kotlin example:
@@ -456,8 +523,31 @@ wasm96/
 │   │   ├── libretro_env.rs       # Environment helpers
 │   │   └── platform.rs           # Platform configuration
 │   └── Cargo.toml
+├── wasm96-desktop/         # Native desktop frontend
+│   ├── src/
+│   └── Cargo.toml
+├── wasm96-web/             # Web frontend
+│   ├── src/
+│   ├── index.html
+│   └── Cargo.toml
 ├── wasm96-sdk/             # Rust SDK for guests
+├── wasm96-zig-sdk/         # Zig SDK for guests
+├── wasm96-c-sdk/           # C SDK for guests
+├── wasm96-cpp-sdk/         # C++ SDK for guests
+├── wasm96-v-sdk/           # V SDK for guests
+├── wasm96-libretro-sys/    # Libretro C bindings
+├── system/                 # System utilities (wsh shell)
 ├── example/                # Example guest applications
+│   ├── rust-guest*/        # Rust examples
+│   ├── zig-guest*/         # Zig examples
+│   ├── dotnet-guest/       # .NET example (experimental)
+│   ├── c-guest/           # C example
+│   ├── cpp-guest/         # C++ example
+│   ├── assemblyscript-guest/ # AssemblyScript example
+│   ├── wat-guest/         # WAT example
+│   └── kotlin-guest/      # Kotlin example (compatibility issues)
+├── scripts/                # Build and distribution scripts
+├── dist/                   # Distribution output
 └── ARCHITECTURE.md         # Architecture documentation
 ```
 
@@ -715,8 +805,11 @@ MIT License - see `LICENSE` for details.
 
 ## Notes
 
-- The project is in active development; Expect things to change
-- I am not planning on supporting this over time unless it takes off somehow. If you want it supported, either help the repo get a lot of stars or just fork it if you'd like to add features.
+- **Pre-Alpha**: This is experimental software under active development
+- Expect frequent breaking changes and API evolution
+- Stability and security are not yet production-ready
+- Community contributions and feedback are welcome
+- Long-term support depends on community adoption and contribution
 - WAV playback is implemented using the hound library for decoding and mixing.
 - QOA playback is implemented using the qoaudio library for decoding and mixing.
 - XM playback is implemented using the xmrsplayer library for decoding and mixing.

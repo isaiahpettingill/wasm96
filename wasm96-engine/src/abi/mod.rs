@@ -200,25 +200,50 @@ pub enum Button {
 }
 
 pub mod validate {
-    use super::guest_exports;
-
+    // On native backends we validate guest exports using wasmtime's `Instance`.
+    //
+    // Keep this in sync with `GuestEntrypoints::resolve_wasmtime()` so the engine can
+    // provide a clear error before attempting to call into the guest.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn required_exports_present_wasmtime(
         instance: &wasmtime::Instance,
         mut store: impl wasmtime::AsContextMut,
     ) -> Result<(), MissingExport> {
+        // Required: setup()
         if instance
-            .get_func(&mut store, guest_exports::SETUP)
+            .get_func(&mut store, super::guest_exports::SETUP)
             .is_none()
         {
             return Err(MissingExport::Setup);
         }
+
+        // At least one of these must exist so we have something to run as “main”.
+        // `draw()` is the primary entrypoint, but we also accept WASI-style modules.
+        let has_draw = instance
+            .get_func(&mut store, super::guest_exports::DRAW)
+            .is_some();
+        let has_wasi_start = instance
+            .get_func(&mut store, super::guest_exports::WASI_START)
+            .is_some();
+        let has_main = instance
+            .get_func(&mut store, super::guest_exports::MAIN)
+            .is_some();
+
+        if !(has_draw || has_wasi_start || has_main) {
+            return Err(MissingExport::DrawOrStartOrMain);
+        }
+
+        // Optional callbacks are not required, but if they are present they should be functions.
+        // `get_func` already enforces the export kind at resolution time, so presence is enough.
+        // (We intentionally do not validate signatures here; that is handled at call time.)
+
         Ok(())
     }
 
     #[derive(Debug)]
     pub enum MissingExport {
         Setup,
+        DrawOrStartOrMain,
     }
 }
 

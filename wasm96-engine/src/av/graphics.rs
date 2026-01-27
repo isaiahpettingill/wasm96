@@ -986,7 +986,12 @@ pub fn graphics_arc(cx: i32, cy: i32, w: u32, h: u32, start: f32, end: f32) {
         let t = a0 + step * i as f32;
         let x = cx as f32 + rx * t.cos();
         let y = cy as f32 + ry * t.sin();
-        graphics_line(prev_x.round() as i32, prev_y.round() as i32, x.round() as i32, y.round() as i32);
+        graphics_line(
+            prev_x.round() as i32,
+            prev_y.round() as i32,
+            x.round() as i32,
+            y.round() as i32,
+        );
         prev_x = x;
         prev_y = y;
     }
@@ -3432,10 +3437,23 @@ pub fn graphics_text_measure(
 
 /// Present the framebuffer to the platform frontend.
 pub fn video_present_host(callbacks: &mut dyn crate::PlatformCallbacks) {
-    // Flush any 3D content to the framebuffer before presenting (native-only).
+    // Flush any 3D content before presenting (native-only).
+    //
+    // IMPORTANT: When running under libretro, the frontend (`wasm96-libretro`) is responsible
+    // for compositing the 2D software framebuffer into the HW FBO. The engine-side compositor
+    // MUST be skipped in that case to avoid a double overlay pass.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if super::graphics3d::STATE_3D.lock().unwrap().enabled {
+        // If the frontend is providing a HW framebuffer (FBO != 0), it is responsible for
+        // compositing the engine's 2D software framebuffer into that HW target.
+        //
+        // In that scenario, the engine-side overlay compositor MUST be skipped to avoid a
+        // double overlay pass (mirrored/duplicated output).
+        //
+        // If there is no HW framebuffer, the engine may composite internally (desktop GL path).
+        let frontend_has_hw_fbo = callbacks.get_hardware_framebuffer() != 0;
+
+        if super::graphics3d::STATE_3D.lock().unwrap().enabled && !frontend_has_hw_fbo {
             let _ = super::graphics3d::flush_to_host();
         }
     }

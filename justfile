@@ -128,7 +128,7 @@ run-rust-guest:
     just run ./target/wasm32-unknown-unknown/release/rust_guest.wasm
 
 run-rust-showcase:
-    just build example rust-guest-showcase
+    just build-example rust-guest-showcase
     just run ./target/wasm32-unknown-unknown/release/rust_guest_showcase.wasm
 
 run-rust-platformer:

@@ -139,6 +139,14 @@ pub unsafe extern "C" fn retro_deinit() {
 pub unsafe extern "C" fn retro_set_environment(cb: Option<EnvironmentFn>) {
     with_glue_mut(|g| {
         g.callbacks.env = cb;
+
+        // Log the selected platform policy bundle early, before we negotiate anything.
+        // This helps debug target-specific behavior (e.g. aarch64 choosing GLES3/48kHz).
+        eprintln!(
+            "(wasm96) platform profile: {}",
+            platform::platform_profile_name()
+        );
+
         let req = platform::preferred_hw_context();
         g.hw_render.context_type = req.context_type;
         g.hw_render.version_major = req.version_major;
