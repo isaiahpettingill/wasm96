@@ -1,3 +1,9 @@
+DEVELOPMENT MOVED TO CODEBERG
+
+See <https://codeberg.org/compu96/wasm96>
+
+---
+
 # ⚠️ Pre-Alpha Software
 
 **This is pre-alpha software and is not ready for production use.** Expect:
