@@ -1,0 +1,3 @@
+.zig-cache/
+zig-out/
+templates/cartridge-c/cartridge.wasm

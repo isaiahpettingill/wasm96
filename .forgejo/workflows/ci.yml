@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build sample cartridge
+        shell: bash
+        working-directory: templates/cartridge-c
+        run: >-
+          zig cc -target wasm32-freestanding -O2 -ffreestanding -nostdlib
+          -Wall -Wextra main.c
+          -Wl,--no-entry -Wl,--export=wasm96_update
+          -Wl,--initial-memory=2097152 -Wl,--max-memory=134217728
+          -o cartridge.wasm
+
+      - name: Run core tests
+        run: zig build test -Doptimize=ReleaseSafe
+
+      - name: Check libretro build
+        run: zig build check -Doptimize=ReleaseSafe
+
+      - name: Build libretro core
+        run: zig build -Doptimize=ReleaseSafe
